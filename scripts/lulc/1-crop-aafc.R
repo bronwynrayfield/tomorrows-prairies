@@ -1,19 +1,18 @@
-library(terra)
-library(sf)
-library(dplyr)
-library(stringr)
+# Merge AAFC tiles and then crop to prairies
 
 # If RAM is limited, force temporary disk-backed raster operations
 # terraOptions(memfrac = 0.5, tempdir = "D:/terra_temp")
 
-#--- Parameters ---
-tile_root <- "D:/Projects/E104 - NU Grasslands/aafc"                            # Top-level directory
-out_dir <- "D:/Projects/E104 - NU Grasslands/aafc_clipped"                      # Where to save mosaicked outputs
-ecozone_file <- "D:/Projects/E104 - NU Grasslands/boundaries/prairies/vegetation_zones_of_canada_2020_prairies.shp"          # Ecozone boundary file
+#--- Setup ---
+source(file.path("scripts", "0-setup.R"))
 
-if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+#--- Directories ---
+# AAFC tiles directory
+tile_root <- file.path(raw_lulc_data_dir, "aafc")
+aafc_merged_dir <- file.path(proc_lulc_data_dir, "aafc/merged")
+aafc_cropped_dir <- file.path(proc_lulc_data_dir, "aafc/cropped")
 
-#--- Load ecozone boundary ---
+#--- Load prairie study area ---
 prairie <- st_read(ecozone_file)
 
 #--- Find all .tif files in subdirectories ---
@@ -28,7 +27,7 @@ tile_info <- tibble(
   filter(!is.na(year))
 
 #--- Loop over each year ---
-for (yr in c("2010","2020")){#unique(tile_info$year)) {
+for (yr in unique(tile_info$year)) {
   message("Processing year: ", yr)
   
   tile_paths <- tile_info %>%
@@ -55,13 +54,8 @@ for (yr in c("2010","2020")){#unique(tile_info$year)) {
       r
     }
   })
-  #save.image(file = paste0(yr, "_aafc_workspace_before_merge.RData"))
   mosaic_raster <- Reduce(merge, aligned)
 
-  # Save
-  out_path <- file.path(out_dir, paste0("LU", yr, ".tif"))
-  writeRaster(mosaic_raster, out_path, overwrite = TRUE)
-  
   # Reproject ecozone boundary if needed
   prairie_match <- if (!st_crs(prairie) == crs(mosaic_raster)) {
     st_transform(prairie, crs(mosaic_raster))
@@ -76,8 +70,13 @@ for (yr in c("2010","2020")){#unique(tile_info$year)) {
   clipped <- mask(cropped, prairie_vect)
   
   # Save
-  out_path <- file.path(out_dir, paste0("LU", yr, "_prairie_clipped.tif"))
+  # Merged raster
+  out_path <- file.path(aafc_merged_dir, paste0("LU", yr, ".tif"))
+  writeRaster(mosaic_raster, out_path, overwrite = TRUE)
+
+  # Cropped raster  
+  out_path <- file.path(aafc_cropped_dir, paste0("LU", yr, "_prairie.tif"))
   writeRaster(clipped, out_path, overwrite = TRUE)
-  
-  message("✓ Saved: ", out_path)
+
+  message("Saved: ", out_path)
 }
