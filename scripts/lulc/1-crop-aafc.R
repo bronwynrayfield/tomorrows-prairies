@@ -12,8 +12,8 @@ tile_root <- file.path(raw_lulc_data_dir, "aafc")
 aafc_merged_dir <- file.path(proc_lulc_data_dir, "aafc/merged")
 aafc_cropped_dir <- file.path(proc_lulc_data_dir, "aafc/cropped")
 
-#--- Load prairie study area ---
-prairie <- st_read(ecozone_file)
+#--- Load prairie study area based on Vegetation Zones of Canada ---
+prairie <- st_read(veg_zones_file)
 
 #--- Find all .tif files in subdirectories ---
 all_tiles <- list.files(tile_root, pattern = "\\.tif$", full.names = TRUE, recursive = TRUE)
@@ -67,7 +67,7 @@ for (yr in unique(tile_info$year)) {
   
   # Crop and mask
   cropped <- crop(mosaic_raster, prairie_vect)
-  clipped <- mask(cropped, prairie_vect)
+  cropped_masked <- mask(cropped, prairie_vect)
   
   # Save
   # Merged raster
@@ -76,7 +76,7 @@ for (yr in unique(tile_info$year)) {
 
   # Cropped raster  
   out_path <- file.path(aafc_cropped_dir, paste0("LU", yr, "_prairie.tif"))
-  writeRaster(clipped, out_path, overwrite = TRUE)
+  writeRaster(cropped_masked, out_path, overwrite = TRUE)
 
   message("Saved: ", out_path)
 }
