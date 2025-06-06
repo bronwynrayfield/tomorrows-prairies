@@ -1,19 +1,18 @@
 library(tidyverse)
 
 # === Set parameters ===
-aafc_clipped_dir <- "D:/Projects/E104 - NU Grasslands/aafc_clipped"
-file_00_20 <- file.path(aafc_clipped_dir, "lulc-change-2000-2020.csv")
-file_10_20 <- file.path(aafc_clipped_dir, "lulc-change-2010-2020.csv")
+file_00_20 <- file.path(out_lulc_historic_dir, "aafc-lulc-change-2000-2020-km2.csv")
+file_10_20 <- file.path(out_lulc_historic_dir, "aafc-lulc-change-2010-2020-km2.csv")
 
 # === Load data ===
 change_00_20 <- read_csv(file_00_20) %>%
   mutate(period = "2000–2020")
-
+  
 change_10_20 <- read_csv(file_10_20) %>%
   mutate(period = "2010–2020")
 
 # === Combine datasets ===
-change_all <- bind_rows(change_00_20, change_10_20)
+change_all <- bind_rows(change_00_20, change_10_20) 
 
 
 ####################
@@ -24,13 +23,13 @@ change_all <- bind_rows(change_00_20, change_10_20)
 loss_summary <- change_all %>%
   group_by(period, From_Class) %>%
   summarise(
-    total_km2_annual = sum(km2_annual, na.rm = TRUE),
+    total_area_annual = sum(area_annual, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   filter(!From_Class %in% c("Other Land", "Water", "Settlement", "Wetland"))
 
 # === Plot paired bar chart ===
-ggplot(loss_summary, aes(x = reorder(From_Class, -total_km2_annual), y = total_km2_annual, fill = period)) +
+ggplot(loss_summary, aes(x = reorder(From_Class, -total_area_annual), y = total_area_annual, fill = period)) +
   geom_col(position = position_dodge(width = 0.7), width = 0.6) +
   labs(
     title = "Annual LULC Loss by Class",
@@ -47,9 +46,9 @@ gain_summary <- change_all %>%
   filter(From_Class != To_Class) %>%  # exclude unchanged
   filter(!To_Class %in% c("Other Land", "Water", "Wetland")) %>%
   group_by(period, To_Class) %>%
-  summarise(total_km2_annual = sum(km2_annual, na.rm = TRUE), .groups = "drop")
+  summarise(total_area_annual = sum(area_annual, na.rm = TRUE), .groups = "drop")
 
-ggplot(gain_summary, aes(x = reorder(To_Class, -total_km2_annual), y = total_km2_annual, fill = period)) +
+ggplot(gain_summary, aes(x = reorder(To_Class, -total_area_annual), y = total_area_annual, fill = period)) +
   geom_col(position = position_dodge(width = 0.7), width = 0.6) +
   labs(
     title = "Annual LULC Gain by Class",
@@ -68,14 +67,14 @@ gain_df <- change_all %>%
   filter(From_Class != To_Class) %>%
   filter(!To_Class %in% c("Other Land", "Water", "Wetland")) %>%
   group_by(period, Class = To_Class) %>%
-  summarise(km2_annual = sum(km2_annual), .groups = "drop") %>%
+  summarise(area_annual = sum(area_annual), .groups = "drop") %>%
   mutate(type = "Gain")
 
 loss_df <- change_all %>%
   filter(From_Class != To_Class) %>%
   filter(!From_Class %in% c("Other Land", "Water", "Wetland")) %>%
   group_by(period, Class = From_Class) %>%
-  summarise(km2_annual = -sum(km2_annual), .groups = "drop") %>%  # NOTE: make losses negative
+  summarise(area_annual = -sum(area_annual), .groups = "drop") %>%  # NOTE: make losses negative
   mutate(type = "Loss")
 
 combined_df <- bind_rows(gain_df, loss_df)
@@ -83,12 +82,14 @@ combined_df <- bind_rows(gain_df, loss_df)
 net_cropland <- bind_rows(gain_df, loss_df) %>%
   filter(Class == "Cropland") %>%
   group_by(period, Class) %>%
-  summarise(km2_annual = sum(km2_annual), .groups = "drop") %>%
+  summarise(area_annual = sum(area_annual), .groups = "drop") %>%
   mutate(type = "Net")
 
 combined_all <- bind_rows(gain_df, loss_df, net_cropland)
 
-ggplot(combined_all, aes(x = reorder(Class, km2_annual), y = km2_annual, fill = period)) +
+combined_all$period <- factor(combined_all$period, levels = c("2010–2020", "2000–2020"))
+
+ggplot(combined_all, aes(x = reorder(Class, area_annual), y = area_annual, fill = period)) +
   geom_col(data = filter(combined_all, type != "Net"),
            position = position_dodge(width = 0.7), width = 0.6) +
   geom_col(data = filter(combined_all, type == "Net"),
@@ -101,7 +102,12 @@ ggplot(combined_all, aes(x = reorder(Class, km2_annual), y = km2_annual, fill = 
     fill = "Period"
   ) +
   coord_flip() +
-  theme_minimal(base_size = 13)
+  theme_minimal(base_size = 13) +
+  scale_fill_manual(
+    values = c("2000–2020" = "#1f77b4", "2010–2020" = "#ff7f0e"),
+    breaks = c("2000–2020", "2010–2020"),  # this sets the legend order
+    name = "Period"
+  )
 
 
 

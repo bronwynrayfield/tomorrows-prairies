@@ -1,4 +1,6 @@
+##############################################
 # Merge AAFC tiles and then crop to prairies
+# Save merged and cropped rasters
 
 # If RAM is limited, force temporary disk-backed raster operations
 # terraOptions(memfrac = 0.5, tempdir = "D:/terra_temp")
@@ -13,7 +15,7 @@ aafc_merged_dir <- file.path(proc_lulc_data_dir, "aafc/merged")
 aafc_cropped_dir <- file.path(proc_lulc_data_dir, "aafc/cropped")
 
 #--- Load prairie study area based on Vegetation Zones of Canada ---
-prairie <- st_read(veg_zones_file)
+veg_zones <- st_read(veg_zones_file)
 
 #--- Find all .tif files in subdirectories ---
 all_tiles <- list.files(tile_root, pattern = "\\.tif$", full.names = TRUE, recursive = TRUE)
@@ -56,11 +58,11 @@ for (yr in unique(tile_info$year)) {
   })
   mosaic_raster <- Reduce(merge, aligned)
 
-  # Reproject ecozone boundary if needed
-  prairie_match <- if (!st_crs(prairie) == crs(mosaic_raster)) {
+  # Reproject veg zones boundary if needed
+  prairie_match <- if (!st_crs(veg_zones) == crs(mosaic_raster)) {
     st_transform(prairie, crs(mosaic_raster))
   } else {
-    prairie
+    veg_zones
   }
   
   prairie_vect <- vect(prairie_match)
