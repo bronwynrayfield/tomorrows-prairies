@@ -1,2 +1,16 @@
+# R profile files
+*.Rproj.user
+*.Rhistory
+*.Rdata
+
+# log files
+*.Rout
+
+# system files
+.directory
+
+# data
 data/*
+
+# results
 outputs/*
