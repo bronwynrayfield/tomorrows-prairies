@@ -4,7 +4,7 @@
 
 # If RAM is limited, force temporary disk-backed raster operations
 # terraOptions(memfrac = 0.5, tempdir = "D:/terra_temp")
-#BR test# 
+
 
 #--- Setup ---
 source(file.path("scripts", "0-setup.R"))
