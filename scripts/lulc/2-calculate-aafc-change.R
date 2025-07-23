@@ -8,67 +8,72 @@ source(file.path("scripts", "0-setup.R"))
 ####--- Directories ---#### 
 aafc_cropped_dir <- file.path(proc_lulc_data_dir, "aafc/cropped")
 
-####--- Load rasters ---
-# Load cropped AAFC rasters
-r2000 <- rast(file.path(aafc_cropped_dir, "LU2000_prairie.tif"))
-r2010 <- rast(file.path(aafc_cropped_dir, "LU2010_prairie.tif"))
-r2020 <- rast(file.path(aafc_cropped_dir, "LU2020_prairie.tif"))
-
-# Load vegetation zones
-veg_zones <- st_read(veg_zones_file)
-
-####--- Prep spatial data ---####
-# Make sure AAFC rasters are aligned (should be if created by same process)
-stopifnot(compareGeom(r2000, r2010), compareGeom(r2010, r2020))
-
-# Give vegetation zones Same CRS as AAFC rasters
-veg_zones <- st_transform(veg_zones, crs(r2000))
-
-# Rasterize vegetation zones to match IPCC raster resolution and extent
-veg_rast <- terra::rasterize(vect(veg_zones), ipcc_rasters[[1]], field = "level_2")
-
-####--- Reclass rasters ---####
-# Make reclass table to go from AAFC classes to IUCN classes
-rat <- cats(r2020)[[1]]
-ipcc_lookup <- rat[, c("Value", "IPCC_Class")]
-# str(ipcc_lookup)
-ipcc_classes <- unique(ipcc_lookup$IPCC_Class)
-ipcc_ids <- seq_along(ipcc_classes)
-
-ipcc_reclass <- data.frame(
-  Value = ipcc_lookup$Value,
-  IPCC_ID = match(ipcc_lookup$IPCC_Class, ipcc_classes)
-)
-
-# Keep class labels handy for later lookup
-ipcc_labels <- data.frame(
-  IPCC_ID = ipcc_ids,
-  IPCC_Class = ipcc_classes
-)
-
-# Reclass
-r2000_ipcc <- classify(as.numeric(r2000), rcl = ipcc_reclass, others = NA)
-r2010_ipcc <- classify(as.numeric(r2010), rcl = ipcc_reclass, others = NA)
-r2020_ipcc <- classify(as.numeric(r2020), rcl = ipcc_reclass, others = NA)
-
-# Create named list of rasters
-ipcc_rasters <- list(
-  "2000" = r2000_ipcc,
-  "2010" = r2010_ipcc,
-  "2020" = r2020_ipcc
-)
-
-
-####--- Quantify LULC change from from_year to to_year ---####
+####--- Definitions ----####
 # Define years
 from_year <- 2010
 to_year <- 2020
 n_years <- to_year - from_year
 
+####--- Load data and prepare ---
+# Load cropped AAFC rasters
+#r2000_aafc <- rast(file.path(aafc_cropped_dir, "AAFC2000_sa_nobuffer.tif"))
+r2010_aafc <- rast(file.path(aafc_cropped_dir, "AAFC2010_sa_nobuffer.tif"))
+#r2015_aafc <- rast(file.path(aafc_cropped_dir, "AAFC2015_sa_nobuffer.tif"))
+r2020_aafc <- rast(file.path(aafc_cropped_dir, "AAFC2020_sa_nobuffer.tif"))
+
+# Load vegetation zones
+veg_zones <- st_read(veg_zones_file)
+
+# Load AAFC crosswalk
+aafc_crosswalk_2010 <- read.csv(aafc_crosswalk_file_2010)
+aafc_crosswalk_2015 <- read.csv(aafc_crosswalk_file_2015)
+
+if(from_year == 2010){ 
+  aafc_crosswalk <- aafc_crosswalk_2010
+} else if(from_year == 2015){ 
+    aafc_crosswalk <- aafc_crosswalk_2015
+    }
+
+# Create reclass table with IDs
+aafc_reclass <- aafc_crosswalk %>%
+  select(Value, Our_ID)
+
+# Keep class labels (remove duplicates)
+labels <- aafc_crosswalk %>%
+  transmute(ID = Our_ID, Class = Our_Class) %>%
+  distinct()
+
+
+####--- Prep spatial data ---####
+# Make sure AAFC rasters are aligned (should be if created by same process)
+#stopifnot(compareGeom(r2000, r2010), compareGeom(r2010, r2020))
+
+
+####--- Reclass rasters ---####
+#r2000 <- classify(as.numeric(r2000_aafc), rcl = aafc_reclass, others = NA)
+r2010 <- classify(as.numeric(r2010_aafc), rcl = aafc_reclass, others = NA)
+#r2015 <- classify(as.numeric(r2015_aafc), rcl = ipcc_reclass, others = NA)
+r2020 <- classify(as.numeric(r2020_aafc), rcl = aafc_reclass, others = NA)
+
+# Create named list of rasters
+lulc_rasters <- list(
+  "2010" = r2010,
+#  "2015" = r2015,
+  "2020" = r2020
+)
+
+# Give vegetation zones Same CRS as AAFC rasters
+veg_zones <- st_transform(veg_zones, crs(aafc_rasters[[1]]))
+
+# Rasterize vegetation zones to match LULC raster resolution and extent
+veg_rast <- terra::rasterize(vect(veg_zones), aafc_rasters[[1]], field = "id_2")
+
+####--- Quantify LULC change from from_year to to_year ---####
+
 ## Crosstabulate grassland transitions by vegetation zone
 # Stack the from, to, and vegetation zone rasters
-x <- c(ipcc_rasters[[as.character(from_year)]],
-       ipcc_rasters[[as.character(to_year)]],
+x <- c(lulc_rasters[[as.character(from_year)]],
+       lulc_rasters[[as.character(to_year)]],
        veg_rast)
 
 # Crosstab across all 3 layers
@@ -84,15 +89,17 @@ colnames(transitions_by_zone) <- c(
 # Add class names
 trans_by_zone_labelled <- transitions_by_zone %>%
   mutate(across(starts_with("LU"), as.integer)) %>%
-  left_join(ipcc_labels, by = setNames("IPCC_ID", paste0("LU", from_year))) %>%
-  rename(From_Class = IPCC_Class) %>%
-  left_join(ipcc_labels, by = setNames("IPCC_ID", paste0("LU", to_year))) %>%
-  rename(To_Class = IPCC_Class)
+  left_join(labels, by = setNames("ID", paste0("LU", from_year))) %>%
+  rename(From_Class = Class) %>%
+  left_join(labels, by = setNames("ID", paste0("LU", to_year))) %>%
+  rename(To_Class = Class)
+
+trans_by_zone_labelled <- read.csv(file.path(out_lulc_historic_dir, paste0("aafc-raw-transitions-by-zone-", from_year, "-", to_year, ".csv")))
 
 ####--- Summarize results ---####
 # Set output unit: "ha" for hectares, "km2" for square kilometres
 output_unit <- "km2"  # or "km2"
-unit_conversion <- if (output_unit == "ha") 100 else 1e6
+unit_conversion <- if (output_unit == "ha") 1e4 else 1e6
 
 # Summarize all transitions across the full study area
 trans_summary <- trans_by_zone_labelled %>%
@@ -129,10 +136,10 @@ veg_zone_grass <- trans_by_zone_labelled %>%
   group_by(VegZone) %>%
   summarise(
     VegZone_Area = sum(area),
-    Grass = sum(area[From_Class == "Grassland" & To_Class == "Grassland"]),
-    Loss_to_Crop = sum(area[From_Class == "Grassland" & To_Class == "Cropland"]),
-    Loss_to_Dev = sum(area[From_Class == "Grassland" & To_Class == "Settlement"]),
-    Loss_to_Crop_or_Dev = sum(area[From_Class == "Grassland" & To_Class %in% c("Cropland", "Settlement")])
+    Grass = sum(area[From_Class == "Grassland"]),
+    Loss_to_Crop = sum(area[From_Class == "Grassland" & To_Class == "Cropland"])/n_years,
+    Loss_to_Dev = sum(area[From_Class == "Grassland" & To_Class == "Settlement"]/n_years),
+    Loss_to_Crop_or_Dev = sum(area[From_Class == "Grassland" & To_Class %in% c("Cropland", "Settlement")]/n_years)
   ) %>%
   mutate(
     Prop_Loss_to_Crop = Loss_to_Crop / Grass,
