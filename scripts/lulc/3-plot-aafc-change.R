@@ -1,5 +1,8 @@
 library(tidyverse)
 
+#--- Setup ---
+source(file.path("scripts", "0-setup.R"))
+
 # === Set parameters ===
 file_00_20 <- file.path(out_lulc_historic_dir, "aafc-lulc-change-2000-2020-km2.csv")
 file_10_20 <- file.path(out_lulc_historic_dir, "aafc-lulc-change-2010-2020-km2.csv")
