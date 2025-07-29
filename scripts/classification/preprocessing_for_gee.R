@@ -12,7 +12,7 @@
 # load packages
 library(terra)
 
-# set workign directory
+# set working directory
 setwd("R:/CanadianGrasslands/existingdatasets")
 
 # ---- USER INPUT ----
