@@ -12,23 +12,32 @@
 # load packages
 library(terra)
 
+# set workign directory
+setwd("R:/CanadianGrasslands/existingdatasets")
+
 # ---- USER INPUT ----
-ref_path <- "path/to/reference.tif"
 input_dirs <- c("folder1/", "folder2/", "folder3/")  # Add as many as needed
 output_folder <- "path/to/aligned_rasters/"
 output_suffix <- "_aligned.tif"
 
 # ---- LOAD REFERENCE RASTER ----
-#ref <- rast(ref_path)
+
+# reprojected in ArcGIS Pro
+ref_arc <- rast("/Grassland/Prairie Habitat Joint Venture PUDL/PHJV_PUDLmask_CANAlbers.tif")
 
 # ---- LOAD AND REPROJECT REFERENCE RASTER ----
-ref_raw <- rast("R:/CanadianGrasslands/existingdatasets/Grassland/Prairie Habitat Joint Venture PUDL/PHJV/PHJV_PUDLmask.tif")
+#ref_raw <- rast("/Grassland/Prairie Habitat Joint Venture PUDL/PHJV/PHJV_PUDLmask.tif")
 
-# Define target CRS (e.g., Canada Albers Equal Area)
-target_crs <- "EPSG:102001"  # Or use a custom PROJ string
+# Reproject reference raster to Canada Albers using PROJ.4 string from https://epsg.io/102001
+# Albers Equal Area projection
+# Standard parallels at 50°N and 70°N
+# Central meridian at 96°W
+# Latitude of origin at 40°N
+# NAD83 datum
+# Units in meters
 
-# Reproject reference raster
-ref <- project(ref_raw, target_crs, method = "near")
+#ref <- project(ref_raw, "+proj=aea +lat_0=40 +lon_0=-96 +lat_1=50 +lat_2=70 +x_0=0
+#                        +y_0=0 +datum=NAD83 +units=m +no_defs +type=crs")
 
 
 # ---- FIND ALL RASTERS IN MULTIPLE FOLDERS ----
