@@ -13,7 +13,6 @@
 
 # existingdatasets
 existingdatasets/**
-!existingdatasets/**/
 
 # processeddatasets
 processeddatasets/**
