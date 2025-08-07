@@ -9,6 +9,7 @@
 # system files
 .directory
 
+# existingdatasets
 existingdatasets/**
 !existingdatasets/**/
 
