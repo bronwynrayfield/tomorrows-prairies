@@ -12,8 +12,8 @@
 !**/.gitkeep
 
 # existingdatasets
-# existingdatasets/**
-# !existingdatasets/**/
+existingdatasets/**
+!existingdatasets/**/
 
 # processeddatasets
 processeddatasets/**
