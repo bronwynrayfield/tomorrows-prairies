@@ -9,6 +9,8 @@
 # system files
 .directory
 
+!**/.gitkeep
+
 # existingdatasets
 existingdatasets/**
 !existingdatasets/**/
