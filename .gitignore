@@ -15,5 +15,8 @@
 # existingdatasets/**
 # !existingdatasets/**/
 
+# processeddatasets
+processeddatasets/**
+
 # results
 results/*
