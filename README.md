@@ -5,24 +5,24 @@ Below is the folder structure for this project, showing the organization of data
 ```text
 tomorrows-prairies/
 ├── existingdatasets/            # Source datasets from external providers
-│   ├── Biodiversity/            # Species and habitat data
-│   ├── Boundaries/              # Jurisdictional and ecological boundaries
-│   ├── Carbon/                  # Soil or biomass carbon data
-│   ├── Climate/                 # Historical and projected climate data
-│   ├── Cropland/                # Cropland extent and transitions
-│   ├── Grassland/               # Native grassland distribution
-│   ├── Landcover/               # Land use land cover classification datasets
-│   └── Management/              # Protected area and other management data
+│   ├── biodiversity/            # Species and habitat data
+│   ├── boundaries/              # Jurisdictional and ecological boundaries
+│   ├── carbon/                  # Soil or biomass carbon data
+│   ├── climate/                 # Historical and projected climate data
+│   ├── cropland/                # Cropland extent and transitions
+│   ├── grassland/               # Native grassland distribution
+│   ├── landcover/               # Land use land cover classification datasets
+│   └── management/              # Protected area and other management data
 ├── processeddatasets/           # Datasets prepared for analysis and modeling
-│   ├── Grassland/               # Cleaned and formatted grassland inputs
-│   └── Studyarea/               # Clipped and harmonized spatial extent
+│   ├── grassland/               # Cleaned and formatted grassland inputs
+│   └── studyarea/               # Clipped and harmonized spatial extent
 ├── scripts/                     # Code for data processing and modeling
-│   ├── Classification/          # Scripts for land cover classification
-│   └── Landcover/               # Scripts for land cover processing
+│   ├── classification/          # Scripts for land cover classification
+│   └── landcover/               # Scripts for land cover processing
 ├── models/                      # Model configurations and outputs
 ├── results/                     # Final results and visualizations
-│   ├── Figures/                 # Plots, charts, and maps
-│   └── Tables/                  # Summary tables and statistics
+│   ├── figures/                 # Plots, charts, and maps
+│   └── tables/                  # Summary tables and statistics
 ├── docs/                        # Project documentation and notes
 ├── .gitignore                   # Git exclusions for files and folders
 ├── README.md                    # Project overview and instructions
