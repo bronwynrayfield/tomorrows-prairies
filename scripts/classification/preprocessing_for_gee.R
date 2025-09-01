@@ -14,11 +14,6 @@ library(terra)
 library(sf)
 library(tidyverse)
 
-####--- PARAMETERS ---####
-# resolution of rasters in m
-res <- 10
-
-
 ####--- DIRECTORIES ---####
 # study area
 sa_dir <- "./processeddatasets/studyarea"
@@ -52,11 +47,14 @@ origin(r) <- origin
 
 # Rasterize the shapefile
 # Specify a field to rasterize
-r_rasterized <- rasterize(shp, r, field = "Abbreviation")  
+r_rasterized <- rasterize(shp, r)  
+
+# visualize the shapefile
+plot(r_rasterized)
 
 # Save the raster
-writeRaster(r_rasterized, "classification_study_area_aligned.tif", overwrite = TRUE)
-
+sa_out_path <- file.path(sa_dir, "classification_study_area_aligned.tif")
+writeRaster(r_rasterized, sa_out_path, overwrite = TRUE)
 
 ##############################################
 # Merge tiles and then crop to study area
