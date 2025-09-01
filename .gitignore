@@ -1,5 +1,6 @@
 # R profile files
 *.Rproj.user
+*.Rproj
 *.Rhistory
 *.Rdata
 
@@ -19,3 +20,4 @@ processeddatasets/**
 
 # results
 results/*
+.Rproj.user
