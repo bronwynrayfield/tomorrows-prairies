@@ -18,6 +18,9 @@ library(tidyverse)
 # study area
 sa_dir <- "./processeddatasets/studyarea"
 
+# pilot area
+pa_dir <- "./processeddatasets/pilot_area"
+
 # grasslands
 raw_grass_data_dir <- "./existingdatasets"
 proc_grass_data_dir <- "./processeddatasets/grass"
@@ -46,15 +49,34 @@ crs(r) <- crs
 origin(r) <- origin
 
 # Rasterize the shapefile
-# Specify a field to rasterize
 r_rasterized <- rasterize(shp, r)  
 
-# visualize the shapefile
+# visualize the raster
 plot(r_rasterized)
 
 # Save the raster
 sa_out_path <- file.path(sa_dir, "classification_study_area_aligned.tif")
 writeRaster(r_rasterized, sa_out_path, overwrite = TRUE)
+
+
+#--- Rasterize pilot area using r_rasterized as template ---#
+
+# Load pilot area shapefile
+pilot_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
+pilot_vect <- vect(pilot_file)
+
+# Project pilot area to match r_rasterized
+pilot_vect_proj <- project(pilot_vect, r_rasterized)
+
+# Rasterize using r_rasterized as template
+# This will embed the smaller pilot area within the larger raster grid
+pilot_raster <- rasterize(pilot_vect_proj, r_rasterized, field = 1, background = NA)
+
+# Save pilot area raster
+pilot_out_path <- file.path(pa_dir, "GNP_pilot_area_shifted_aligned.tif")
+writeRaster(pilot_raster, pilot_out_path, overwrite = TRUE)
+
+message("Saved: ", pilot_out_path)
 
 ##############################################
 # Merge tiles and then crop to study area
@@ -63,33 +85,81 @@ writeRaster(r_rasterized, sa_out_path, overwrite = TRUE)
 # If RAM is limited, force temporary disk-backed raster operations
 # terraOptions(memfrac = 0.5, tempdir = "D:/terra_temp")
 
-#--- Directories ---
-# AAFC LUTS tiles directory
-tile_root <- file.path(raw_grass_data_dir, "luts")
-luts_merged_dir <- file.path(proc_grass_data_dir, "luts/merged")
-luts_cropped_dir <- file.path(proc_grass_data_dir, "luts/cropped")
+#--- Directories for datasets that need to be merged ---
+# AAFC LUTS 30m tiles directory
+luts_30_tile_root <- file.path(raw_grass_data_dir, "luts_30m")
+luts_30_merged_dir <- file.path(proc_grass_data_dir, "luts_30m/merged")
+luts_30_cropped_dir <- file.path(proc_grass_data_dir, "luts_10m/cropped")
+
+# AAFC LUTS 10m tiles directory
+luts_10_tile_root <- file.path(raw_grass_data_dir, "luts_10m")
+luts_10_merged_dir <- file.path(proc_grass_data_dir, "luts_10m/merged")
+luts_10_cropped_dir <- file.path(proc_grass_data_dir, "luts_10m/cropped")
 
 # AAFC ACI tiles directory
-tile_root <- file.path(raw_grass_data_dir, "aci")
+aci_tile_root <- file.path(raw_grass_data_dir, "aci")
 aci_merged_dir <- file.path(proc_grass_data_dir, "aci/merged")
 aci_cropped_dir <- file.path(proc_grass_data_dir, "aci/cropped")
 
 # NGI tiles directory
-tile_root <- file.path(raw_grass_data_dir, "ngi")
+ngi_tile_root <- file.path(raw_grass_data_dir, "ngi")
 ngi_merged_dir <- file.path(proc_grass_data_dir, "ngi/merged")
 ngi_cropped_dir <- file.path(proc_grass_data_dir, "ngi/cropped")
 
 # GLC_FCS30D tiles directory
-tile_root <- file.path(raw_grass_data_dir, "glc")
+glc_tile_root <- file.path(raw_grass_data_dir, "glc")
 glc_merged_dir <- file.path(proc_grass_data_dir, "glc/merged")
 glc_cropped_dir <- file.path(proc_grass_data_dir, "glc/cropped")
 
-#--- Load prairie study area ---
-sa <- st_read(sa_file)
-# sa <- st_read(sa_40kmbuffer_noUS_file)
 
-#--- Find all .tif files in subdirectories ---
-all_tiles <- list.files(tile_root, pattern = "\\.tif$", full.names = TRUE, recursive = TRUE)
+#--- Merging then alignining and cropping to pilot area ---
+# Create a tibble with file paths
+tile_info <- tibble(
+  path = all_tiles,
+  file = basename(all_tiles)
+)
+
+# Check if there are at least two tiles
+if (nrow(tile_info) < 2) {
+  stop("Not enough tiles to mosaic.")
+}
+
+message("Processing all tiles together...")
+
+# Read and mosaic tiles
+rasters <- lapply(tile_info$path, rast)
+
+# Use sa_aligned as reference for grid alignment
+ref_raster <- rast(sa_aligned)
+
+aligned <- lapply(rasters, function(r) {
+  if (!compareGeom(r, ref_raster, stopOnError = FALSE)) {
+    project(r, ref_raster, method = "near", align = TRUE)
+  } else {
+    r
+  }
+})
+
+# mosaic together
+mosaic_raster <- Reduce(merge, aligned)
+
+# Crop and mask using ref_raster (sa_aligned)
+cropped <- crop(mosaic_raster, ref_raster)
+cropped_masked <- mask(cropped, ref_raster)
+
+# Save outputs
+writeRaster(mosaic_raster, file.path(luts_30_merged_dir, "LUTS_30m_merged.tif"), overwrite = TRUE)
+writeRaster(cropped_masked, file.path(aafc_cropped_dir, "LUTS_30m_sa_aligned.tif"), overwrite = TRUE)
+
+message("Saved: LUTS_30m_merged.tif and LUTS_30m_sa_aligned.tif")
+
+
+
+#--- Load classification study area ---
+#sa <- st_read(sa_file)
+
+#--- Find all .tif files in LUTS 30m subdirectories ---
+all_tiles <- list.files(luts_30_tile_root, pattern = "\\.tif$", full.names = TRUE, recursive = TRUE)
 
 # Extract year from filenames like LU2000_u11_v5.tif
 tile_info <- tibble(
@@ -140,12 +210,11 @@ for (yr in unique(tile_info$year)) {
   
   # Save
   # Merged raster
-  out_path <- file.path(aafc_merged_dir, paste0("AAFC", yr, "_merged.tif"))
+  out_path <- file.path(luts_30_merged_dir, paste0("AAFC", yr, "_merged.tif"))
   writeRaster(mosaic_raster, out_path, overwrite = TRUE)
   
   # Cropped raster  
-  out_path <- file.path(aafc_cropped_dir, paste0("AAFC", yr, "_sa_no_buffer.tif"))
-  #  out_path <- file.path(aafc_cropped_dir, paste0("AAFC", yr, "_40kmbuffer_noUS.tif"))
+  out_path <- file.path(aafc_cropped_dir, paste0("AAFC", yr, "_sa.tif"))
   writeRaster(cropped_masked, out_path, overwrite = TRUE)
   
   message("Saved: ", out_path)
