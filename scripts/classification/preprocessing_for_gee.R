@@ -14,6 +14,9 @@ library(terra)
 library(sf)
 library(tidyverse)
 
+# Set the temporary directory to a drive with sufficient space
+terraOptions(tempdir = "R:/CanadianGrasslands") 
+
 ####--- DIRECTORIES ---####
 # study area
 sa_dir <- "./processeddatasets/studyarea"
@@ -43,34 +46,44 @@ res <- 10  # Resolution in map units
 origin <- c(0, 0)  # Origin coordinates
 crs <- "EPSG:10820"  # WGS 1984 Agriculture Canada Albers
 
+crs_wkt <- 'PROJCS["WGS 84 / Agriculture Canada Albers",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["latitude_of_center",40],PARAMETER["longitude_of_center",-96],PARAMETER["standard_parallel_1",44.75],PARAMETER["standard_parallel_2",55.75],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","10820"]]'
+
 # Create an empty raster with desired extent, resolution, and CRS
 r <- rast(ext(shp), resolution = res)
-crs(r) <- crs
+crs(r) <- crs_wkt
 origin(r) <- origin
 
+crs(r)
+
 # Rasterize the shapefile
-r_rasterized <- rasterize(shp, r)  
+sa_raster <- rasterize(shp, r)  
 
 # visualize the raster
-plot(r_rasterized)
+plot(sa_raster)
 
-# Save the raster
-sa_out_path <- file.path(sa_dir, "classification_study_area_aligned.tif")
-writeRaster(r_rasterized, sa_out_path, overwrite = TRUE)
+# Save the rasteras 8-bit unsigned integer
+sa_out_path <- file.path(sa_dir, "classification_study_area_aligned_10820.tif")
+writeRaster(sa_raster, sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
 
 
-#--- Rasterize pilot area using r_rasterized as template ---#
+#--- Rasterize pilot area using sa_raster as template ---#
 
 # Load pilot area shapefile
 pilot_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
 pilot_vect <- vect(pilot_file)
 
-# Project pilot area to match r_rasterized
-pilot_vect_proj <- project(pilot_vect, r_rasterized)
+# Project pilot area to match sa_raster
+pilot_vect_proj <- project(pilot_vect, sa_raster)
 
-# Rasterize using r_rasterized as template
+# Rasterize using sa_raster as template
 # This will embed the smaller pilot area within the larger raster grid
-pilot_raster <- rasterize(pilot_vect_proj, r_rasterized, field = 1, background = NA)
+pilot_raster <- rasterize(pilot_vect_proj, sa_raster, field = 1, background = NA)
+
+# visualize the raster
+plot(pilot_raster)
 
 # Save pilot area raster
 pilot_out_path <- file.path(pa_dir, "GNP_pilot_area_shifted_aligned.tif")
