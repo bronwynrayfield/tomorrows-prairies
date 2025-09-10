@@ -18,8 +18,6 @@ library(tidyverse)
 terraOptions(tempdir = "R:/CanadianGrasslands") 
 
 ####--- DIRECTORIES ---####
-# study area
-sa_dir <- "./processeddatasets/studyarea"
 
 # pilot area
 pa_dir <- "./processeddatasets/pilot_area"
@@ -31,20 +29,22 @@ out_grass_dir <- "./outputs/grass"
 
 
 ####--- Files ---####
-# Study Area
-sa_file <- file.path(sa_dir, "classification_study_area.shp")
+# Pilot Area
+pa_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
 
 ##############################################
-# Rasterize study area
+# Rasterize pilot area
 # Define projection, origin, resolution
 
 # Load the shapefile
-shp <- vect(sa_file) 
+shp <- vect(pa_file) 
 
 # Define raster parameters
 res <- 10  # Resolution in map units 
 origin <- c(0, 0)  # Origin coordinates
-crs <- "EPSG:10820"  # WGS 1984 Agriculture Canada Albers
+#crs <- "EPSG:10820"  # WGS 1984 Agriculture Canada Albers - does not load into GEE, ArcGIS Pro
+#crs <- "EPSG:5070"  # NAD83 / Conus Albers - loads in GEE & Pro with CRS
+#crs <- "ESRI:102001" # Canada Albers Equal Area Conic - loads in GEE & Pro with CRS
 
 crs_wkt <- 'PROJCS["WGS 84 / Agriculture Canada Albers",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["latitude_of_center",40],PARAMETER["longitude_of_center",-96],PARAMETER["standard_parallel_1",44.75],PARAMETER["standard_parallel_2",55.75],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","10820"]]'
 
@@ -56,31 +56,31 @@ origin(r) <- origin
 crs(r)
 
 # Rasterize the shapefile
-sa_raster <- rasterize(shp, r)  
+pa_raster <- rasterize(shp, r)  
 
 # visualize the raster
-plot(sa_raster)
+plot(pa_raster)
 
 # Save the rasteras 8-bit unsigned integer
-sa_out_path <- file.path(sa_dir, "classification_study_area_aligned_10820.tif")
-writeRaster(sa_raster, sa_out_path, datatype = "INT1U", 
+pa_out_path <- file.path(pa_dir, "pilot_area_test_aligned_10820wkt.tif")
+writeRaster(pa_raster, pa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
 
-#--- Rasterize pilot area using sa_raster as template ---#
+#--- Rasterize smaller area using pa_raster as template ---#
 
 # Load pilot area shapefile
-pilot_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
-pilot_vect <- vect(pilot_file)
+ta_file <- file.path(pa_dir, "test_area.shp")
+ta_vect <- vect(ta_file)
 
 # Project pilot area to match sa_raster
-pilot_vect_proj <- project(pilot_vect, sa_raster)
+ta_vect_proj <- project(ta_vect, pa_raster)
 
 # Rasterize using sa_raster as template
 # This will embed the smaller pilot area within the larger raster grid
-pilot_raster <- rasterize(pilot_vect_proj, sa_raster, field = 1, background = NA)
+ta_raster <- rasterize(ta_vect_proj, pa_raster, field = 1, background = NA)
 
 # visualize the raster
 plot(pilot_raster)
