@@ -23,7 +23,7 @@ terraOptions(tempdir = "R:/CanadianGrasslands")
 pa_dir <- "./processeddatasets/pilot_area"
 
 # grasslands
-raw_grass_data_dir <- "./existingdatasets"
+raw_grass_data_dir <- "./existingdatasets/class_inputs"
 proc_grass_data_dir <- "./processeddatasets/grass"
 out_grass_dir <- "./outputs/grass"
 
@@ -31,6 +31,55 @@ out_grass_dir <- "./outputs/grass"
 ####--- Files ---####
 # Pilot Area
 pa_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
+
+# CNVC raster
+cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CAgrasslands_ReclassMap_20250908.tif")
+
+##############################################
+
+# trying with CNVC file as snap raster
+
+# Load CNVC raster
+cnvc <- rast(cnvc_file)
+
+# print raster details 
+origin(cnvc)
+res(cnvc)
+crs(cnvc)
+
+# visualize CNVC raster
+plot(cnvc)
+
+# Load pilot area shapefile
+pa_vect <- vect(pa_file)
+
+# Reproject pilot area to match CNVC raster CRS
+pa_vect_proj <- project(pa_vect, crs(cnvc))
+
+# Rasterize pilot area using CNVC raster as template
+pa_rast <- rasterize(pa_vect_proj, cnvc, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
+                                                          # touches=TRUE ensures that any cell touched by the polygon is included
+# print raster details 
+origin(pa_rast)
+res(pa_rast)
+crs(pa_rast)
+
+# Get frequency table of raster values
+freq_table <- freq(pa_rast)
+
+# Print the table - 1888287 pixels with value 1
+print(freq_table)
+
+# visualize the new raster
+plot(pa_rast)
+
+# Save the raster as 8-bit unsigned integer
+pa_out_path <- file.path(pa_dir, "pilot_area_test_aligned_cnvc.tif")
+writeRaster(pa_rast, pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
 
 ##############################################
 # Rasterize pilot area
@@ -61,7 +110,7 @@ pa_raster <- rasterize(shp, r)
 # visualize the raster
 plot(pa_raster)
 
-# Save the rasteras 8-bit unsigned integer
+# Save the raster as 8-bit unsigned integer
 pa_out_path <- file.path(pa_dir, "pilot_area_test_aligned_10820wkt.tif")
 writeRaster(pa_raster, pa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
