@@ -1,5 +1,5 @@
 ##############################################
-# Run random forest regression to generate conversion risk
+# Conversion risk mapping using random forest regression
 
 #--- Setup ----
 source(file.path("./scripts", "0-setup.R"))
@@ -13,6 +13,7 @@ gnp <- st_read(file.path(pilot_filepath, "gnp_park_pilot.shp"))
 gnp_cent <- sf::st_coordinates(sf::st_centroid(gnp))
 
 
+#--- Regression model ----
 # stack rasters (predictors)
 pred_stack <- c(crop_suit_filled, cropland_prop, dist_to_road)
 names(pred_stack) <- c("crop_suit", "cropland_prop", "dist_to_road")
@@ -88,7 +89,7 @@ rf_model$variable.importance
 
 
 
-# map of predicted conversion risk
+#---- Map of predicted conversion risk ----
 rf_pred <- terra::predict(
   pred_stack, rf_model,
   fun = function(model, data) predict(model, data)$predictions[, 2],
@@ -125,8 +126,8 @@ risk_layer <- rf_adj
 risk_layer[!is.na(zero_mask)] <- NA  # drop cropland + GNP
 risk_layer[risk_layer == 0] <- NA    # in case any other true zeros exist
 
-## plot: risk (yellow→red) + zero risk (grey), outside area still white
-# save to disk 
+## Plot: risk (yellow→red) + zero risk (grey), outside area white
+# Save to disk 
 png("./results/landcover/pilot/grassland_conversion_risk.png", width = 2000, height = 1600, res = 300)
 
 cols <- rev(hcl.colors(100, "YlOrRd"))
@@ -138,7 +139,7 @@ plot(risk_layer,
      zlim   = c(0, 1)
 )
 
-# overlay 0-risk cropland + GNP in grey
+# Overlay 0-risk cropland + GNP in grey
 plot(zero_layer,
      col    = "#E6E6E6",
      add    = TRUE,
@@ -152,8 +153,8 @@ dev.off()
 
 
 
-# make map showing top % of cells at risk
-# corresponds to BAU in pilot area
+#---- Maps showing top % of cells at risk ----
+### BAU in pilot area
 area_ha <- 3000
 
 # cell area in m2 and ha (from risk raster)
@@ -185,6 +186,7 @@ thr
 top_layer <- risk_layer
 top_layer[top_layer < thr] <- NA
 
+## Plot: risk (yellow→red) + zero risk (grey), outside area white, top % pixels cyan
 # save to disk 
 png("./results/landcover/pilot/grassland_conversion_risk_top6.png", width = 2000, height = 1600, res = 300)
 
@@ -219,54 +221,19 @@ text(gnp_cent[1], gnp_cent[2], "Grasslands National Park", cex = 0.5)
 dev.off()
 
 
-
-
-
-
-
-
-# total *candidate* pixels = all non-NA in risk_layer
-total_cells <- global(!is.na(risk_layer), "sum", na.rm = TRUE)[1, "sum"]
-
-# 500 ha worth of pixels (same as before)
-area_ha <- 3000
-cell_area_m2 <- prod(res(rf_adj))
-cell_area_ha <- cell_area_m2 / 10000
-n_target <- round(area_ha / cell_area_ha)
-
-# fraction of candidate (at-risk) pixels
-prop_target <- n_target / total_cells
-
-# threshold among *risk_layer* values only
-vals <- values(risk_layer, na.rm = TRUE)
-thr  <- quantile(vals, probs = 1 - prop_target, na.rm = TRUE)
-
-# build top-risk layer
-top_layer <- risk_layer
-top_layer[top_layer < thr] <- NA
-
-
-
-
-
-
-
-############################################################
-## Rapid Conversion Scenario (80th percentile of risk)
-############################################################
-
-# 1. Extract at-risk pixel values (risk_layer excludes cropland + GNP already)
+### Rapid Conversion Scenario (80th percentile of risk)
+# Extract at-risk pixel values (risk_layer excludes cropland + GNP already)
 vals <- values(risk_layer, na.rm = TRUE)
 
-# 2. Threshold at the 80th percentile (rapid conversion scenario)
+# Threshold at the 80th percentile (rapid conversion scenario)
 thr_rapid <- quantile(vals, probs = 0.80, na.rm = TRUE)
 thr_rapid  # optional: print threshold
 
-# 3. Build raster of rapid-conversion pixels
+# Build raster of rapid-conversion pixels
 rapid_layer <- risk_layer
 rapid_layer[rapid_layer < thr_rapid] <- NA   # keep only >= 80th percentile
 
-# 4. Compute area of rapid conversion (optional but useful)
+# Compute area of rapid conversion (optional but useful)
 n_rapid <- global(!is.na(rapid_layer), "sum", na.rm = TRUE)[1, "sum"]
 
 cell_area_m2 <- prod(res(risk_layer))
@@ -274,10 +241,7 @@ cell_area_ha <- cell_area_m2 / 10000
 area_rapid_ha <- n_rapid * cell_area_ha
 area_rapid_ha  # optional: print area in hectares
 
-############################################################
-## Plot: risk map + grey 0-risk + rapid 80th-percentile scenario
-############################################################
-
+## Plot: risk (yellow→red) + zero risk (grey), outside area white, top % pixels fuscia
 # Save to disk 
 png("./results/landcover/pilot/grassland_conversion_risk.png", width = 2000, height = 1600, res = 300)
 
