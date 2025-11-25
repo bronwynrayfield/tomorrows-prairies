@@ -1,5 +1,6 @@
 # R profile files
 *.Rproj.user
+*.Rproj
 *.Rhistory
 *.Rdata
 
