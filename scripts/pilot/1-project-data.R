@@ -37,7 +37,7 @@ upast_loss_class_raw <- rast(file.path("./existingdatasets", upast_loss_filepath
 upast_loss_year_raw <- rast(file.path("./existingdatasets", upast_loss_filepath, upast_loss_year_filename))
 
 # Protected Areas
-pa_raw <-st_read(file.path("./existingdatasets", pa_filepath, paste0(pa_filename, ".gdb")), layer = pa_filename)
+pa_raw <- st_read(file.path("./existingdatasets", pa_filepath, paste0(pa_filename, ".gdb")), layer = pa_filename)
 
 #--- Reproject to match pilot shapefile CRS ---
 crop_suit_reproj <- project(crop_suit_raw, pilot_rast_prairies, method = "bilinear")
@@ -63,6 +63,7 @@ writeRaster(ipast_loss_class_reproj, file.path("./processeddatasets", ipast_loss
 writeRaster(ipast_loss_year_reproj, file.path("./processeddatasets", ipast_loss_filepath, ipast_loss_year_filename), overwrite = FALSE)
 writeRaster(upast_loss_class_reproj, file.path("./processeddatasets", upast_loss_filepath, upast_loss_class_filename), overwrite = FALSE)
 writeRaster(upast_loss_year_reproj, file.path("./processeddatasets", upast_loss_filepath, upast_loss_year_filename), overwrite = FALSE)
-st_write(pa_reproj, file.path("./processeddatasets", pa_filepath, paste0(pa_filename, ".gdb")), layer = pa_filename, delete_dsn = FALSE)
+# Note that this throws a write error: GDAL Error 6: Unsupported geometry type
+#st_write(pa_reproj, file.path("./processeddatasets", pa_filepath, paste0(pa_filename, ".gdb")), layer = pa_filename, delete_dsn = FALSE)
 
          
