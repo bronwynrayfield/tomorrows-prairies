@@ -119,7 +119,7 @@ transition_area_fast <- function(from_r, to_r, sa_mask, change_val = 1) {
   area_m2
 }
 
-# --- 3) Use it in your loop ---------------------------------------------------
+# --- 3) Use it in loop ---------------------------------------------------
 # (Assumes loss_list and gain_list are already defined/aligned as before)
 res <- purrr::imap_dfr(loss_list, function(from_r, from_name) {
   purrr::imap_dfr(gain_list, function(to_r, to_name) {
@@ -142,8 +142,8 @@ res <- purrr::imap_dfr(loss_list, function(from_r, from_name) {
 cell_area_m2 <- prod(res(template))        # constant in equal-area CRS
 eco_id <- sa_proj$ECOZONE[1]
 
-# --- Class ID mapping (from your metadata) -----------------------------------
-# we only need the classes present in your lists
+# --- Class ID mapping (from metadata) -----------------------------------
+# we only need the classes present in lists
 class_id <- c(
   c03_crop    = 3,
   c04_upast   = 4,
@@ -160,7 +160,7 @@ pretty_name <- c(
   c10_ipast   = "Improved pasture"
 )
 
-# --- Your rasters (already created above) ------------------------------------
+# --- rasters (already created above) ------------------------------------
 loss_list <- list(
   c05_grass = grass_loss,
   c04_upast = upast_loss,
