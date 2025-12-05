@@ -76,19 +76,20 @@ text(gnp_cent[1], gnp_cent[2], "Grasslands National Park", cex=0.5)
 dev.off()
 
 
-#--- Calculate proportion of cropland within moving window ----
-# Binary cropland raster
-cropland_pad <- ifel((lulc_pilot_pad == 51) | (lulc_pilot_pad == 52), 1, 0)
-plot(cropland_pad)
-
+#--- Calculate landscape context within moving window ----
 # window size in metres
 win_size_m <- 3200
 
 # convert to number of cells
-win_size_cells <- round(win_size_m / res(cropland_pad)[1])
+win_size_cells <- round(win_size_m / res(lulc_pilot_pad)[1])
 
 # create a square (3.6 km × 3.6 km) window
 w <- matrix(1, nrow = win_size_cells, ncol = win_size_cells)
+
+#--- Cropland ----
+# Binary cropland raster
+cropland_pad <- ifel((lulc_pilot_pad == 51) | (lulc_pilot_pad == 52), 1, 0)
+plot(cropland_pad)
 
 # focal mean gives proportion of 1s
 cropland_prop_pad <- focal(cropland_pad, w = w, fun = "mean", na.policy = "omit", na.rm = TRUE)
@@ -172,6 +173,7 @@ dev.off()
 
 # Visualize with the moving window size shown
 # find the center of the raster
+# Response variable for conversion risk (grassland -> cropland)
 cropland <- mask(cropland_pad, pilot)
 cropland <- crop(cropland, pilot)
 
@@ -189,7 +191,7 @@ square_poly <- as.polygons(rect_ext, crs = crs(r))   # SpatVector polygon
 # Save to disk 
 png("./results/landcover/pilot/cropland_show_moving_window.png", width = 2000, height = 1600, res = 300)
 
-# plot on your cropland (or cropland_prop)
+# plot cropland
 plot(cropland, col = c("grey85","#FEA500"),
      axes = FALSE, 
      legend = FALSE)
@@ -203,8 +205,54 @@ dev.off()
 # Visualize without moving window shown 
 png("./results/landcover/pilot/cropland.png", width = 2000, height = 1600, res = 300)
 
-# plot on your cropland (or cropland_prop)
+# plot cropland
 plot(cropland, col = c("grey85","#FEA500"),
+     axes = FALSE,
+     legend = FALSE)
+plot(st_geometry(gnp), add = TRUE, border = "black", lwd = 0.8)
+text(gnp_cent[1], gnp_cent[2], "Grasslands National Park", cex=0.5)
+
+dev.off()
+
+
+#--- Settlement ----
+# Binary developed raster
+# Do not include roads
+settle_pad <- ifel((lulc_pilot_pad == 21) | (lulc_pilot_pad == 22) | (lulc_pilot_pad == 24) | (lulc_pilot_pad == 28) | (lulc_pilot_pad == 29), 1, 0)
+plot(settle_pad)
+
+# focal mean gives proportion of 1s
+settle_prop_pad <- focal(settle_pad, w = w, fun = "mean", na.policy = "omit", na.rm = TRUE)
+
+# visualize
+settle_prop <- mask(settle_prop_pad, pilot)
+settle_prop <- crop(settle_prop, pilot)
+
+# Save to disk 
+png("./results/landcover/pilot/settle_proportion.png", width = 2000, height = 1600, res = 300)
+
+cols <- hcl.colors(100, "Inferno")  # or "Viridis", "Plasma", "Heat2"
+
+plot(settle_prop,
+     col = cols,
+     axes = FALSE,
+     legend = TRUE
+)
+
+plot(st_geometry(gnp), add = TRUE, border = "white", lwd = 0.8)
+text(gnp_cent[1], gnp_cent[2], "Grasslands National Park", cex=0.5, col="white")
+
+dev.off()
+
+# Response variable for conversion risk (grassland -> settlement)
+settle <- mask(settle_pad, pilot)
+settle <- crop(settle, pilot)
+
+# Visualize
+png("./results/landcover/pilot/settle.png", width = 2000, height = 1600, res = 300)
+
+# plot settlement
+plot(settle, col = c("grey85","#7B3294"),
      axes = FALSE,
      legend = FALSE)
 plot(st_geometry(gnp), add = TRUE, border = "black", lwd = 0.8)
@@ -221,5 +269,9 @@ writeRaster(crop_suit_filled, file.path(pilot_filepath, "cropland_suitability_20
 writeRaster(dist_to_road, file.path(pilot_filepath, "dist_to_road.tif"))
 # Proportion cropland
 writeRaster(cropland_prop, file.path(pilot_filepath, "cropland_proportion_3-2.tif"))
+# Proportion settlement
+writeRaster(settle_prop, file.path(pilot_filepath, "settle_proportion_3-2.tif"))
 # Cropland - binary
 writeRaster(cropland, file.path(pilot_filepath, "cropland_binary.tif"))
+# Settlement - binary
+writeRaster(settle, file.path(pilot_filepath, "settle_binary.tif"))
