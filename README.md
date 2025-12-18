@@ -1,5 +1,6 @@
-# Grassland Futures in the Canadian Prairies
-This project analyzes future potential grassland loss in the Canadian prairies under different socioeconomic and climate scenarios. The analysis explores the consequences for biodiversity and ecosystem carbon storage to inform conservation and land-use planning.
+# Tomorrow’s Prairies: Baselines and projections for Grasslands in Canada
+
+Purpose: To contribute to mitigation of climate change and biodiversity loss by researching historical baselines and projections in the extent and condition of Canadian grasslands.
 
 Below is the folder structure for this project, showing the organization of data, scripts, and outputs.
 ```text
