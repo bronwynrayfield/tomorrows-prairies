@@ -6,19 +6,26 @@ Below is the folder structure for this project, showing the organization of data
 ```text
 tomorrows-prairies/
 ├── existingdatasets/            # Source datasets from external providers
-│   ├── biodiversity/            # Species and habitat data
+│   ├── biodiversity/            # Species, habitat, connectivity, ecosystem condition data
 │   ├── boundaries/              # Jurisdictional and ecological boundaries
-│   ├── carbon/                  # Soil or biomass carbon data
+│   ├── carbon/                  # Parameterization, calibration, and validation carbon data
 │   ├── climate/                 # Historical and projected climate data
-│   ├── cropland/                # Cropland extent and transitions
-│   ├── grassland/               # Native grassland distribution
+│   ├── cropland/                # Cropland extent and properties
+│   ├── grassland/               # Grassland classification datasets
 │   ├── landcover/               # Land use land cover classification datasets
 │   └── management/              # Protected area and other management data
-├── processeddatasets/           # Datasets prepared for analysis and modeling
-│   ├── grassland/               # Cleaned and formatted grassland inputs
-│   └── studyarea/               # Clipped and harmonized spatial extent
-├── scripts/                     # Code for data processing and modeling
-│   ├── classification/          # Scripts for land cover classification
+├── processeddatasets/           # Datasets prepared for analysis and modelling
+│   ├── studyarea/               # Spatial extents of analyses
+│   ├── biodiversity/            
+│   ├── boundaries/              
+│   ├── carbon/                  
+│   ├── climate/                 
+│   ├── cropland/                
+│   ├── grassland/               
+│   ├── landcover/               
+│   └── management/                                        
+├── scripts/                     # Code for data processing and modelling
+│   ├── classification/          # Scripts for grassland classification
 │   └── landcover/               # Scripts for land cover processing
 ├── models/                      # Model configurations and outputs
 ├── results/                     # Final results and visualizations
