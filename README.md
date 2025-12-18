@@ -1,4 +1,4 @@
-# Tomorrow’s Prairies: Baselines and projections for Grasslands in Canada
+# Tomorrow’s Prairies: Baselines and projections for grasslands in Canada
 
 Purpose: To contribute to mitigation of climate change and biodiversity loss by researching historical baselines and projections in the extent and condition of Canadian grasslands.
 
