@@ -1,6 +1,6 @@
 
 ###################################################################################
-##                  PREPROCESSING OF GRASSLAND PRODUCTS FOR GEE                  ##
+##         PREPROCESSING OF GRASSLAND PRODUCTS FOR GEE - PILOT AREA              ##
 ###################################################################################
 
 ##----------------------- Alison Long - October 2025 -------------------------
@@ -22,23 +22,111 @@ terraOptions(tempdir = "R:/CanadianGrasslands")
 # pilot area
 pa_dir <- "./processeddatasets/pilot_area"
 
+# study area
+sa_dir <- "./processeddatasets/Studyarea"
+
 # grasslands
 raw_grass_data_dir <- "./existingdatasets/class_inputs"
 proc_grass_data_dir <- "./processeddatasets/grass"
 out_grass_dir <- "./outputs/grass"
 
+# NGI tiles directory
+ngi_tile_root <- file.path(raw_grass_data_dir, "cfga_ngi")
+ngi_merged_dir <- file.path(proc_grass_data_dir, "cfga_ngi/merged")
+ngi_cropped_dir <- file.path(proc_grass_data_dir, "cfga_ngi/cropped")
+ngi_aligned_dir <- file.path(proc_grass_data_dir, "cfga_ngi/aligned")
+
+# ECCC directory
+eccc_root <- file.path(raw_grass_data_dir, "eccc_grass_summary")
+eccc_cropped_dir <- file.path(proc_grass_data_dir, "eccc_grass_summary/cropped")
+
+# PHJV PUDL directory
+pudl_root <- file.path(raw_grass_data_dir, "phjv_pudl")
+pudl_cropped_dir <- file.path(proc_grass_data_dir, "phjv_pudl/cropped")
+
+# Central Grasslands Roadmap directory
+cgr_root <- file.path(raw_grass_data_dir, "cgr_gam_adv")
+cgr_cropped_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/cropped")
+
+# WRI annual grass directory
+wri_root <- file.path(raw_grass_data_dir, "wri_annual_grass")
+wri_cropped_dir <- file.path(proc_grass_data_dir, "wri_annual_grass/cropped")
+
 
 ####--- Files ---####
 # Pilot Area
-pa_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
+pa_file <- file.path(pa_dir, "GNP_pilot_area_crop_CSD.shp")
+
+# Study Area
+sa_file <- file.path(sa_dir, "classification_study_area.shp")
 
 # CNVC raster
-cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CAgrasslands_ReclassMap_20250908.tif")
+cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
 
 # NGI rasters
-ngi_ab_file <- file.path(raw_grass_data_dir, "cfga_ngi/AB-002.tif")
-ngi_mb_file <- file.path(raw_grass_data_dir, "cfga_ngi/MB-003.tif")
-ngi_sk_file <- file.path(raw_grass_data_dir, "cfga_ngi/SK-001.tif")
+ngi_ab_file <- file.path(ngi_tile_root, "AB-002.tif")
+ngi_mb_file <- file.path(ngi_tile_root, "MB-003.tif")
+ngi_sk_file <- file.path(ngi_tile_root, "SK-001.tif")
+
+# AAFC LUTS 
+
+# ECCC grass summary
+eccc_file <- file.path(eccc_root, "grass_summary_a_class.tif")
+
+# WRI
+wri_file <- file.path(wri_root, "gpw_grassland_rf.savgol.bthr_c_30m_20220101_20221231_go_epsg.4326_v1.tif")
+
+# PUDL
+pudl_file <- file.path(pudl_root, "PHJV_PUDLmask.tif")
+
+# Central Grasslands Roadmap - Grassland Assessment Map (Advanced)
+cgr_file <- file.path(cgr_root, "CGR_GAM_V2_separated.tif")
+
+##############################################
+
+# prep rasters for alignment
+
+#----- merge NGI rasters ----
+
+# Load rasters
+r_ab <- rast(ngi_ab_file)
+r_mb <- rast(ngi_mb_file)
+r_sk <- rast(ngi_sk_file)
+
+res(r_ab)
+res(r_mb)
+res(r_sk)
+origin(r_ab)
+origin(r_mb)
+origin(r_sk)
+
+ext(r_ab)
+ext(r_mb)
+ext(r_sk)
+nrow(r_ab); ncol(r_ab)
+nrow(r_mb); ncol(r_mb)
+nrow(r_sk); ncol(r_sk)
+
+# Set pixels with value 0 to NA
+r_ab[r_ab == 0] <- NA
+r_mb[r_mb == 0] <- NA
+r_sk[r_sk == 0] <- NA
+
+# Merge using mosaic with max function
+merged_ngi <- mosaic(r_ab, r_mb, r_sk, fun = max)
+
+res(merged_ngi)
+origin(merged_ngi)
+                        
+# Optional: plot the result
+plot(merged_ngi, main = "Merged NGI Raster")
+
+# Save the raster as 8-bit unsigned integer
+ngi_merge_out_path <- file.path(ngi_merged_dir, "cfga_ngi_merged_no0s.tif")
+writeRaster(merged_ngi, ngi_merge_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
 
 ##############################################
 
@@ -58,16 +146,32 @@ plot(cnvc)
 # Load pilot area shapefile
 pa_vect <- vect(pa_file)
 
+# Load classification study area shapefile
+sa_vect <- vect(sa_file)
+
 # Reproject pilot area to match CNVC raster CRS
 pa_vect_proj <- project(pa_vect, crs(cnvc))
+
+# Reproject classification study area to match CNVC raster CRS
+sa_vect_proj <- project(sa_vect, crs(cnvc))
 
 # Rasterize pilot area using CNVC raster as template
 pa_rast <- rasterize(pa_vect_proj, cnvc, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
 # touches=TRUE ensures that any cell touched by the polygon is included
+
+# Rasterize classification study area using CNVC raster as template
+sa_rast <- rasterize(sa_vect_proj, cnvc, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
+# touches=TRUE ensures that any cell touched by the polygon is included
+
 # print raster details 
 origin(pa_rast)
 res(pa_rast)
 crs(pa_rast)
+
+# print raster details 
+origin(sa_rast)
+res(sa_rast)
+crs(sa_rast)
 
 # Get frequency table of raster values
 freq_table <- freq(pa_rast)
@@ -78,12 +182,106 @@ print(freq_table)
 # visualize the new raster
 plot(pa_rast)
 
+# Trim NA-only rows/columns
+pa_rast_trimmed <- trim(pa_rast)
+plot(pa_rast_trimmed)
+
+ext(pa_rast)
+ext(pa_rast_trimmed)
+
+nrow(pa_rast); ncol(pa_rast)
+nrow(pa_rast_trimmed); ncol(pa_rast_trimmed)
+
 # Save the raster as 8-bit unsigned integer
-pa_out_path <- file.path(pa_dir, "pilot_area_test_aligned_cnvc.tif")
-writeRaster(pa_rast, pa_out_path, datatype = "INT1U", 
+pa_out_path <- file.path(pa_dir, "pilot_area_test_aligned_cnvc_trim_crop_CSD.tif")
+writeRaster(pa_rast_trimmed, pa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+# Convert raster to polygons (excluding NA values)
+pa_polygons <- as.polygons(pa_rast_trimmed, na.rm = TRUE, dissolve = TRUE)
+
+# Export shapefile
+pa_out_shp <- file.path(pa_dir, "pilot_area_test_aligned_cnvc_crop_CSD.shp")
+writeVector(pa_polygons, pa_out_shp, overwrite = TRUE)
+
+
+# rasterize study area shapefile
+
+#------------------ CROP RASTERS TO PILOT AREA -------------------------
+
+# designate file paths
+merged_ngi_path <- file.path(ngi_merged_dir, "cfga_ngi_merged_no0s.tif")
+pa_rast_path <- file.path(pa_dir, "pilot_area_test_aligned_cnvc.tif")
+
+# read rasters
+merged_ngi <- rast(merged_ngi_path)
+pa_rast <- rast(pa_rast_path)
+
+# reproject raster to desired crs
+merged_ngi <- project(merged_ngi, crs(pa_rast))
+
+# crop raster to pilot area 
+cropped_ngi <- crop(merged_ngi, ext(pa_rast))
+
+# align cropped raster to pilot area (resolution, origin, CRS)
+crp_algn_ngi <- resample(cropped_ngi, pa_rast, method = "near") # nearest neighbor for categorical
+
+# check alignment - returns TRUE if rasters are aligned in terms of CRS, resolution, origin, and extent
+compareGeom(pa_rast, crp_algn_ngi, stopOnError = FALSE)
+
+# print raster details 
+origin(crp_algn_ngi)
+res(crp_algn_ngi)
+crs(crp_algn_ngi)
+
+# visualize CNVC raster
+plot(crp_algn_ngi)
+
+# Save the raster as 8-bit unsigned integer
+ngi_crp_algn_out_path <- file.path(ngi_cropped_dir, "cfga_ngi_crp_algn_cnvc.tif")
+writeRaster(crp_algn_ngi, ngi_crp_algn_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+##### use SK raster only since mosaic is producing different resolution
+
+# reproject NGI SK raster to match CRS of pilot area
+ngi_sk_proj <- project(r_sk, crs(pa_rast))
+
+# check output
+origin(ngi_sk_proj)
+res(ngi_sk_proj)
+crs(ngi_sk_proj)
+
+# snap origin of NGI raster to match pilot area while keeping its resolution
+aligned_ngi_sk <- align(ngi_ski_proj, pa_rast, snap = "near")
+
+# crop to extent of pilot area
+cropped_ngi_sk <- crop(aligned_ngi_sk, ext(pa_rast))
+
+# print raster details
+origin(cropped_ngi_sk)
+res(cropped_ngi_sk)
+crs(cropped_ngi_sk)
+
+# visualize
+plot(cropped_ngi_sk)
+
+# Save the raster
+ngi_crp_algn_out_path <- file.path(ngi_cropped_dir, "cfga_ngi_crp_algn_native_res.tif")
+writeRaster(cropped_ngi_sk, ngi_crp_algn_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+
+
+#------------------- ALIGN RASTERS WITH CNVC ---------------------------
+
+
 
 ################################## OLD ############################################
 

@@ -3,7 +3,7 @@
 ##                  PREPROCESSING OF GRASSLAND PRODUCTS FOR GEE                  ##
 ###################################################################################
 
-##----------------------- Alison Long - August 2025 -------------------------
+##----------------------- Alison Long - October 2025 -------------------------
 
 ## Pixel alignment in GEE is approximate - abstracts away low-level raster alignment details.
 ## Use terra to align and preprocess rasters locally, 
@@ -15,7 +15,77 @@ library(sf)
 library(tidyverse)
 
 # Set the temporary directory to a drive with sufficient space
-terraOptions(tempdir = "R:/CanadianGrasslands") 
+terraOptions(tempdir = "R:/CanadianGrasslands")
+
+####--- DIRECTORIES ---####
+
+# pilot area
+pa_dir <- "./processeddatasets/pilot_area"
+
+# grasslands
+raw_grass_data_dir <- "./existingdatasets/class_inputs"
+proc_grass_data_dir <- "./processeddatasets/grass"
+out_grass_dir <- "./outputs/grass"
+
+
+####--- Files ---####
+# Pilot Area
+pa_file <- file.path(pa_dir, "GNP_pilot_area_shifted.shp")
+
+# CNVC raster
+cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CAgrasslands_ReclassMap_20250908.tif")
+
+# NGI rasters
+ngi_ab_file <- file.path(raw_grass_data_dir, "cfga_ngi/AB-002.tif")
+ngi_mb_file <- file.path(raw_grass_data_dir, "cfga_ngi/MB-003.tif")
+ngi_sk_file <- file.path(raw_grass_data_dir, "cfga_ngi/SK-001.tif")
+
+##############################################
+
+# use CNVC file as snap raster
+
+# Load CNVC raster
+cnvc <- rast(cnvc_file)
+
+# print raster details 
+origin(cnvc)
+res(cnvc)
+crs(cnvc)
+
+# visualize CNVC raster
+plot(cnvc)
+
+# Load pilot area shapefile
+pa_vect <- vect(pa_file)
+
+# Reproject pilot area to match CNVC raster CRS
+pa_vect_proj <- project(pa_vect, crs(cnvc))
+
+# Rasterize pilot area using CNVC raster as template
+pa_rast <- rasterize(pa_vect_proj, cnvc, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
+# touches=TRUE ensures that any cell touched by the polygon is included
+# print raster details 
+origin(pa_rast)
+res(pa_rast)
+crs(pa_rast)
+
+# Get frequency table of raster values
+freq_table <- freq(pa_rast)
+
+# Print the table - 1888287 pixels with value 1
+print(freq_table)
+
+# visualize the new raster
+plot(pa_rast)
+
+# Save the raster as 8-bit unsigned integer
+pa_out_path <- file.path(pa_dir, "pilot_area_test_aligned_cnvc.tif")
+writeRaster(pa_rast, pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################################## OLD ############################################
 
 ####--- DIRECTORIES ---####
 # study area
@@ -44,13 +114,14 @@ shp <- vect(sa_file)
 # Define raster parameters
 res <- 10  # Resolution in map units 
 origin <- c(0, 0)  # Origin coordinates
-crs <- "EPSG:10820"  # WGS 1984 Agriculture Canada Albers
+#crs <- "EPSG:10820"  # WGS 1984 Agriculture Canada Albers - did not work
+crs <- "EPSG:5070"  # NAD83 / Conus Albers
 
-crs_wkt <- 'PROJCS["WGS 84 / Agriculture Canada Albers",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["latitude_of_center",40],PARAMETER["longitude_of_center",-96],PARAMETER["standard_parallel_1",44.75],PARAMETER["standard_parallel_2",55.75],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","10820"]]'
+#crs_wkt <- 'PROJCS["WGS 84 / Agriculture Canada Albers",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["latitude_of_center",40],PARAMETER["longitude_of_center",-96],PARAMETER["standard_parallel_1",44.75],PARAMETER["standard_parallel_2",55.75],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","10820"]]'
 
 # Create an empty raster with desired extent, resolution, and CRS
 r <- rast(ext(shp), resolution = res)
-crs(r) <- crs_wkt
+crs(r) <- crs
 origin(r) <- origin
 
 crs(r)
@@ -77,10 +148,43 @@ pilot_vect <- vect(pilot_file)
 
 # Project pilot area to match sa_raster
 pilot_vect_proj <- project(pilot_vect, sa_raster)
+pilot_vect_proj <- project(pilot_vect, "EPSG:5070")
+pilot_vect_proj <- project(pilot_vect, crs(sa_raster))
 
 # Rasterize using sa_raster as template
 # This will embed the smaller pilot area within the larger raster grid
-pilot_raster <- rasterize(pilot_vect_proj, sa_raster, field = 1, background = NA)
+pilot_raster <- rasterize(pilot_vect_proj, sa_raster, field = 1, background = NA, touches = TRUE)
+
+summary(pilot_raster)
+
+valid <- is.valid(pilot_vect_proj)
+table(valid)
+
+
+plot(sa_raster)
+plot(pilot_vect_proj, add = TRUE, col = "red", lw = 6)
+
+
+ext(sa_raster)
+ext(pilot_vect_proj)
+
+crs(pilot_vect)
+
+
+
+# Load pilot shapefile using sf
+pilot_sf <- st_read(file.path(pa_dir, "GNP_pilot_area_shifted.shp"))
+
+# Reproject using sf to EPSG:5070
+pilot_sf_proj <- st_transform(pilot_sf, crs = 5070)
+
+# Convert back to terra
+pilot_vect_proj <- vect(pilot_sf_proj)
+
+# Check extent again
+ext(pilot_vect_proj)
+
+
 
 # visualize the raster
 plot(pilot_raster)
