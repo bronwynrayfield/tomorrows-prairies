@@ -21,3 +21,6 @@ processeddatasets/**
 # results
 results/*
 .Rproj.user
+
+# scratch scripts
+scripts/pilot/scratch/*
