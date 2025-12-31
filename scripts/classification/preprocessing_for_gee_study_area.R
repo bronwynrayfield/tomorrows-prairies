@@ -9,6 +9,9 @@
 ## Use terra to align and preprocess rasters locally, 
 ## then upload them to GEE for large-scale analysis and visualization.
 
+# step 1: create classification study area aligned to NatureServe CNVC raster
+#         that all other study and pilot areas will nest within
+
 # load packages
 library(terra)
 library(sf)
