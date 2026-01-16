@@ -1,13 +1,10 @@
 
+
 ###################################################################################
-##         PREPROCESSING OF GRASSLAND PRODUCTS FOR GEE - STUDY AREA              ##
+##           PREPROCESSING: GENERATING STUDY AREA REFERENCE RASTER               ##
 ###################################################################################
 
 ##----------------------- Alison Long - December 2025 -------------------------
-
-## Pixel alignment in GEE is approximate - abstracts away low-level raster alignment details.
-## Use terra to align and preprocess rasters locally, 
-## then upload them to GEE for large-scale analysis and visualization.
 
 # step 1: create classification study area aligned to NatureServe CNVC raster
 #         that all other study and pilot areas will nest within
@@ -31,8 +28,6 @@ proc_grass_data_dir <- "./processeddatasets/grass"
 out_grass_dir <- "./outputs/grass"
 
 ####--- Files ---####
-# Pilot Area
-pa_file <- file.path(pa_dir, "GNP_pilot_area_crop_CSD.shp")
 
 # Study Area
 sa_file <- file.path(sa_dir, "classification_study_area.shp")
@@ -61,7 +56,7 @@ sa_vect_proj <- project(sa_vect, crs(cnvc))
 
 # Rasterize classification study area using CNVC raster as template
 sa_rast <- rasterize(sa_vect_proj, cnvc, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
-# touches=TRUE ensures that any cell touched by the polygon is included
+                                                                 # touches=TRUE ensures that any cell touched by the polygon is included
 
 # print raster details 
 origin(sa_rast)
