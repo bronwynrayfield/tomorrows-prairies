@@ -132,10 +132,11 @@ risk_layer <- rf_adj
 risk_layer[!is.na(zero_mask)] <- NA  # drop cropland + GNP
 risk_layer[risk_layer == 0] <- NA    # in case any other true zeros exist
 
-## Plot: risk (yellow→red) + zero risk (grey), outside area white
-# Save to disk 
-png("./results/landcover/pilot/grassland_conversion_risk.png", width = 2000, height = 1600, res = 300)
+# Save to disk
+writeRaster(rf_pred, "./results/landcover/pilot/grassland_cropland_conversion_risk.tif")
+writeRaster(risk_layer, "./results/landcover/pilot/grassland_cropland_conversion_risk_clean.tif")
 
+## Plot: risk (yellow→red) + zero risk (grey), outside area white
 cols <- rev(hcl.colors(100, "YlOrRd"))
 
 plot(risk_layer,
@@ -366,6 +367,9 @@ rf_pred <- terra::predict(
 
 plot(rf_pred)
 
+# Save to disk
+writeRaster(rf_pred, "./results/landcover/pilot/grassland_settle_conversion_risk.tif")
+
 # remove protected areas and already converted areas from the map
 # force cropland to zero
 rf_adj <- ifel(settle == 1, 0, rf_pred)
@@ -393,6 +397,9 @@ zero_layer[is.na(zero_mask)] <- NA   # keep values only where zero_mask == 1
 risk_layer <- rf_adj
 risk_layer[!is.na(zero_mask)] <- NA  # drop cropland + GNP
 risk_layer[risk_layer == 0] <- NA    # in case any other true zeros exist
+
+# Save to disk
+writeRaster(risk_layer, "./results/landcover/pilot/grassland_cropland_conversion_risk_clean.tif")
 
 ## Plot: risk (yellow→red) + zero risk (grey), outside area white
 # Save to disk 
@@ -454,6 +461,10 @@ thr
 # build top-risk layer
 top_layer <- risk_layer
 top_layer[top_layer < thr] <- NA
+
+# Save to disk
+writeRaster(top_layer, "./results/landcover/pilot/grassland_cropland_conversion_risk_top6.tif")
+
 
 ## Plot: risk (yellow→red) + zero risk (grey), outside area white, top % pixels cyan
 # save to disk 
