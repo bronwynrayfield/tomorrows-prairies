@@ -12,8 +12,8 @@ pilot_dir <- "./processeddatasets/pilot_area"
 
 #--- Load files ---
 # Pilot area
-pilot <- st_read(file.path(pilot_dir, "pilot_area_test_aligned_cnvc.shp"))
-pilot_rast_prairies <- rast(file.path(pilot_dir, "pilot_area_test_aligned_cnvc.tif"))
+pilot <- st_read(file.path(pilot_filepath, "pilot_area_test_aligned_cnvc.shp"))
+pilot_rast_prairies <- rast(file.path(pilot_filepath, "pilot_area_test_aligned_cnvc.tif"))
 
 # Olimb & Robinson 2019 cropland suitability
 crop_suit_raw <- rast(file.path("./existingdatasets", crop_suit_2019_filepath, crop_suit_2019_filename))
@@ -26,7 +26,9 @@ census_raw <- st_read(file.path("./existingdatasets", census_subdivision_filepat
 roads_raw <-st_read(file.path("./existingdatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG")
 
 # LULC
-lulc_prairies_raw <- rast(file.path("./processeddatasets", aafc2020_filepath, aafc2020_filename))
+lulc2020_prairies_raw <- rast(file.path("./processeddatasets", aafc_filepath, aafc2020_filename))
+lulc2010_prairies_raw <- rast(file.path("./processeddatasets", aafc_filepath, aafc2010_filename))
+lulc2000_prairies_raw <- rast(file.path("./processeddatasets", aafc_filepath, aafc2000_filename))
 
 # ECCC grass loss
 grass_loss_class_raw <- rast(file.path("./existingdatasets", grass_loss_filepath, grass_loss_class_filename))
@@ -41,7 +43,9 @@ pa_raw <- st_read(file.path("./existingdatasets", pa_filepath, paste0(pa_filenam
 
 #--- Reproject to match pilot shapefile CRS ---
 crop_suit_reproj <- project(crop_suit_raw, pilot_rast_prairies, method = "bilinear")
-lulc_prairies_reproj <- project(lulc_prairies_raw, pilot_rast_prairies, method = "near") #takes a long time, so saved on disk
+lulc2020_prairies_reproj <- project(lulc2020_prairies_raw, pilot_rast_prairies, method = "near") #takes a long time, so saved on disk
+lulc2010_prairies_reproj <- project(lulc2010_prairies_raw, pilot_rast_prairies, method = "near") #takes a long time, so saved on disk
+lulc2000_prairies_reproj <- project(lulc2000_prairies_raw, pilot_rast_prairies, method = "near") #takes a long time, so saved on disk
 census_reproj <- st_transform(census_raw, st_crs(pilot))
 roads_reproj <- st_transform(roads_raw, st_crs(pilot))
 grass_loss_class_reproj <- project(grass_loss_class_raw, pilot_rast_prairies, method = "near")
@@ -54,7 +58,9 @@ pa_reproj <- st_transform(pa_raw, st_crs(pilot))
 
 #--- Write to disk ---
 writeRaster(crop_suit_reproj, file.path("./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename), overwrite = FALSE)
-writeRaster(lulc_prairies_reproj, file.path("./processeddatasets", "landcover/aafc/reprojected", aafc2020_filename), overwrite = FALSE)
+writeRaster(lulc2020_prairies_reproj, file.path("./processeddatasets", "landcover/aafc/reprojected", aafc2020_filename), overwrite = FALSE)
+writeRaster(lulc2010_prairies_reproj, file.path("./processeddatasets", "landcover/aafc/reprojected", aafc2010_filename), overwrite = FALSE)
+writeRaster(lulc2000_prairies_reproj, file.path("./processeddatasets", "landcover/aafc/reprojected", aafc2000_filename), overwrite = FALSE)
 st_write(census_reproj, file.path("./processeddatasets", census_subdivision_filepath, census_subdivision_filename), delete_dsn = FALSE)
 st_write(roads_reproj, file.path("./processeddatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
 writeRaster(grass_loss_class_reproj, file.path("./processeddatasets", grass_loss_filepath, grass_loss_class_filename), overwrite = FALSE)
