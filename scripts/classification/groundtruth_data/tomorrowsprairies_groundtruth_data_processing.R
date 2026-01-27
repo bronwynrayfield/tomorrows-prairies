@@ -1,7 +1,7 @@
 
 # Tomorrows Prairies table summaries - Groundtruth Data
 
-# add in lib
+# add in bib
 library(dplyr)
 library(sf)
 library(tools)
@@ -33,6 +33,8 @@ gt_points$LC_Class_O[gt_points$LC_Class_O == "Grass"] <- "Grassland"
 gt_points$LC_Class_O[gt_points$LC_Class_O == "Pasture - Unimproved"] <- "Unimproved Pasture"
 unique(gt_points$LC_Class_O)
 
+count <- gt_points %>% group_by(LC_Class_O, LC_Class_N) %>% count(LC_Class_O, name = "count") ; View(count)
+
 ####################################
 # intersect with study zone 
 # transform CRS
@@ -46,7 +48,7 @@ gt_points$tp_studyarea <- as.integer(inside)  # creates 1/0
 # Count points
 inside_n  <- sum(gt_points$tp_studyarea == 1, na.rm = TRUE) ; print(inside_n)
 outside_n <- sum(gt_points$tp_studyarea == 0, na.rm = TRUE) ; print(outside_n)
-paste0(round(inside_n/outside_n*100, 2), '% are inside the TP Study Area')
+paste0(round(inside_n/(outside_n + inside_n) * 100, 2), '% are inside the TP Study Area')
 
 # verif
 pts_out <- gt_points[gt_points$tp_studyarea == 0, ]
@@ -113,6 +115,7 @@ plot(st_geometry(gt_points[is.na(gt_points$Province), ]),
 # legend("topleft", legend = names(prov_colors), col = prov_colors, pch = 20, cex = 0.8, bty = "n")
 # legend("topleft", legend = c(names(prov_colors), "NA"), col = c(prov_colors, "black"), pch = c(rep(20, length(prov_colors)), 4), pt.cex = 0.9, bty = "n")
 
+count <- gt_points %>% group_by(LC_Class_O, LC_Class_N, Province) %>% count(LC_Class_O, name = "count") ; View(count)
 
 ####################################
 # intersect with ecoR
@@ -149,6 +152,11 @@ plot(st_geometry(gt_points),
      col = ecoreg_palette[gt_points$Ecoregion_name],
      pch = 20, cex = 0.8, add = TRUE)
 
+count <- gt_points %>% group_by(Ecoregion_name) %>% 
+  count(Ecoregion_name, name = "count") %>% 
+  mutate(pct_total = round(100 * count / sum(count), 2)) %>%
+  st_drop_geometry()
+View(count)
 
 #############################
 # write shapefile
