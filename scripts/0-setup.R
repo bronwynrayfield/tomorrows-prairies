@@ -28,6 +28,8 @@ census_subdivision_filename <- "lcsd000a25a_e.shp"
 
 # LULC
 aafc2020_filename <- "AAFC2020_40kmbuffer_noUS.tif"
+aafc2010_filename <- "AAFC2010_40kmbuffer_noUS.tif"
+aafc2000_filename <- "AAFC2000_40kmbuffer_noUS.tif"
 road_filename <- "NRN_SK_14_0_GPKG_en.gpkg"
 #road_filename <- "roadless_data.mpk"
 grass_loss_class_filename <- "recentchange_2022_loss_c05_grass_b01_class.tif"
@@ -53,7 +55,7 @@ ecozones_filepath <- "boundaries/national-ecological-framework-for-canada"
 census_subdivision_filepath <- "boundaries/census-subdivisions"
 
 # LULC
-aafc2020_filepath <- "landcover/aafc/cropped"
+aafc_filepath <- "landcover/aafc/cropped"
 road_filepath <- "landcover/National Road Network/NRN_RRN_SK_GPKG"
 #road_filepath <- "landcover/Roads - Poley et al/Data"
 grass_loss_filepath <- "landcover/MostRecentChangeByClass/2022/loss/c05_grass"
