@@ -8,8 +8,12 @@ library(tools)
 
 # set dir & load datasets
 setwd('C:/Users/samantha.yeo/OneDrive - The Nature Conservancy/Documents/Projects/NCS/Canada/TomorrowsPrairies/Data')
-gdb_path     <- "./04_study_area/groundtruth_points_grass/Final_QC_SK_TP_202509/Final_QC_SK_TP_202509/Final_QC_SK_TP_202509.gdb"
 
+# supp points
+gdb_path     <- "./04_study_area/groundtruth_points_grass/Final_QC_SK_TP_202509/Final_QC_SK_TP_202509/Final_QC_SK_TP_202509.gdb"
+layers <- st_layers(gdb_path)
+
+# main shps
 tp_studyarea <- st_read("./04_study_area/TP_study_area_prairies_ecozone/TP_study_area_prairies_ecozone.shp")
 gt_points    <- st_read("./04_study_area/groundtruth_points_grass/groundtruth_points_grass.shp")
 ecoR         <- st_read("./Ecoregions/ecoregions.shp")
@@ -32,6 +36,36 @@ gt_points$LC_Class_O[gt_points$LC_Class_O == "Clover - Red Clover"] <- "Clover -
 gt_points$LC_Class_O[gt_points$LC_Class_O == "Grass"] <- "Grassland"
 gt_points$LC_Class_O[gt_points$LC_Class_O == "Pasture - Unimproved"] <- "Unimproved Pasture"
 unique(gt_points$LC_Class_O)
+
+# clean up SK dat
+survey <- st_read(gdb_path, layer = "survey")
+
+survey <- st_read(gdb_path, layer = "survey", quiet = TRUE) %>%
+  rename(LC_Class_N = lc_type, Date_Added = date) %>%
+  mutate(Source_ID = "Final_QC_SK_TP_202509", Year_Colle  = 2025, LC_Class_O = NA, Notes_Text = NA, External_F = NA)
+colnames(survey)
+
+# Identify geometry column names (e.g., "geometry", "Shape", etc.)
+geo_gt <- attr(gt_points, "sf_column")
+geo_sv <- attr(survey, "sf_column")
+
+# Keep only columns that exist in BOTH (matching attributes), drop geometry from the list
+keep_cols <- intersect(names(gt_points), names(survey))
+keep_cols <- setdiff(keep_cols, c(geo_gt, geo_sv))
+
+# Ensure both are sf (just in case)
+stopifnot(inherits(gt_points, "sf"), inherits(survey, "sf"))
+
+# Ensure CRS matches
+if (st_crs(survey) != st_crs(gt_points)) {
+  survey <- st_transform(survey, st_crs(gt_points))
+}
+
+# Select matching attrs + geometry via tidyselect any_of() and everything() guard
+gt_points <- bind_rows(
+  gt_points %>% select(any_of(keep_cols), all_of(geo_gt)),
+  survey    %>% select(any_of(keep_cols), all_of(geo_sv)) %>% st_set_geometry(geo_gt)
+)
 
 count <- gt_points %>% group_by(LC_Class_O, LC_Class_N) %>% count(LC_Class_O, name = "count") ; View(count)
 
@@ -114,7 +148,6 @@ plot(st_geometry(gt_points[is.na(gt_points$Province), ]),
 # # Legend
 # legend("topleft", legend = names(prov_colors), col = prov_colors, pch = 20, cex = 0.8, bty = "n")
 # legend("topleft", legend = c(names(prov_colors), "NA"), col = c(prov_colors, "black"), pch = c(rep(20, length(prov_colors)), 4), pt.cex = 0.9, bty = "n")
-
 count <- gt_points %>% group_by(LC_Class_O, LC_Class_N, Province) %>% count(LC_Class_O, name = "count") ; View(count)
 
 ####################################
