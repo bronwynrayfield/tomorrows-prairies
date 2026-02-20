@@ -31,7 +31,7 @@ out_grass_dir <- "./outputs/grass"
 
 #-------- PIXELWISE AGREEMENT ------------
 
-# List your raster files (modify pattern/path as needed)
+# List raster files (modify pattern/path as needed)
 files <- list.files("path/to/rasters", pattern = "\\.tif$", full.names = TRUE)
 
 # Load as a SpatRaster stack
@@ -82,8 +82,10 @@ names(out)[names(out) == names(out)[ncol(out)]] <- "hectares_with_data"
 # Save as CSV (optional)
 write.csv(out, "ecodistrict_hectares_with_data.csv", row.names = FALSE)
 
-# If you also want the polygon layer with the attribute joined:
+# To save polygon layer with the attribute joined:
 ed_out <- ed
 ed_out$hectares_with_data <- out$hectares_with_data[match(ed_out$ecod_id, out$ecod_id)]
 writeVector(ed_out, "ecodistricts_with_hectares.gpkg", filetype = "GPKG", overwrite = TRUE)
+
+############################
 

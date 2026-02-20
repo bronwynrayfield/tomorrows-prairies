@@ -33,6 +33,7 @@ out_grass_dir <- "./outputs/grass"
 pudl_root <- file.path(raw_grass_data_dir, "phjv_pudl")
 pudl_aligned_dir <- file.path(proc_grass_data_dir, "phjv_pudl/aligned")
 pudl_cropped_dir <- file.path(proc_grass_data_dir, "phjv_pudl/cropped")
+pudl_pilot_dir <- file.path(proc_grass_data_dir, "phjv_pudl/pilot")
 
 ####--- Files ---####
 # Pilot area
@@ -155,6 +156,27 @@ writeRaster(pudl_algn_binary, pudl_binary_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+# load PUDL raster
+pudl <- file.path(pudl_aligned_dir, "pudl_reproj_algn.tif")
+pudl_algn <- rast(pudl)
+
+# reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native)
+pudl_algn_nattam <- classify(pudl_algn, 
+                             rcl = matrix(c(0, 0, # Potentially Disturbed/Other Cover
+                                            1, 2, # Potentially Undisturbed Grass (In PUDL)
+                                            2, 1, # Potentially Disturbed Grass (In PUDL)
+                                            3, 0), # Shrub (In PUDL)
+                                          ncol = 2, byrow = TRUE))
+plot(pudl_algn_nattam)
+pudl_algn_nattam
+
+# Save the raster as 8-bit unsigned integer
+pudl_nattam_out_path <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_natvtam_noshrub.tif")
+writeRaster(pudl_algn_nattam, pudl_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
 # Load study area raster
 pa <- rast(pa_file)
 
@@ -204,8 +226,46 @@ res(pudl_masked) # 30 30
 crs(pudl_masked)
 
 # Save the raster as 8-bit unsigned integer
-pudl_pa_out_path <- file.path(pudl_cropped_dir, "pudl_reproj_algn_crop_pa.tif")
+pudl_pa_out_path <- file.path(pudl_pilot_dir, "pudl_reproj_algn_crop_pa.tif")
 writeRaster(pudl_masked, pudl_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# load binary raster
+pudl_binary_file <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_binary_noshrub.tif")
+pudl_algn_binary <- rast(pudl_binary_file)
+
+# crop binary raster to pilot area
+pudl_bin_pa <- crop(pudl_algn_binary, crop_ext)
+pudl_bin_pa
+plot (pudl_bin_pa)
+
+# mask to pilot area
+pudl_bin_masked <- mask(pudl_bin_pa, pa)
+pudl_bin_masked
+plot(pudl_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+pudl_bin_pa_out_path <- file.path(pudl_pilot_dir, "pudl_reproj_algn_crop_pa_binary_noshrub.tif")
+writeRaster(pudl_bin_masked, pudl_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# crop native vs. tame raster to pilot area
+pudl_nt_pa <- crop(pudl_algn_nattam, crop_ext)
+pudl_nt_pa
+plot (pudl_nt_pa)
+
+# mask to pilot area
+pudl_nt_masked <- mask(pudl_nt_pa, pa)
+pudl_nt_masked
+plot(pudl_nt_masked)
+
+# Save the raster as 8-bit unsigned integer
+pudl_nt_pa_out_path <- file.path(pudl_pilot_dir, "pudl_reproj_algn_crop_pa_natvtam_noshrub.tif")
+writeRaster(pudl_nt_masked, pudl_nt_pa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
