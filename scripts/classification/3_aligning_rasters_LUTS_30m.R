@@ -12,20 +12,20 @@
 library(terra)
 library(sf)
 library(tidyverse)
-library(parallel)
+#library(parallel)
 
 # Use most cores, but leave 1 free (good practice)
-nthreads <- max(1, parallel::detectCores() - 1)
+#nthreads <- max(1, parallel::detectCores() - 1)
 
 # Tell terra to use multiple threads
-terraOptions(threads = nthreads)
+#terraOptions(threads = nthreads)
 
 # (Optional) ensure on-disk temp files go somewhere fast
 # terraOptions(tempdir = "D:/terra_tmp")  # example on Windows
 #terraOptions(memfrac = 0.8)             # use more RAM if safe
 
 # Set the temporary directory to a drive with sufficient space
-terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/github/tomorrows-prairies/scratch")
+terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
 
 ####--- DIRECTORIES ---####
 
@@ -45,6 +45,7 @@ luts_tile_root <- file.path(raw_grass_data_dir, "aafc_luts_2020_30m_v5")
 luts_merged_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/merged")
 luts_cropped_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/cropped")
 luts_aligned_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/aligned")
+luts_pilot_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/pilot")
 
 
 ####--- Files ---####
@@ -55,7 +56,7 @@ pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 
 # CNVC raster
-cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
+#cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
 
 # AAFC LUTS 
 luts_files <- file.path(luts_tile_root)
@@ -84,7 +85,7 @@ r_luts <- lapply(luts_file_list, rast)
 # Use the first raster as reference for grid alignment
 ref_raster <- r_luts[[1]]
 
-# Align all rasters to the template grid
+# Align all rasters to reference raster
 # Use "near" for categorical data 
 resample_method <- "near"
 
@@ -263,8 +264,7 @@ pa <- rast(pa_file)
 
 # print raster details 
 origin(pa)
-res(pa)
-crs(pa)
+pa
 
 # crop to pilot area
 crop_ext <- ext(pa)
@@ -283,8 +283,29 @@ res(luts_masked)
 crs(luts_masked)
 
 # Save the raster as 8-bit unsigned integer
-luts_pa_out_path <- file.path(luts_cropped_dir, "aafc_luts_merged_reproj_algn_crop_pa.tif")
+luts_pa_out_path <- file.path(luts_pilot_dir, "aafc_luts_merged_reproj_algn_crop_pa.tif")
 writeRaster(luts_masked, luts_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# load binary raster
+luts_binary_file <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_binary.tif")
+luts_algn_binary <- rast(luts_binary_file)
+
+# crop binary raster to pilot area
+luts_bin_pa <- crop(luts_algn_binary, crop_ext)
+luts_bin_pa
+plot (luts_bin_pa)
+
+# mask to pilot area
+luts_bin_masked <- mask(luts_bin_pa, pa)
+luts_bin_masked
+plot(luts_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+luts_bin_pa_out_path <- file.path(luts_pilot_dir, "luts_reproj_algn_crop_pa_binary.tif")
+writeRaster(luts_bin_masked, luts_bin_pa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

@@ -31,9 +31,10 @@ proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
 out_grass_dir <- "./outputs/grass"
 
 # lcr directory
-lcr_root <- file.path(raw_grass_data_dir, "./Land Cover/StatCan Land Cover Register 2020")
+lcr_root <- file.path(raw_grass_data_dir, "Land Cover/StatCan Land Cover Register 2020/LCR_RCT_2020")
 lcr_aligned_dir <- file.path(proc_grass_data_dir, "statcan_lcr/aligned")
 lcr_cropped_dir <- file.path(proc_grass_data_dir, "statcan_lcr/cropped")
+lcr_pilot_dir <- file.path(proc_grass_data_dir, "statcan_lcr/pilot")
 
 ####--- Files ---####
 # Pilot area
@@ -74,8 +75,45 @@ print(freq_table)
 # Mark as categorical (factor)
 r_lcr <- as.factor(r_lcr)
 
+# crop before reprojecting to make manageable size 
+
+# Define the bbox in lon/lat degrees (WGS84)
+canada_ext_ll  <- ext(-140, -70, 30, 60)
+canada_bbox_ll <- as.polygons(canada_ext_ll, crs = "EPSG:4326")
+
+# Get CRS from the raster 
+r_crs <- crs(r_lcr)
+
+# Project bbox polygon to the raster's CRS
+canada_bbox_rcrs <- project(canada_bbox_ll, r_crs)
+
+# Meter/CRS-based extent derived from projected polygon
+canada_ext_rcrs <- ext(canada_bbox_rcrs)
+
+# polygon for Canada
+#canada_sf <- ne_countries(country = "Canada", returnclass = "sf")
+#canada_v  <- vect(canada_sf)
+
+# plot
+#plot(canada_v, col = "grey90", border = "grey40", main = "Canada + bounding box")
+#plot(canada_bbox, add = TRUE, border = "red", lwd = 2, lty = 2)
+
+# crop and mask to bounding box
+r_lcr_crop <- crop(r_lcr, canada_ext_rcrs)
+r_lcr_mask <- mask(r_lcr_crop, canada_bbox_rcrs)
+
+r_lcr_mask
+plot(r_lcr_mask)
+
+# Save the raster as 8-bit unsigned integer
+lcr_crop_out_path <- file.path(lcr_cropped_dir, "lcr_crop_bbox.tif")
+writeRaster(r_lcr_mask, lcr_crop_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
 # reproject before resampling
-lcr_reproj <- project(r_lcr, crs(sa)) # or should be project(ngi_reclass, sa) ??
+lcr_reproj <- project(r_lcr, sa, method = "near") # better approach
 
 freq_table2 <- freq(lcr_reproj) 
 print(freq_table2) 
@@ -89,12 +127,9 @@ plot(lcr_reproj_algn)
 
 # Get values and counts
 freq_table3 <- freq(lcr_reproj_algn) 
-print(freq_table3) # 0: 609557112; 1: 62790661; 2: 19747161; 3: 20456239
+print(freq_table3) # 
 
-res(lcr_reproj_algn) # 30 30
 origin(lcr_reproj_algn) # 6.696121 -2.550334
-crs(lcr_reproj_algn) # EPSG:9001
-ext(lcr_reproj_algn) # SpatExtent : -2321003.30387889, 1585686.69612111, 270327.4496659, 2866497.4496659 (xmin, xmax, ymin, ymax)
 
 # Save the raster as 8-bit unsigned integer
 lcr_out_path <- file.path(lcr_aligned_dir, "lcr_reproj_algn.tif")
@@ -123,17 +158,24 @@ writeRaster(lcr_reproj_algn_trim, lcr_trim_out_path, datatype = "INT1U",
             overwrite = TRUE)
 
 # reclassify to binary (grass = 1)
-#lcr_algn_binary <- classify(lcr_reproj_algn, 
-                            rcl = matrix(c(0, 0, # Other land cover
-                                           1, 1, # Cultivated grassland
-                                           2, 1, # Natural/semi-natural grassland
-                                           3, 0), # Open shrubland
+lcr_algn_binary <- classify(lcr_reproj_algn, 
+                            rcl = matrix(c(1, 0, # Built-up and artificial surface
+                                           2, 0, # Cropland
+                                           3, 0, # Inland water body
+                                           4, 0, # Treed (non-wetland)
+                                           5, 0, # Treed wetland
+                                           6, 0, # Treed area disturbance
+                                           7, 1, # Grassland and shrubland
+                                           8, 0, # Wetland (non-treed)
+                                           9, 0, # Sparsely vegetated land
+                                           10, 0, # Barren land
+                                           11, 0), # Permanent snow and ice
                                          ncol = 2, byrow = TRUE))
 plot(lcr_algn_binary)
 lcr_algn_binary
 
 # Save the raster as 8-bit unsigned integer
-lcr_binary_out_path <- file.path(lcr_aligned_dir, "lcr_reclass_reproj_algn_binary.tif")
+lcr_binary_out_path <- file.path(lcr_aligned_dir, "lcr_reproj_algn_binary.tif")
 writeRaster(lcr_algn_binary, lcr_binary_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -172,3 +214,21 @@ writeRaster(lcr_masked, lcr_pa_out_path, datatype = "INT1U",
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+# crop binary raster to pilot area
+lcr_bin_pa <- crop(lcr_algn_binary, crop_ext)
+lcr_bin_pa
+plot (lcr_bin_pa)
+
+# mask to pilot area
+lcr_bin_masked <- mask(lcr_bin_pa, pa)
+lcr_bin_masked
+plot(lcr_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+lcr_bin_pa_out_path <- file.path(lcr_pilot_dir, "lcr_reproj_algn_crop_pa_binary.tif")
+writeRaster(lcr_bin_masked, lcr_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+

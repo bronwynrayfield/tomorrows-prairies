@@ -12,7 +12,6 @@
 library(terra)
 library(sf)
 library(tidyverse)
-library(beepr)
 
 # Set the temporary directory to a drive with sufficient space
 terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/github/tomorrows-prairies/scratch")
@@ -34,6 +33,7 @@ out_grass_dir <- "./outputs/grass"
 cgr_root <- file.path(raw_grass_data_dir, "cgr_gam_adv")
 cgr_aligned_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/aligned")
 cgr_cropped_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/cropped")
+cgr_pilot_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/pilot")
 
 ####--- Files ---####
 # Pilot area
@@ -133,7 +133,7 @@ plot(cgr_reproj_algn)
 freq_table3 <- freq(cgr_reproj_algn) 
 print(freq_table3) 
 
-layer value      count
+#  layer value      count
 #1     1     0 1637719493
 #2     1     5  352074725
 #3     1   100  212473664
@@ -176,8 +176,9 @@ writeRaster(cgr_reproj_algn_trim, cgr_trim_out_path, datatype = "INT2U",
             overwrite = TRUE)
 
 # reclassify to binary (values 1-10 become 1 for grass)
-cgr_algn_binary <- classify(cgr_reproj_algn, 
-                             rcl = matrix(c(0, 0, # 
+#cgr_algn_binary <- classify(cgr_reproj_algn,
+cgr_algn_binary <- classify(cgr_algn,
+                             rcl = matrix(c(0, NA, # 
                                             5, 1, # Core grasslands
                                             100, 1, # Vulnerable - conversion
                                             111, 1, # Vulnerable - encroachment
@@ -203,8 +204,34 @@ cgr_algn_binary
 #max value   :        1
 
 # Save the raster as 8-bit unsigned integer
-cgr_binary_out_path <- file.path(cgr_aligned_dir, "cgr_reclass_reproj_algn_binary_noshrub.tif")
+cgr_binary_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_binary.tif")
 writeRaster(cgr_algn_binary, cgr_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# load raster
+cgr <- file.path(cgr_aligned_dir, "cgr_reproj_algn.tif")
+cgr_algn <- rast(cgr)
+
+# reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native)
+cgr_algn_nattam <- classify(cgr_algn, 
+                            rcl = matrix(c(0, NA, # 
+                                           5, 2, # Core grasslands
+                                           100, 2, # Vulnerable - conversion
+                                           111, 1, # Vulnerable - encroachment
+                                           200, 1, # Vulnerable - both
+                                           500, 0, # Plowprint
+                                           550, 0, # Encroached
+                                           800, 0, # Plowed/encroached
+                                           1000, 0), # Masks
+                                         ncol = 2, byrow = TRUE))
+plot(cgr_algn_nattam)
+cgr_algn_nattam
+
+# Save the raster as 8-bit unsigned integer
+cgr_nattam_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_natvtam.tif")
+writeRaster(cgr_algn_nattam, cgr_nattam_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
@@ -246,11 +273,208 @@ res(cgr_masked) # 30 30
 crs(cgr_masked)
 
 # Save the raster as 16-bit unsigned integer
-cgr_pa_out_path <- file.path(cgr_cropped_dir, "cgr_reproj_algn_crop_pa.tif")
+cgr_pa_out_path <- file.path(cgr_pilot_dir, "cgr_reproj_algn_crop_pa.tif")
 writeRaster(cgr_masked, cgr_pa_out_path, datatype = "INT2U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 65535,
             overwrite = TRUE)
 
-# play a sound when script finishes
-beep()
+# load binary raster
+cgr_binary_file <- file.path(cgr_aligned_dir, "cgr_reclass_reproj_algn_binary.tif")
+cgr_algn_binary <- rast(cgr_binary_file)
+
+# crop binary raster to pilot area
+cgr_bin_pa <- crop(cgr_algn_binary, crop_ext)
+cgr_bin_pa
+plot (cgr_bin_pa)
+
+# mask to pilot area
+cgr_bin_masked <- mask(cgr_bin_pa, pa)
+cgr_bin_masked
+plot(cgr_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_bin_pa_out_path <- file.path(cgr_pilot_dir, "cgr_reproj_algn_crop_pa_binary.tif")
+writeRaster(cgr_bin_masked, cgr_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# crop native vs. tame raster to pilot area
+cgr_nt_pa <- crop(cgr_algn_nattam, crop_ext)
+cgr_nt_pa
+plot (cgr_nt_pa)
+
+# mask to pilot area
+cgr_nt_masked <- mask(cgr_nt_pa, pa)
+cgr_nt_masked
+plot(cgr_nt_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_nt_pa_out_path <- file.path(cgr_pilot_dir, "cgr_reproj_algn_crop_pa_natvtam.tif")
+writeRaster(cgr_nt_masked, cgr_nt_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################################################
+
+# isolate each class
+
+# load raster
+cgr <- file.path(cgr_aligned_dir, "cgr_reproj_algn.tif")
+cgr_algn <- rast(cgr)
+
+# reclassify 
+cgr_algn_core <- classify(cgr_algn, 
+                            rcl = matrix(c(0, NA, # 
+                                           5, 1, # Core grasslands
+                                           100, 0, # Vulnerable - conversion
+                                           111, 0, # Vulnerable - encroachment
+                                           200, 0, # Vulnerable - both
+                                           500, 0, # Plowprint
+                                           550, 0, # Encroached
+                                           800, 0, # Plowed/encroached
+                                           1000, 0), # Masks
+                                         ncol = 2, byrow = TRUE))
+plot(cgr_algn_core)
+cgr_algn_core
+
+# Save the raster as 8-bit unsigned integer
+cgr_core_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_core_grass.tif")
+writeRaster(cgr_algn_core, cgr_core_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify 
+cgr_algn_vulconv <- classify(cgr_algn, 
+                          rcl = matrix(c(0, NA, # 
+                                         5, 0, # Core grasslands
+                                         100, 1, # Vulnerable - conversion
+                                         111, 0, # Vulnerable - encroachment
+                                         200, 0, # Vulnerable - both
+                                         500, 0, # Plowprint
+                                         550, 0, # Encroached
+                                         800, 0, # Plowed/encroached
+                                         1000, 0), # Masks
+                                       ncol = 2, byrow = TRUE))
+plot(cgr_algn_vulconv)
+cgr_algn_vulconv
+
+# Save the raster as 8-bit unsigned integer
+cgr_vulconv_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_vuln_conv.tif")
+writeRaster(cgr_algn_vulconv, cgr_vulconv_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify 
+cgr_algn_vulencr <- classify(cgr_algn, 
+                             rcl = matrix(c(0, NA, # 
+                                            5, 0, # Core grasslands
+                                            100, 0, # Vulnerable - conversion
+                                            111, 1, # Vulnerable - encroachment
+                                            200, 0, # Vulnerable - both
+                                            500, 0, # Plowprint
+                                            550, 0, # Encroached
+                                            800, 0, # Plowed/encroached
+                                            1000, 0), # Masks
+                                          ncol = 2, byrow = TRUE))
+plot(cgr_algn_vulencr)
+cgr_algn_vulencr
+
+# Save the raster as 8-bit unsigned integer
+cgr_vulencr_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_vuln_encrch.tif")
+writeRaster(cgr_algn_vulencr, cgr_vulencr_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify 
+cgr_algn_vulboth <- classify(cgr_algn, 
+                             rcl = matrix(c(0, NA, # 
+                                            5, 0, # Core grasslands
+                                            100, 0, # Vulnerable - conversion
+                                            111, 0, # Vulnerable - encroachment
+                                            200, 1, # Vulnerable - both
+                                            500, 0, # Plowprint
+                                            550, 0, # Encroached
+                                            800, 0, # Plowed/encroached
+                                            1000, 0), # Masks
+                                          ncol = 2, byrow = TRUE))
+plot(cgr_algn_vulboth)
+cgr_algn_vulboth
+
+# Save the raster as 8-bit unsigned integer
+cgr_vulboth_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_vuln_both.tif")
+writeRaster(cgr_algn_vulboth, cgr_vulboth_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify 
+cgr_algn_encrch <- classify(cgr_algn, 
+                             rcl = matrix(c(0, NA, # 
+                                            5, 0, # Core grasslands
+                                            100, 0, # Vulnerable - conversion
+                                            111, 0, # Vulnerable - encroachment
+                                            200, 0, # Vulnerable - both
+                                            500, 0, # Plowprint
+                                            550, 1, # Encroached
+                                            800, 0, # Plowed/encroached
+                                            1000, 0), # Masks
+                                          ncol = 2, byrow = TRUE))
+plot(cgr_algn_encrch)
+cgr_algn_encrch
+
+# Save the raster as 8-bit unsigned integer
+cgr_encrch_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_encroached.tif")
+writeRaster(cgr_algn_encrch, cgr_encrch_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify 
+cgr_algn_plow <- classify(cgr_algn, 
+                            rcl = matrix(c(0, NA, # 
+                                           5, 0, # Core grasslands
+                                           100, 0, # Vulnerable - conversion
+                                           111, 0, # Vulnerable - encroachment
+                                           200, 0, # Vulnerable - both
+                                           500, 1, # Plowprint
+                                           550, 0, # Encroached
+                                           800, 0, # Plowed/encroached
+                                           1000, 0), # Masks
+                                         ncol = 2, byrow = TRUE))
+plot(cgr_algn_plow)
+cgr_algn_plow
+
+# Save the raster as 8-bit unsigned integer
+cgr_plow_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_plowed.tif")
+writeRaster(cgr_algn_plow, cgr_plow_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify 
+cgr_algn_plwencrch <- classify(cgr_algn, 
+                          rcl = matrix(c(0, NA, # 
+                                         5, 0, # Core grasslands
+                                         100, 0, # Vulnerable - conversion
+                                         111, 0, # Vulnerable - encroachment
+                                         200, 0, # Vulnerable - both
+                                         500, 0, # Plowprint
+                                         550, 0, # Encroached
+                                         800, 1, # Plowed/encroached
+                                         1000, 0), # Masks
+                                       ncol = 2, byrow = TRUE))
+plot(cgr_algn_plwencrch)
+cgr_algn_plwencrch
+
+# Save the raster as 8-bit unsigned integer
+cgr_plwencrch_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_plowed_encroached.tif")
+writeRaster(cgr_algn_plwencrch, cgr_plwencrch_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)

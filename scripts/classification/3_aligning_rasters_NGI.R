@@ -14,7 +14,7 @@ library(sf)
 library(tidyverse)
 
 # Set the temporary directory to a drive with sufficient space
-terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/github/tomorrows-prairies/scratch")
+terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
 
 ####--- DIRECTORIES ---####
 
@@ -34,29 +34,7 @@ ngi_tile_root <- file.path(raw_grass_data_dir, "cfga_ngi")
 ngi_merged_dir <- file.path(proc_grass_data_dir, "cfga_ngi/merged")
 ngi_cropped_dir <- file.path(proc_grass_data_dir, "cfga_ngi/cropped")
 ngi_aligned_dir <- file.path(proc_grass_data_dir, "cfga_ngi/aligned")
-
-# ECCC directory
-eccc_root <- file.path(raw_grass_data_dir, "eccc_grass")
-eccc_cropped_dir <- file.path(proc_grass_data_dir, "eccc_grass/cropped")
-
-# PHJV PUDL directory
-pudl_root <- file.path(raw_grass_data_dir, "phjv_pudl")
-pudl_cropped_dir <- file.path(proc_grass_data_dir, "phjv_pudl/cropped")
-
-# Central Grasslands Roadmap directory
-cgr_root <- file.path(raw_grass_data_dir, "cgr_gam_adv")
-cgr_cropped_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/cropped")
-
-# WRI annual grass directory
-wri_root <- file.path(raw_grass_data_dir, "wri_gpw_ann")
-wri_cropped_dir <- file.path(proc_grass_data_dir, "wri_gpw_ann/cropped")
-
-# AAFC LUTS directory
-luts_tile_root <- file.path(raw_grass_data_dir, "aafc_luts_2020_30m_v5")
-luts_merged_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/merged")
-luts_cropped_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/cropped")
-luts_aligned_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/aligned")
-
+ngi_pilot_dir <- file.path(proc_grass_data_dir, "cfga_ngi/pilot")
 
 ####--- Files ---####
 # Pilot Area
@@ -66,27 +44,15 @@ pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 
 # CNVC raster
-cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
+#cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
 
 # NGI rasters
 ngi_ab_file <- file.path(ngi_tile_root, "AB-002.tif")
 ngi_mb_file <- file.path(ngi_tile_root, "MB-003.tif")
 ngi_sk_file <- file.path(ngi_tile_root, "SK-001.tif")
 
-# AAFC LUTS 
-luts_files <- file.path(luts_tile_root)
-
-# ECCC grass summary
-eccc_file <- file.path(eccc_root, "grass_summary_a_class.tif")
-
-# WRI
-wri_file <- file.path(wri_root, "gpw_grassland_rf.med.filt.bthr_c_30m_20240101_20241231_go_epsg.4326_v2.tif")
-
-# PUDL
-pudl_file <- file.path(pudl_root, "PHJV_PUDLmask.tif")
-
-# Central Grasslands Roadmap - Grassland Assessment Map (Advanced)
-cgr_file <- file.path(cgr_root, "CGR_GAM_V2_separated.tif")
+# NGI extent
+ngi_extent_file <- "R:/CanadianGrasslands/WG_Classification/Classification_WG_intermediate_products/exported_shp_for_GEE/NGI_extent.shp"
 
 ##### use study area file as snap raster #####
 
@@ -108,6 +74,8 @@ r_ab <- rast(ngi_ab_file)
 r_mb <- rast(ngi_mb_file)
 r_sk <- rast(ngi_sk_file)
 
+plot(r_ab)
+
 res(r_ab) # 10 x 10
 res(r_mb) # 10 x 10
 res(r_sk) # 10 x 10
@@ -122,13 +90,13 @@ nrow(r_ab); ncol(r_ab) # 65781; 41102
 nrow(r_mb); ncol(r_mb) # 33673; 35223
 nrow(r_sk); ncol(r_sk) # 62317; 64169
 
-# Set pixels with value 0 to NA
-r_ab[r_ab == 0] <- NA
-r_mb[r_mb == 0] <- NA
-r_sk[r_sk == 0] <- NA
+# Set pixels with value 0 to NA - NO! need to preserve zeroes
+#r_ab[r_ab == 0] <- NA
+#r_mb[r_mb == 0] <- NA
+#r_sk[r_sk == 0] <- NA
 
 # Merge 
-merged_ngi <- merge(r_ab, r_mb, r_sk)
+merged_ngi <- mosaic(r_ab, r_mb, r_sk, fun = "max") # when rasters overlap, keep the largest value
 
 res(merged_ngi) # 10 10
 origin(merged_ngi) # 0 0 
@@ -140,143 +108,312 @@ plot(merged_ngi, main = "Merged NGI Raster")
 
 # print frequency table
 freq_table <- freq(merged_ngi) 
-print(freq_table) # 2: 894806781; 3: 864399198; 5: 214191378
+print(freq_table) 
+
+#  layer value      count
+#1     1     0 5144984811
+#2     1     2  894806781
+#3     1     3  864399198
+#4     1     5  214191378
 
 # Save the raster as 8-bit unsigned integer
-ngi_merge_out_path <- file.path(ngi_merged_dir, "cfga_ngi_merged_no0s.tif")
+ngi_merge_out_path <- file.path(ngi_merged_dir, "cfga_ngi_mosaicked.tif")
 writeRaster(merged_ngi, ngi_merge_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
-# need to reclassify to 1, 2, 3 instead of 2, 3, 5 so new class (4) doesn't get introduced when resampling
-ngi_reclass <- classify(merged_ngi, 
-                            rcl = matrix(c(2, 1,
-                                           3, 2,
-                                           5, 3), 
-                                         ncol = 2, byrow = TRUE))
+## load NGI raster
+ngi <- file.path(ngi_merged_dir, "cfga_ngi_mosaicked.tif")
+ngi_merged <- rast(ngi)
 
-freq_table3 <- freq(ngi_reclass) 
-print(freq_table3) # 1: 894806781; 2: 864399198; 3: 214191378
+# need to reclassify to 1, 2, 3 instead of 2, 3, 5 so new class (4) doesn't get introduced when resampling
+#ngi_reclass <- classify(merged_ngi, 
+#                            rcl = matrix(c(2, 1,
+#                                           3, 2,
+#                                           5, 3), 
+#                                         ncol = 2, byrow = TRUE))
+
+#freq_table3 <- freq(ngi_reclass) 
+#print(freq_table3) 
+
+#  layer value      count
+#1     1     0 5144984811
+#2     1     1  894806781
+#3     1     2  864399198
+#4     1     3  214191378
 
 # Mark as categorical (factor)
-ngi_reclass <- as.factor(ngi_reclass)
+ngi_merged <- as.factor(ngi_merged)
+ngi_merged
+plot(ngi_merged)
+
+#class       : SpatRaster 
+#size        : 83078, 123725, 1  (nrow, ncol, nlyr)
+#resolution  : 10, 10  (x, y)
+#extent      : 4622750, 5860000, 1443910, 2274690  (xmin, xmax, ymin, ymax)
+#coord. ref. : NAD83 / Statistics Canada Lambert (EPSG:3347) 
+#source      : cfga_ngi_mosaicked.tif 
+#categories  : AB-002 
+#name        : AB-002 
+#min value   :      0 
+#max value   :      5 
 
 # Add category labels
-levels(ngi_reclass) <- data.frame(
-  value = c(1, 2, 3),
-  label = c("Tame", "Native", "Mixed")
-)
+#levels(ngi_reclass) <- data.frame(
+#  value = c(0, 1, 2, 3),
+#  label = c("Not grass", "Tame", "Native", "Mixed")
+#)
 
-freq_table4 <- freq(ngi_reclass) 
-print(freq_table4) # 1: 894806781; 2: 864399198; 3: 214191378
+#freq_table4 <- freq(ngi_reclass) 
+#print(freq_table4) # 1: 894806781; 2: 864399198; 3: 214191378
 
-res(ngi_reclass) # 10 10
-origin(ngi_reclass) # 0 0 
-crs(ngi_reclass) # EPSG:3347
-ext(ngi_reclass) # SpatExtent : 4622750, 5860000, 1443910, 2274690 (xmin, xmax, ymin, ymax)
+#  layer  value      count
+#1     1   <NA> 5144984811
+#2     1   Tame  894806781
+#3     1 Native  864399198
+#4     1  Mixed  214191378
+
+#res(ngi_reclass) # 10 10
+#origin(ngi_reclass) # 0 0 
+#crs(ngi_reclass) # EPSG:3347
+#ext(ngi_reclass) # SpatExtent : 4622750, 5860000, 1443910, 2274690 (xmin, xmax, ymin, ymax)
 
 
 # reproject before resampling
-ngi_reclass_merged_reproj <- project(ngi_reclass, crs(sa)) # or should be project(ngi_reclass, sa) ??
+#ngi_reclass_merged_reproj <- project(ngi_reclass, crs(sa)) # or should be project(ngi_reclass, sa) ??
+ngi_merged_reproj <- project(ngi_merged, crs(sa))
 
-freq_table5 <- freq(ngi_reclass_merged_reproj) 
+freq_table5 <- freq(ngi_merged_reproj) 
 print(freq_table5) # 1: 954680046; 2: 917799068; 3: 227772560
 
-res(ngi_reclass_merged_reproj) # 9.754172 9.754172
-origin(ngi_reclass_merged_reproj) # 1.715237 -3.612827
-crs(ngi_reclass_merged_reproj) # EPSG:9001
-ext(ngi_reclass_merged_reproj) # SpatExtent : -1307057.29414187, -35942.4075207314, 908773.057216913, 1941954.4332725 (xmin, xmax, ymin, ymax)
+#  layer value      count
+#1     1     0 5500305860
+#2     1     2  954680046
+#3     1     3  917799068
+#4     1     5  227772560
 
-# align to reference raster (OPTION 1: MODE)
-#ngi_reclass_merged_reproj_algn_mode <- resample(ngi_reclass_merged_reproj, sa, method = "mode") # mode = good choice for categorical rasters
-                                                                            # if output cells overlap with multiple input cells
-#plot(ngi_reclass_merged_reproj_algn_mode)
+origin(ngi_merged_reproj) # 1.715237 -3.612827
+ngi_merged_reproj
 
-# Get values and counts
-#freq_table6 <- freq(ngi_reclass_merged_reproj_algn_mode) 
-#print(freq_table6) # 1: 144602453; 2: 113848371; 3: 32231685
+#class       : SpatRaster 
+#size        : 105922, 130315, 1  (nrow, ncol, nlyr)
+#resolution  : 9.754172, 9.754172  (x, y)
+#extent      : -1307057, -35942.41, 908773.1, 1941954  (xmin, xmax, ymin, ymax)
+#coord. ref. : North_America_Albers_Equal_Area_Conic 
+#source      : spat_21a6c5a8b200_137836_zxzxx9jyyx6UnnI.tif 
+#categories  : AB-002 
+#name        : AB-002 
+#min value   :      0 
+#max value   :      5 
 
-#res(ngi_reclass_merged_reproj_algn_mode) # 30 30
-#origin(ngi_reclass_merged_reproj_algn_mode) # 6.696121 -2.550334
-#crs(ngi_reclass_merged_reproj_algn_mode) # EPSG:9001
-#ext(ngi_reclass_merged_reproj_algn_mode) # SpatExtent : -2321003.30387889, 1585686.69612111, 270327.4496659, 2866497.4496659 (xmin, xmax, ymin, ymax)
-
-# Save the raster as 8-bit unsigned integer
-#ngi_mode_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_reclass_merged_reproj_algn_mode.tif")
-#writeRaster(ngi_reclass_merged_reproj_algn_mode, ngi_mode_out_path, datatype = "INT1U", 
-#            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
-#            NAflag = 255,
-#            overwrite = TRUE)
-
-# align to reference raster (OPTION 2: NEAREST NEIGHBOR)
-ngi_reclass_merged_reproj_algn_near <- resample(ngi_reclass_merged_reproj, sa, method = "near")
-plot(ngi_reclass_merged_reproj_algn_near)
+# align to reference raster (NEAREST NEIGHBOR)
+ngi_merged_reproj_algn <- resample(ngi_merged_reproj, sa, method = "near")
+plot(ngi_merged_reproj_algn)
 
 # Get values and counts
-freq_table7 <- freq(ngi_reclass_merged_reproj_algn_near) 
+freq_table7 <- freq(ngi_merged_reproj_algn) 
 print(freq_table7) # 1: 100921769; 1: 97023671; 3: 24084460
 
-res(ngi_reclass_merged_reproj_algn_near) # 30 30
-origin(ngi_reclass_merged_reproj_algn_near) # 6.696121 -2.550334
-crs(ngi_reclass_merged_reproj_algn_near) # EPSG:9001
-ext(ngi_reclass_merged_reproj_algn_near) # SpatExtent : -2321003.30387889, 1585686.69612111, 270327.4496659, 2866497.4496659 (xmin, xmax, ymin, ymax)
+#  layer value     count
+#1     1     0 581466091
+#2     1     2 100921769
+#3     1     3  97023671
+#4     1     5  24084460
+
+origin(ngi_merged_reproj_algn) # 6.696121 -2.550334
+ngi_merged_reproj_algn
+
+#class       : SpatRaster 
+#size        : 86539, 130223, 1  (nrow, ncol, nlyr)
+#resolution  : 30, 30  (x, y)
+#extent      : -2321003, 1585687, 270327.4, 2866497  (xmin, xmax, ymin, ymax)
+#coord. ref. : North_America_Albers_Equal_Area_Conic 
+#source      : spat_21a6c21c57717_137836_80Q6udnsxVen2Mq.tif 
+#varname     : class_study_area_aligned_cnvc_Dec2025 
+#categories  : AB-002 
+#name        : AB-002 
+#min value   :      0 
+#max value   :      5 
 
 # Save the raster as 8-bit unsigned integer
-ngi_near_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_reclass_merged_reproj_algn_near.tif")
-writeRaster(ngi_reclass_merged_reproj_algn_near, ngi_near_out_path, datatype = "INT1U", 
+ngi_algn_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn.tif")
+writeRaster(ngi_merged_reproj_algn, ngi_algn_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
 # Trim NA-only rows/columns
-ngi_reclass_merged_reproj_algn_near_trim <- trim(ngi_reclass_merged_reproj_algn_near)
-#ngi_reclass_merged_reproj_algn_mode_trim <- trim(ngi_reclass_merged_reproj_algn_mode)
+ngi_merged_reproj_algn_trim <- trim(ngi_merged_reproj_algn)
 
 # visualize the trimmed raster
-plot(ngi_reclass_merged_reproj_algn_near_trim)
-#plot(ngi_reclass_merged_reproj_algn_mode_trim)
+plot(ngi_merged_reproj_algn_trim)
 
 # print raster details 
-origin(ngi_reclass_merged_reproj_algn_near_trim) # 6.696121 -2.550334
-res(ngi_reclass_merged_reproj_algn_near_trim) # 30 30 
-crs(ngi_reclass_merged_reproj_algn_near_trim) # EPSG:9001
-ext(ngi_reclass_merged_reproj_algn_near_trim) # SpatExtent : -1242503.30387889, -41333.3038788857, 1062927.4496659, 1798587.4496659 (xmin, xmax, ymin, ymax)
+origin(ngi_merged_reproj_algn_trim) # 6.696121 -2.550334
+ngi_merged_reproj_algn_trim
 
-#origin(ngi_reclass_merged_reproj_algn_mode_trim) # 6.696121 -2.550334
-#res(ngi_reclass_merged_reproj_algn_mode_trim) # 30 30
-#crs(ngi_reclass_merged_reproj_algn_mode_trim) # # EPSG:9001
-#ext(ngi_reclass_merged_reproj_algn_mode_trim) # SpatExtent : -1242533.30387889, -41333.3038788857, 1062897.4496659, 1798587.4496659 (xmin, xmax, ymin, ymax)
+#class       : SpatRaster 
+#size        : 28401, 42370, 1  (nrow, ncol, nlyr)
+#resolution  : 30, 30  (x, y)
+#extent      : -1307063, -35963.3, 992127.4, 1844157  (xmin, xmax, ymin, ymax)
+#coord. ref. : North_America_Albers_Equal_Area_Conic 
+#source(s)   : memory
+#varname     : class_study_area_aligned_cnvc_Dec2025 
+#categories  : AB-002 
+#name        : AB-002 
+#min value   :      0 
+#max value   :      5
 
 # Save the raster as 8-bit unsigned integer
-ngi_near_trim_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_reclass_merged_reproj_algn_near_trim.tif")
-writeRaster(ngi_reclass_merged_reproj_algn_near_trim, ngi_near_trim_out_path, datatype = "INT1U", 
+ngi_trim_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_trim.tif")
+writeRaster(ngi_merged_reproj_algn_trim, ngi_trim_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
-# Save the raster as 8-bit unsigned integer
-#ngi_mode_trim_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_reclass_merged_reproj_algn_mode_trim.tif")
-#writeRaster(ngi_reclass_merged_reproj_algn_mode_trim, ngi_mode_trim_out_path, datatype = "INT1U", 
-#            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
-#            NAflag = 255,
-#            overwrite = TRUE)
-
-# reclassify to binary (values 2, 3, 5 become 1)
-ngi_algn_binary <- classify(ngi_reclass_merged_reproj_algn_near, 
-                               rcl = matrix(c(2, 1,
-                                 3, 1,
-                                 5, 1), 
+# reclassify to binary (values 2, 3, 5 become 1 = grass)
+ngi_algn_binary <- classify(ngi_merged_reproj_algn, 
+                               rcl = matrix(c(
+                                 0, 0, # not grass
+                                 2, 1, # tame
+                                 3, 1, # native
+                                 5, 1), # mixed
                                ncol = 2, byrow = TRUE))
 
+plot(ngi_algn_binary)
+ngi_algn_binary
+
+#class       : SpatRaster 
+#size        : 86539, 130223, 1  (nrow, ncol, nlyr)
+#resolution  : 30, 30  (x, y)
+#extent      : -2321003, 1585687, 270327.4, 2866497  (xmin, xmax, ymin, ymax)
+#coord. ref. : North_America_Albers_Equal_Area_Conic 
+#source      : spat_21a6c522163a7_137836_DvggOkjkTOQeAAI.tif 
+#varname     : class_study_area_aligned_cnvc_Dec2025 
+#name        : AB-002 
+#min value   :      0 
+#max value   :      1
+
 # Save the raster as 8-bit unsigned integer
-ngi_binary_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_reclass_merged_reproj_algn_binary.tif")
+ngi_binary_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_binary.tif")
 writeRaster(ngi_algn_binary, ngi_binary_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
-## NEED TO RUN
+# load NGI raster
+ngi <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn.tif")
+ngi_algn <- rast(ngi)
+plot(ngi_algn)
+
+# use extent file to mask out zeroes that should be NA
+
+# Load study area raster
+ngi_extent <- vect(ngi_extent_file)
+ngi_extent
+
+plot(ngi_extent)
+
+# project the vector to the raster CRS:
+ngi_extent <- project(ngi_extent, crs(sa))
+
+# Rasterize classification study area using CNVC raster as template
+ngi_extent_rast <- rasterize(ngi_extent, sa, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
+# touches=TRUE ensures that any cell touched by the polygon is included
+
+plot(ngi_extent_rast)
+
+# crop to pilot area
+ngi_crop_ext <- ext(ngi_extent_rast)
+ngi_cropped <- crop(ngi_algn, ngi_crop_ext)
+ngi_cropped
+plot (ngi_cropped)
+
+# mask to pilot area
+ngi_masked <- mask(ngi_cropped, ngi_extent_rast)
+ngi_masked
+plot(ngi_masked)
+
+# Save the raster as 8-bit unsigned integer
+ngi_masked_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_good.tif")
+writeRaster(ngi_masked, ngi_masked_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native)
+ngi_algn_nattam <- classify(ngi_masked, 
+                            rcl = matrix(c(
+                              0, 0, # not grass
+                              2, 1, # tame
+                              3, 2, # native
+                              5, 1), # mixed
+                              ncol = 2, byrow = TRUE))
+plot(ngi_algn_nattam)
+ngi_algn_nattam
+
+# Save the raster as 8-bit unsigned integer
+ngi_nattam_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_natvtam_good.tif")
+writeRaster(ngi_algn_nattam, ngi_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to isolate each class
+ngi_algn_native <- classify(ngi_masked, 
+                            rcl = matrix(c(
+                              0, 0, # not grass
+                              2, 0, # tame
+                              3, 1, # native
+                              5, 0), # mixed
+                              ncol = 2, byrow = TRUE))
+plot(ngi_algn_native)
+ngi_algn_native
+
+# Save the raster as 8-bit unsigned integer
+ngi_native_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_native.tif")
+writeRaster(ngi_algn_native, ngi_native_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to isolate each class
+ngi_algn_tame <- classify(ngi_masked, 
+                            rcl = matrix(c(
+                              0, 0, # not grass
+                              2, 1, # tame
+                              3, 0, # native
+                              5, 0), # mixed
+                              ncol = 2, byrow = TRUE))
+plot(ngi_algn_tame)
+ngi_algn_tame
+
+# Save the raster as 8-bit unsigned integer
+ngi_tame_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_tame.tif")
+writeRaster(ngi_algn_tame, ngi_tame_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to isolate each class
+ngi_algn_mixed <- classify(ngi_masked, 
+                            rcl = matrix(c(
+                              0, 0, # not grass
+                              2, 0, # tame
+                              3, 0, # native
+                              5, 1), # mixed
+                              ncol = 2, byrow = TRUE))
+plot(ngi_algn_mixed)
+ngi_algn_mixed
+
+# Save the raster as 8-bit unsigned integer
+ngi_mixed_out_path <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_mixed.tif")
+writeRaster(ngi_algn_mixed, ngi_mixed_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+  
 # Load study area raster
 pa <- rast(pa_file)
 
@@ -287,30 +424,70 @@ crs(pa)
 
 # crop to pilot area
 crop_ext <- ext(pa)
-luts_pa <- crop(luts_merged_algn, crop_ext)
-luts_pa
-plot (luts_pa)
+ngi_pa <- crop(ngi_merged_reproj_algn, crop_ext)
+ngi_pa
+plot (ngi_pa)
 
 # mask to pilot area
-luts_masked <- mask(luts_pa, pa)
-luts_masked
-plot(luts_masked)
+ngi_masked <- mask(ngi_pa, pa)
+ngi_masked
+plot(ngi_masked)
+
+#class       : SpatRaster 
+#size        : 1367, 1692, 1  (nrow, ncol, nlyr)
+#resolution  : 30, 30  (x, y)
+#extent      : -828263.3, -777503.3, 1111437, 1152447  (xmin, xmax, ymin, ymax)
+#coord. ref. : North_America_Albers_Equal_Area_Conic 
+#source(s)   : memory
+#varname     : cfga_ngi_reclass_merged_reproj_algn_near 
+#categories  : label 
+#name        :  label 
+#min value   :   Tame 
+#max value   : Native 
 
 # print raster details 
-origin(luts_masked)
-res(luts_masked)
-crs(luts_masked)
+origin(ngi_masked) # 6.696121 -2.550334
+res(ngi_masked)
+crs(ngi_masked)
 
 # Save the raster as 8-bit unsigned integer
-luts_pa_out_path <- file.path(luts_cropped_dir, "aafc_luts_merged_reproj_algn_crop_pa.tif")
-writeRaster(luts_masked, luts_pa_out_path, datatype = "INT1U", 
+ngi_pa_out_path <- file.path(ngi_pilot_dir, "ngi_merged_reproj_algn_crop_pa.tif")
+writeRaster(ngi_masked, ngi_pa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
+# crop binary raster to pilot area
+ngi_bin_pa <- crop(ngi_algn_binary, crop_ext)
+ngi_bin_pa
+plot (ngi_bin_pa)
 
+# mask to pilot area
+ngi_bin_masked <- mask(ngi_bin_pa, pa)
+ngi_bin_masked
+plot(ngi_bin_masked)
 
+# Save the raster as 8-bit unsigned integer
+ngi_bin_pa_out_path <- file.path(ngi_pilot_dir, "ngi_merged_reproj_algn_crop_pa_binary.tif")
+writeRaster(ngi_bin_masked, ngi_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
 
+# crop native vs. tame raster to pilot area
+ngi_nt_pa <- crop(ngi_algn_nattam, crop_ext)
+ngi_nt_pa
+plot (ngi_nt_pa)
 
+# mask to pilot area
+ngi_nt_masked <- mask(ngi_nt_pa, pa)
+ngi_nt_masked
+plot(ngi_nt_masked)
 
+# Save the raster as 8-bit unsigned integer
+ngi_nt_pa_out_path <- file.path(ngi_pilot_dir, "ngi_merged_reproj_algn_crop_pa_natvtam.tif")
+writeRaster(ngi_nt_masked, ngi_nt_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
 
