@@ -15,12 +15,12 @@ library(sf)
 library(tidyverse)
 
 # Set the temporary directory to a drive with sufficient space
-terraOptions(tempdir = "R:/CanadianGrasslands")
+terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification")
 
 ####--- DIRECTORIES ---####
 
 # study area
-sa_dir <- "./processeddatasets/Studyarea"
+sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
 # grasslands
 raw_grass_data_dir <- "./existingdatasets/class_inputs"

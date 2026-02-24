@@ -14,15 +14,15 @@ library(sf)
 library(tidyverse)
 
 # set the temporary directory to a drive with sufficient space
-terraOptions(tempdir = "R:/CanadianGrasslands")
+terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/github/tomorrows-prairies/scratch")
 
 ####--- DIRECTORIES ---####
 
 # pilot area
-pa_dir <- "./processeddatasets/pilot_area"
+pa_dir <- "R:/CanadianGrasslands/processeddatasets/pilotarea"
 
 # study area
-sa_dir <- "./processeddatasets/Studyarea"
+sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
 ####--- FILES ---####
 
@@ -57,14 +57,17 @@ plot(sa_rast)
 # load study area shapefiles
 mod_sa_vect <- vect(mod_sa_file)
 mod_ext_vect <- vect(mod_ext_file)
+pa_vect <- vect(pa_file)
 
 # Reproject study areas to match reference raster CRS
 mod_sa_vect_proj <- project(mod_sa_vect, crs(sa_rast))
 mod_ext_vect_proj <- project(mod_ext_vect, crs(sa_rast))
+pa_vect_proj <- project(pa_vect, crs(sa_rast))
 
 # Rasterize study areas using reference raster as template
 mod_sa_rast <- rasterize(mod_sa_vect_proj, sa_rast, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
 mod_ext_rast <- rasterize(mod_ext_vect_proj, sa_rast, field=1, touches=TRUE) # touches=TRUE ensures that any cell touched by the polygon is included
+pa_rast <- rasterize(pa_vect_proj, sa_rast, field=1, touches=TRUE)
 
 # print raster details 
 origin(mod_sa_rast)
@@ -76,17 +79,25 @@ origin(mod_ext_rast)
 res(mod_ext_rast)
 crs(mod_ext_rast)
 
+# print raster details 
+origin(pa_rast)
+res(pa_rast)
+crs(pa_rast)
+
 # visualize the new rasters
 plot(mod_sa_rast)
 plot(mod_ext_rast)
+plot(pa_rast)
 
 # Trim NA-only rows/columns
 mod_sa_rast_trimmed <- trim(mod_sa_rast)
 mod_ext_rast_trimmed <- trim(mod_ext_rast)
+pa_rast_trimmed <- trim(pa_rast)
 
 # plot again
 plot(mod_sa_rast_trimmed)
 plot(mod_ext_rast_trimmed)
+plot(pa_rast_trimmed)
 
 # Check extents - they differ...
 #ext(sa_rast)
@@ -123,9 +134,16 @@ writeRaster(mod_ext_rast_trimmed, mod_ext_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+pa_out_path <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
+writeRaster(pa_rast_trimmed, pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
 # Convert raster to polygons (excluding NA values)
 mod_sa_polygons <- as.polygons(mod_sa_rast_trimmed, na.rm = TRUE, dissolve = TRUE)
 mod_ext_polygons <- as.polygons(mod_ext_rast_trimmed, na.rm = TRUE, dissolve = TRUE)
+pa_polygons <- as.polygons(pa_rast_trimmed, na.rm = TRUE, dissolve = TRUE)
 
 # Export shapefile
 mod_sa_out_shp <- file.path(sa_dir, "modelling_study_area_aligned_cnvc_Jan2026.shp")
@@ -133,3 +151,6 @@ writeVector(mod_sa_polygons, mod_sa_out_shp, overwrite = TRUE)
 
 mod_ext_out_shp <- file.path(sa_dir, "modelling_extent_aligned_cnvc_Jan2026.shp")
 writeVector(mod_ext_polygons, mod_ext_out_shp, overwrite = TRUE)
+
+pa_out_shp <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.shp")
+writeVector(pa_polygons, pa_out_shp, overwrite = TRUE)
