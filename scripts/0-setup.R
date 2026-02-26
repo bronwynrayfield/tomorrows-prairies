@@ -15,8 +15,8 @@ res <- 30
 
 #--- File names ----
 # Study Area
-sa_filename <- "modelling_extent_aligned_cnvc_Jan2026.shp"
-me_filename <- "modelling_extent_with_buffer_aligned_cnvc_Jan2026.shp"
+sa_filename <- "modelling_study_area_aligned_cnvc_Jan2026.shp"
+me_filename <- "modelling_extent_aligned_cnvc_Jan2026.shp"
 
 # File names
 # Boundaries
