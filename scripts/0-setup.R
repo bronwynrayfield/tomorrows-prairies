@@ -16,7 +16,9 @@ res <- 30
 #--- File names ----
 # Study Area
 sa_filename <- "modelling_study_area_aligned_cnvc_Jan2026.shp"
+sa_raster_filename <- "modelling_study_area_aligned_cnvc_Jan2026.tif"
 me_filename <- "modelling_extent_aligned_cnvc_Jan2026.shp"
+me_raster_filename <- "modelling_extent_aligned_cnvc_Jan2026.tif"
 
 # File names
 # Boundaries
@@ -32,8 +34,8 @@ aafc2020_filename <- "AAFC2020_merged.tif"
 aafc2015_filename <- "AAFC2015_merged.tif"
 aafc2010_filename <- "AAFC2010_merged.tif"
 aafc2000_filename <- "AAFC2000_merged.tif"
-road_filename <- "NRN_SK_14_0_GPKG_en.gpkg"
-#road_filename <- "roadless_data.mpk"
+#road_filename <- "NRN_SK_14_0_GPKG_en.gpkg"
+road_filename <- "roads.gdb"
 grass_loss_class_filename <- "recentchange_2022_loss_c05_grass_b01_class.tif"
 grass_loss_year_filename <- "recentchange_2022_loss_c05_grass_b03_year.tif"
 ipast_loss_class_filename <- "recentchange_2022_loss_c10_ipast_b01_class.tif"
@@ -61,6 +63,11 @@ sand_filename <- "sand.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_2022123
 silt_filename <- "silt.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250523_clip.tif"
 ph_filename <- "ph.h2o_iso.10390.2021.index_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250204_clip.tif"
 
+# Topography
+dem_filename <- "MRDEM Digital Terrain Model (COG).tif" 
+slope_filename <- "slope.tif"
+aspect_filename <- "aspect.tif"
+
 #--- File paths ----
 # partial path in either the existing or processed data directories
 
@@ -76,8 +83,8 @@ census_subdivision_filepath <- "boundaries/census-subdivisions"
 
 # LULC
 aafc_filepath <- "landcover/AAFC LUTS 30m"
-road_filepath <- "landcover/National Road Network/NRN_RRN_SK_GPKG"
-#road_filepath <- "landcover/Roads - Poley et al 2021/Data"
+#road_filepath <- "landcover/National Road Network/NRN_RRN_SK_GPKG"
+road_filepath <- "landcover/Roads - Poley et al 2021"
 grass_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/loss/c05_grass"
 ipast_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/loss/c10_ipast"
 upast_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/loss/c04_upast"
@@ -93,6 +100,9 @@ pa_filepath <- "management/ProtectedConservedArea_2024"
 
 # Soil
 soil_filepath <- "soil"
+
+# Topography
+dem_filepath <- "topography/NRCan_MRDEM_30m"
 
 #--- Scale ----
 oc_scale <- 10

@@ -1,6 +1,6 @@
 # Data pre-processing -> cropping
 
-#--- Setup ----
+# Setup
 source(file.path("scripts", "0-setup.R"))
 source(file.path("scripts", "0-functions-general.R"))
 
@@ -9,6 +9,7 @@ source(file.path("scripts", "0-functions-general.R"))
 pilot <- st_read(file.path("./processeddatasets", pilot_filepath, pilot_filename))
 sa <- st_read(file.path(sa_filepath, sa_filename))
 me <- st_read(file.path(sa_filepath, me_filename))
+me_r <- rast(file.path(sa_filepath, me_raster_filename))
 
 # Olimb & Robinson 2019 cropland suitability
 crop_suit_reproj<- rast(tagged_path("./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "proj-naaea"))
@@ -25,10 +26,10 @@ ecodistricts_reproj <- st_read(tagged_path("./processeddatasets", ecodistricts_f
 roads_reproj <-st_read(file.path("./processeddatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG")
 
 # LULC - AAFC LUTS
-lulc2020_prairies_reproj <- rast(tagged_path("./processeddatasets", aafc_filepath, "reprojected", aafc2020_filename, "proj-naaea"))
-lulc2015_prairies_reproj <- rast(tagged_path("./processeddatasets", aafc_filepath, "reprojected", aafc2015_filename, "proj-naaea"))
-lulc2010_prairies_reproj <- rast(tagged_path("./processeddatasets", aafc_filepath, "reprojected", aafc2010_filename, "proj-naaea"))
-lulc2000_prairies_reproj <- rast(tagged_path("./processeddatasets", aafc_filepath, "reprojected", aafc2000_filename, "proj-naaea"))
+lulc2020_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2020_filename, "proj-naaea"))
+lulc2015_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2015_filename, "proj-naaea"))
+lulc2010_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2010_filename, "proj-naaea"))
+lulc2000_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2000_filename, "proj-naaea"))
 
 # ECCC most recent change
 grass_loss_class_reproj <- rast(tagged_path("./processeddatasets", grass_loss_filepath, grass_loss_class_filename, "proj-naaea"))
@@ -48,13 +49,15 @@ builtup_gain_year_reproj <- rast(tagged_path("./processeddatasets", builtup_gain
 #pa_reproj <- st_read(file.path("./processeddatasets", pa_filepath, paste0(pa_filename, ".gdb")), layer = pa_filename)
 
 # Soil
-oc_reproj <- rast(tagged_path("./processeddatasets", tolower(soil_filepath), oc_filename, "proj-naaea"))
-bd_reproj <- rast(tagged_path("./processeddatasets", tolower(soil_filepath), bd_filename, "proj-naaea"))
-clay_reproj <- rast(tagged_path("./processeddatasets", tolower(soil_filepath), clay_filename, "proj-naaea"))
-sand_reproj <- rast(tagged_path("./processeddatasets", tolower(soil_filepath), sand_filename, "proj-naaea"))
-silt_reproj <- rast(tagged_path("./processeddatasets", tolower(soil_filepath), silt_filename, "proj-naaea"))
-ph_reproj <- rast(tagged_path("./processeddatasets", tolower(soil_filepath), ph_filename, "proj-naaea"))
+oc_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, oc_filename, "proj-naaea"))
+bd_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, bd_filename, "proj-naaea"))
+clay_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, clay_filename, "proj-naaea"))
+sand_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, sand_filename, "proj-naaea"))
+silt_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, silt_filename, "proj-naaea"))
+ph_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, ph_filename, "proj-naaea"))
 
+# Topography
+dem_reproj <- rast(tagged_path("./processeddatasets", dem_filepath, dem_filename, "proj-naaea"))
 
 #--- Crop and mask to pilot area ----
 # LULC - AAFC LUTS
@@ -74,41 +77,48 @@ ecoregions <- st_intersection(ecoregions_reproj, me)
 ecodistricts <- st_intersection(ecodistricts_reproj, me)
 
 # Roads
-# Crop using padded pilot area to avoid edge effects
-roads <- st_intersection(roads_reproj, pilot_pad_sf)
+roads <- st_intersection(roads_reproj, me)
 plot(roads["ROADCLASS"], main = "Roads by Class", key.pos = 4)
+roads <- mask(crop(roads_r, me), me)
 
 # Cropland suitability
-crop_suit <- mask(crop(crop_suit_reproj, me), me)
+crop_suit <- mask(crop(crop_suit_reproj, me_r), me_r)
 plot(crop_suit, main = "Cropland suitability (2019)")
 
 # LULC - AAFC LUTS
-lulc2020 <- mask(crop(lulc2020_prairies_reproj, me), me)
-lulc2015 <- mask(crop(lulc2015_prairies_reproj, me), me)
-lulc2010 <- mask(crop(lulc2010_prairies_reproj, me), me)
-lulc2000 <- mask(crop(lulc2000_prairies_reproj, me), me)
+lulc2020 <- mask(crop(lulc2020_prairies_reproj, me_r), me_r)
+lulc2015 <- mask(crop(lulc2015_prairies_reproj, me_r), me_r)
+lulc2010 <- mask(crop(lulc2010_prairies_reproj, me_r), me_r)
+lulc2000 <- mask(crop(lulc2000_prairies_reproj, me_r), me_r)
 
 # ECCC most recent change
-grass_loss_class <- mask(crop(grass_loss_class_reproj, me), me)
-grass_loss_year <- mask(crop(grass_loss_year_reproj, me), me)
-ipast_loss_class <- mask(crop(ipast_loss_class_reproj, me), me)
-ipast_loss_year <- mask(crop(ipast_loss_year_reproj, me), me)
-upast_loss_class <- mask(crop(upast_loss_class_reproj, me), me)
-upast_loss_year <- mask(crop(upast_loss_year_reproj, me), me)
-crop_loss_class <- mask(crop(crop_loss_class_reproj, me), me)
-crop_loss_year <- mask(crop(crop_loss_year_reproj, me), me)
-crop_gain_class <- mask(crop(crop_gain_class_reproj, me), me)
-crop_gain_year <- mask(crop(crop_gain_year_reproj, me), me)
-builtup_gain_class <- mask(crop(builtup_gain_class_reproj, me), me)
-builtup_gain_year <- mask(crop(builtup_gain_year_reproj, me), me)
+grass_loss_class <- mask(crop(grass_loss_class_reproj, me_r), me_r)
+grass_loss_year <- mask(crop(grass_loss_year_reproj, me_r), me_r)
+ipast_loss_class <- mask(crop(ipast_loss_class_reproj, me_r), me_r)
+ipast_loss_year <- mask(crop(ipast_loss_year_reproj, me_r), me_r)
+upast_loss_class <- mask(crop(upast_loss_class_reproj, me_r), me_r)
+upast_loss_year <- mask(crop(upast_loss_year_reproj, me_r), me_r)
+crop_loss_class <- mask(crop(crop_loss_class_reproj, me_r), me_r)
+crop_loss_year <- mask(crop(crop_loss_year_reproj, me_r), me_r)
+crop_gain_class <- mask(crop(crop_gain_class_reproj, me_r), me_r)
+crop_gain_year <- mask(crop(crop_gain_year_reproj, me_r), me_r)
+builtup_gain_class <- mask(crop(builtup_gain_class_reproj, me_r), me_r)
+builtup_gain_year <- mask(crop(builtup_gain_year_reproj, me_r), me_r)
 
 # Soil
-oc <- mask(crop(oc_reproj, me), me)
-bd <- mask(crop(bd_reproj, me), me)
-clay <- mask(crop(clay_reproj, me), me)
-sand <- mask(crop(sand_reproj, me), me)
-silt <- mask(crop(silt_reproj, me), me)
-ph <- mask(crop(ph_reproj, me), me)
+oc <- mask(crop(oc_reproj, me_r), me_r)
+bd <- mask(crop(bd_reproj, me_r), me_r)
+clay <- mask(crop(clay_reproj, me_r), me_r)
+sand <- mask(crop(sand_reproj, me_r), me_r)
+silt <- mask(crop(silt_reproj, me_r), me_r)
+ph <- mask(crop(ph_reproj, me_r), me_r)
+
+# Topography
+dem <- mask(crop(dem_reproj, me_r), me_r)
+slope  <- terrain(dem, "slope",  unit="degrees")
+aspect <- terrain(dem, "aspect", unit="degrees")
+aspect[slope < 0.5] <- NA
+
 
 #--- Write to disk ----
 # Pilot area
@@ -117,16 +127,18 @@ write_rast_tagged(lulc2015_pilot, "./processeddatasets", "landcover/aafc/cropped
 write_rast_tagged(crop_suit_pilot, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "pilot")
 
 
-#Study area with buffer
+# Modelling extent
 write_sf_tagged(census, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "modelling-extent")
 write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_filename, "modelling-extent")
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
+write_sf_tagged(roads, "./processeddatasets", road_filepath, road_filename, "modelling-extent", layer = "roads_merge")
+write_rast_tagged(roads, "./processeddatasets", road_filepath, "roads.tif", "modelling-extent")
 write_rast_tagged(crop_suit, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent")
-write_rast_tagged(lulc2020, "./processeddatasets", aafc_filepath, "cropped", aafc2020_filename, "modelling-extent")
-write_rast_tagged(lulc2015, "./processeddatasets", aafc_filepath, "cropped", aafc2015_filename, "modelling-extent")
-write_rast_tagged(lulc2010, "./processeddatasets", aafc_filepath, "cropped", aafc2010_filename, "modelling-extent")
-write_rast_tagged(lulc2000, "./processeddatasets", aafc_filepath, "cropped", aafc2000_filename, "modelling-extent")
+write_rast_tagged(lulc2020, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent")
+write_rast_tagged(lulc2015, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2015_filename, "modelling-extent")
+write_rast_tagged(lulc2010, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2010_filename, "modelling-extent")
+write_rast_tagged(lulc2000, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2000_filename, "modelling-extent")
 write_rast_tagged(grass_loss_class, "./processeddatasets", grass_loss_filepath, grass_loss_class_filename, "modelling-extent")
 write_rast_tagged(grass_loss_year,  "./processeddatasets", grass_loss_filepath, grass_loss_year_filename,  "modelling-extent")
 write_rast_tagged(ipast_loss_class, "./processeddatasets", ipast_loss_filepath, ipast_loss_class_filename, "modelling-extent")
@@ -145,11 +157,18 @@ write_rast_tagged(clay, "./processeddatasets", soil_filepath, clay_filename, "mo
 write_rast_tagged(sand, "./processeddatasets", soil_filepath, sand_filename, "modelling-extent", datatype="FLT4S")
 write_rast_tagged(silt, "./processeddatasets", soil_filepath, silt_filename, "modelling-extent", datatype="FLT4S")
 write_rast_tagged(ph, "./processeddatasets", soil_filepath, ph_filename, "modelling-extent", datatype="FLT4S")
+write_rast_tagged(dem, "./processeddatasets", dem_filepath, dem_filename, "modelling-extent")
+write_rast_tagged(slope, "./processeddatasets", dem_filepath, slope_filename, "modelling-extent")
+write_rast_tagged(aspect, "./processeddatasets", dem_filepath, aspect_filename, "modelling-extent")
+
 
 #st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
 #st_write(pa, file.path("./processeddatasets", pilot_filepath, "pa_pilot.shp"), delete_dsn = TRUE)
 #st_write(gnp, file.path("./processeddatasets", pilot_filepath, "gnp_park_pilot.shp"))
 
+
+
+dist_to_road_m <- distance(roads)
 
 
 #--- Extra ----
