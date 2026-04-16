@@ -44,6 +44,7 @@ glc_root <- file.path(raw_grass_data_dir, "Land Cover/GLC_FCS30D/GLC_FCS30D_1985
 glc_merged_dir <- file.path(proc_grass_data_dir, "glc_fcs30d/merged")
 glc_aligned_dir <- file.path(proc_grass_data_dir, "glc_fcs30d/aligned")
 glc_cropped_dir <- file.path(proc_grass_data_dir, "glc_fcs30d/cropped")
+glc_masked_dir <- file.path(proc_grass_data_dir, "glc_fcs30d/masked")
 glc_pilot_dir <- file.path(proc_grass_data_dir, "glc_fcs30d/pilot")
 
 ####--- Files ---####
@@ -501,6 +502,58 @@ plot(glc_bin_masked)
 # Save the raster as 8-bit unsigned integer
 glc_bin_pa_out_path <- file.path(glc_pilot_dir, "glc_reproj_algn_crop_pa_binary_noshrub.tif")
 writeRaster(glc_bin_masked, glc_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+glc_file <- file.path(glc_aligned_dir, "glc_merged_reproj_algn.tif")
+glc <- rast(glc_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+glc_sa <- crop(glc, crop_ext)
+glc_sa
+plot (glc_sa)
+
+# mask to study area
+glc_masked <- mask(glc_sa, sa)
+glc_masked
+plot(glc_masked)
+
+# Save the raster as 8-bit unsigned integer
+glc_sa_out_path <- file.path(glc_masked_dir, "glc_merged_reproj_algn_masked.tif")
+writeRaster(glc_masked, glc_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+glc_binary_file <- file.path(glc_aligned_dir, "glc_reproj_algn_binary_noshrub.tif")
+glc_binary <- rast(glc_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+glc_bin_sa <- crop(glc_binary, crop_ext)
+glc_bin_sa
+plot (glc_bin_sa)
+
+# mask to study area
+glc_bin_masked <- mask(glc_bin_sa, sa)
+glc_bin_masked
+plot(glc_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+glc_bin_sa_out_path <- file.path(glc_masked_dir, "glc_reproj_algn_binary_noshrub_masked.tif")
+writeRaster(glc_bin_masked, glc_bin_sa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

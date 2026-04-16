@@ -12,7 +12,7 @@
 library(terra)
 library(sf)
 library(tidyverse)
-library(rnaturalearth)
+#library(rnaturalearth)
 
 # Set the temporary directory to a drive with sufficient space
 terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
@@ -31,9 +31,10 @@ proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
 out_grass_dir <- "./outputs/grass"
 
 # nalcms directory
-nalcms_root <- file.path(raw_grass_data_dir, "Land Cover/CEC North American Land Change Monitoring System 2020/can_land_cover_2020v2_30m_tif/CAN_NALCMS_landcover_2020v2_30m/data")
+nalcms_root <- file.path(raw_grass_data_dir, "Landcover/CEC North American Land Change Monitoring System 2020/can_land_cover_2020v2_30m_tif/CAN_NALCMS_landcover_2020v2_30m/data")
 nalcms_aligned_dir <- file.path(proc_grass_data_dir, "cec_nalcms/aligned")
 nalcms_cropped_dir <- file.path(proc_grass_data_dir, "cec_nalcms/cropped")
+nalcms_mask_dir <- file.path(proc_grass_data_dir, "cec_nalcms/masked")
 nalcms_pilot_dir <- file.path(proc_grass_data_dir, "cec_nalcms/pilot")
 
 ####--- Files ---####
@@ -239,6 +240,58 @@ plot(nalcms_bin_masked)
 # Save the raster as 8-bit unsigned integer
 nalcms_bin_pa_out_path <- file.path(nalcms_pilot_dir, "nalcms_reproj_algn_crop_pa_binary_noshrub.tif")
 writeRaster(nalcms_bin_masked, nalcms_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+nalcms_file <- file.path(nalcms_aligned_dir, "nalcms_reproj_algn.tif")
+nalcms <- rast(nalcms_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+nalcms_sa <- crop(nalcms, crop_ext)
+nalcms_sa
+plot (nalcms_sa)
+
+# mask to study area
+nalcms_masked <- mask(nalcms_sa, sa)
+nalcms_masked
+plot(nalcms_masked)
+
+# Save the raster as 8-bit unsigned integer
+nalcms_sa_out_path <- file.path(nalcms_mask_dir, "nalcms_reproj_algn_masked.tif")
+writeRaster(nalcms_masked, nalcms_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+nalcms_binary_file <- file.path(nalcms_aligned_dir, "nalcms_reproj_algn_binary_noshrub.tif")
+nalcms_binary <- rast(nalcms_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+nalcms_bin_sa <- crop(nalcms_binary, crop_ext)
+nalcms_bin_sa
+plot (nalcms_bin_sa)
+
+# mask to study area
+nalcms_bin_masked <- mask(nalcms_bin_sa, sa)
+nalcms_bin_masked
+plot(nalcms_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+nalcms_bin_sa_out_path <- file.path(nalcms_mask_dir, "nalcms_reproj_algn_binary_noshrub_masked.tif")
+writeRaster(nalcms_bin_masked, nalcms_bin_sa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

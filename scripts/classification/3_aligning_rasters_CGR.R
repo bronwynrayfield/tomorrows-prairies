@@ -33,6 +33,7 @@ out_grass_dir <- "./outputs/grass"
 cgr_root <- file.path(raw_grass_data_dir, "cgr_gam_adv")
 cgr_aligned_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/aligned")
 cgr_cropped_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/cropped")
+cgr_masked_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/masked")
 cgr_pilot_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/pilot")
 
 ####--- Files ---####
@@ -475,6 +476,258 @@ cgr_algn_plwencrch
 # Save the raster as 8-bit unsigned integer
 cgr_plwencrch_out_path <- file.path(cgr_aligned_dir, "cgr_reproj_algn_plowed_encroached.tif")
 writeRaster(cgr_algn_plwencrch, cgr_plwencrch_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+cgr_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn.tif")
+cgr <- rast(cgr_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_sa <- crop(cgr, crop_ext)
+cgr_sa
+plot (cgr_sa)
+
+# mask to study area
+cgr_masked <- mask(cgr_sa, sa)
+cgr_masked
+plot(cgr_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_masked.tif")
+writeRaster(cgr_masked, cgr_sa_out_path, datatype = "INT2U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 65535,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+cgr_binary_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_binary.tif")
+cgr_binary <- rast(cgr_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_bin_sa <- crop(cgr_binary, crop_ext)
+cgr_bin_sa
+plot (cgr_bin_sa)
+
+# mask to study area
+cgr_bin_masked <- mask(cgr_bin_sa, sa)
+cgr_bin_masked
+plot(cgr_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_bin_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_binary_masked.tif")
+writeRaster(cgr_bin_masked, cgr_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native vs tame raster
+cgr_nattam_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_natvtam.tif")
+cgr_nattam <- rast(cgr_nattam_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_nt_sa <- crop(cgr_nattam, crop_ext)
+cgr_nt_sa
+plot (cgr_nt_sa)
+
+# mask to study area
+cgr_nt_masked <- mask(cgr_nt_sa, sa)
+cgr_nt_masked
+plot(cgr_nt_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_nt_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_natvtam_masked.tif")
+writeRaster(cgr_nt_masked, cgr_nt_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_cg_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_core_grass.tif")
+cgr_cg <- rast(cgr_cg_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_cg_sa <- crop(cgr_cg, crop_ext)
+cgr_cg_sa
+plot (cgr_cg_sa)
+
+# mask to study area
+cgr_cg_masked <- mask(cgr_cg_sa, sa)
+cgr_cg_masked
+plot(cgr_cg_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_cg_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_core_grass_masked.tif")
+writeRaster(cgr_cg_masked, cgr_cg_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_encr_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_encroached.tif")
+cgr_encr <- rast(cgr_encr_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_encr_sa <- crop(cgr_encr, crop_ext)
+cgr_encr_sa
+plot (cgr_encr_sa)
+
+# mask to study area
+cgr_encr_masked <- mask(cgr_encr_sa, sa)
+cgr_encr_masked
+plot(cgr_encr_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_encr_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_encroached_masked.tif")
+writeRaster(cgr_encr_masked, cgr_encr_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_pl_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_plowed.tif")
+cgr_pl <- rast(cgr_pl_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_pl_sa <- crop(cgr_pl, crop_ext)
+cgr_pl_sa
+plot (cgr_pl_sa)
+
+# mask to study area
+cgr_pl_masked <- mask(cgr_pl_sa, sa)
+cgr_pl_masked
+plot(cgr_pl_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_pl_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_plowed_masked.tif")
+writeRaster(cgr_pl_masked, cgr_pl_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_pe_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_plowed_encroached.tif")
+cgr_pe <- rast(cgr_pe_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_pe_sa <- crop(cgr_pe, crop_ext)
+cgr_pe_sa
+plot(cgr_pe_sa)
+
+# mask to study area
+cgr_pe_masked <- mask(cgr_pe_sa, sa)
+cgr_pe_masked
+plot(cgr_pe_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_pe_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_plowed_encroached_masked.tif")
+writeRaster(cgr_pe_masked, cgr_pe_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_vb_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_vuln_both.tif")
+cgr_vb <- rast(cgr_vb_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_vb_sa <- crop(cgr_vb, crop_ext)
+cgr_vb_sa
+plot(cgr_vb_sa)
+
+# mask to study area
+cgr_vb_masked <- mask(cgr_vb_sa, sa)
+cgr_vb_masked
+plot(cgr_vb_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_vb_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_vuln_both_masked.tif")
+writeRaster(cgr_vb_masked, cgr_vb_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_vc_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_vuln_conv.tif")
+cgr_vc <- rast(cgr_vc_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_vc_sa <- crop(cgr_vc, crop_ext)
+cgr_vc_sa
+plot(cgr_vc_sa)
+
+# mask to study area
+cgr_vc_masked <- mask(cgr_vc_sa, sa)
+cgr_vc_masked
+plot(cgr_vc_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_vc_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_vuln_conv_masked.tif")
+writeRaster(cgr_vc_masked, cgr_vc_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load class raster
+cgr_ve_file <- file.path(cgr_aligned_dir, "cgr_reproj_algn_vuln_encrch.tif")
+cgr_ve <- rast(cgr_ve_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cgr_ve_sa <- crop(cgr_ve, crop_ext)
+cgr_ve_sa
+plot(cgr_ve_sa)
+
+# mask to study area
+cgr_ve_masked <- mask(cgr_ve_sa, sa)
+cgr_ve_masked
+plot(cgr_ve_masked)
+
+# Save the raster as 8-bit unsigned integer
+cgr_ve_sa_out_path <- file.path(cgr_masked_dir, "cgr_reproj_algn_vuln_encrch_masked.tif")
+writeRaster(cgr_ve_masked, cgr_ve_sa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

@@ -34,6 +34,7 @@ out_grass_dir <- "./outputs/grass"
 gpw_root <- file.path(raw_grass_data_dir, "wri_gpw_ann")
 gpw_aligned_dir <- file.path(proc_grass_data_dir, "wri_gpw_ann/aligned")
 gpw_cropped_dir <- file.path(proc_grass_data_dir, "wri_gpw_ann/cropped")
+gpw_masked_dir <- file.path(proc_grass_data_dir, "wri_gpw_ann/masked")
 gpw_pilot_dir <- file.path(proc_grass_data_dir, "wri_gpw_ann/pilot")
 
 ####--- Files ---####
@@ -405,6 +406,133 @@ plot(gpw_nt_masked)
 # Save the raster as 8-bit unsigned integer
 gpw_nt_pa_out_path <- file.path(gpw_pilot_dir, "gpw_reproj_algn_crop_pa_natvtam_noshrub.tif")
 writeRaster(gpw_nt_masked, gpw_nt_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+gpw_file <- file.path(gpw_aligned_dir, "gpw_reproj_algn.tif")
+gpw <- rast(gpw_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+gpw_sa <- crop(gpw, crop_ext)
+gpw_sa
+plot (gpw_sa)
+
+# mask to study area
+gpw_masked <- mask(gpw_sa, sa)
+gpw_masked
+plot(gpw_masked)
+
+# Save the raster as 8-bit unsigned integer
+gpw_sa_out_path <- file.path(gpw_masked_dir, "gpw_reproj_algn_masked.tif")
+writeRaster(gpw_masked, gpw_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+gpw_binary_file <- file.path(gpw_aligned_dir, "gpw_reclass_reproj_algn_binary_noshrub.tif")
+gpw_binary <- rast(gpw_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+gpw_bin_sa <- crop(gpw_binary, crop_ext)
+gpw_bin_sa
+plot (gpw_bin_sa)
+
+# mask to study area
+gpw_bin_masked <- mask(gpw_bin_sa, sa)
+gpw_bin_masked
+plot(gpw_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+gpw_bin_sa_out_path <- file.path(gpw_masked_dir, "gpw_reproj_algn_binary_noshrub_masked.tif")
+writeRaster(gpw_bin_masked, gpw_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native vs tame raster
+gpw_nattam_file <- file.path(gpw_aligned_dir, "gpw_reclass_reproj_algn_natvtam_noshrub.tif")
+gpw_nattam <- rast(gpw_nattam_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+gpw_nt_sa <- crop(gpw_nattam, crop_ext)
+gpw_nt_sa
+plot (gpw_nt_sa)
+
+# mask to study area
+gpw_nt_masked <- mask(gpw_nt_sa, sa)
+gpw_nt_masked
+plot(gpw_nt_masked)
+
+# Save the raster as 8-bit unsigned integer
+gpw_nt_sa_out_path <- file.path(gpw_masked_dir, "gpw_reproj_algn_natvtam_noshrub_masked.tif")
+writeRaster(gpw_nt_masked, gpw_nt_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native raster
+gpw_nat_file <- file.path(gpw_aligned_dir, "gpw_reclass_reproj_algn_natseminat.tif")
+gpw_nat <- rast(gpw_nat_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+gpw_nat_sa <- crop(gpw_nat, crop_ext)
+gpw_nat_sa
+plot (gpw_nat_sa)
+
+# mask to study area
+gpw_nat_masked <- mask(gpw_nat_sa, sa)
+gpw_nat_masked
+plot(gpw_nat_masked)
+
+# Save the raster as 8-bit unsigned integer
+gpw_nat_sa_out_path <- file.path(gpw_masked_dir, "gpw_reproj_algn_natseminat_noshrub_masked.tif")
+writeRaster(gpw_nat_masked, gpw_nat_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native raster
+gpw_cult_file <- file.path(gpw_aligned_dir, "gpw_reclass_reproj_algn_cultivated.tif")
+gpw_cult <- rast(gpw_cult_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+gpw_cult_sa <- crop(gpw_cult, crop_ext)
+gpw_cult_sa
+plot (gpw_cult_sa)
+
+# mask to study area
+gpw_cult_masked <- mask(gpw_cult_sa, sa)
+gpw_cult_masked
+plot(gpw_cult_masked)
+
+# Save the raster as 8-bit unsigned integer
+gpw_cult_sa_out_path <- file.path(gpw_masked_dir, "gpw_reproj_algn_cultivated_noshrub_masked.tif")
+writeRaster(gpw_cult_masked, gpw_cult_sa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

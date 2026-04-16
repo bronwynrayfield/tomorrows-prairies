@@ -12,7 +12,6 @@
 library(terra)
 library(sf)
 library(tidyverse)
-library(rnaturalearth)
 library(readxl)
 
 # Set the temporary directory to a drive with sufficient space
@@ -26,6 +25,9 @@ pa_dir <- "R:/CanadianGrasslands/processeddatasets/pilotarea"
 # study area
 sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
+# Prairies Ecozone
+pe_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecozones"
+
 # grasslands
 raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
 proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
@@ -35,6 +37,7 @@ out_grass_dir <- "./outputs/grass"
 cnvc_root <- file.path(raw_grass_data_dir, "./Grassland/NatureServe_CNVC/updated version 23Oct2025/NS_CNVC_TIFF_COMPRESSED")
 cnvc_aligned_dir <- file.path(proc_grass_data_dir, "natureserve_cnvc/aligned")
 cnvc_cropped_dir <- file.path(proc_grass_data_dir, "natureserve_cnvc/cropped")
+cnvc_masked_dir <- file.path(proc_grass_data_dir, "natureserve_cnvc/masked")
 cnvc_pilot_dir <- file.path(proc_grass_data_dir, "natureserve_cnvc/pilot")
 cnvc_cat_dir <- file.path(raw_grass_data_dir, "./Grassland/NatureServe_CNVC/updated version 23Oct2025")
 
@@ -44,6 +47,9 @@ pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 
 # Study area
 sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
+
+# Prairies Ecozone
+pe_file <- file.path(pe_dir, "ecozone_clean_prairies.shp")
 
 # CNVC raster
 cnvc_file <- file.path(cnvc_root, "NatureServe_CNVC_COMPRESSED_20251023.tif")
@@ -154,7 +160,7 @@ plot(cnvc_crop)
 #origin(cnvc_reproj) # 1.8392815 0.4291859
 #cnvc_reproj
 
-# align to reference raster - still need to do!
+# align to reference raster 
 cnvc_algn <- resample(cnvc_crop, sa, method = "near")
 plot(cnvc_algn)
 cnvc_algn
@@ -809,6 +815,231 @@ writeRaster(cnvc_algn_nattam, cnvc_nt_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+################ isolate native
+
+# Define the mapping from Broad_Cat -> native 
+bcat_to_n <- function(bc) {
+  if (is.na(bc)) return(NA_integer_)  # keep NA as NA
+  
+  switch(bc,
+         "Other Native Upland Vegetation"           = 0L,
+         "Wetland & Water"                          = 0L,
+         "Ruderal Grassland"                        = 0L,
+         "Alvar Native Grassland"                   = 1L,
+         "Tallgrass Prairie Native Grassland"       = 1L,
+         "Mixedgrass Prairie Native Grassland"      = 1L,
+         "Rocky Mountain Montane Native Grassland"  = 1L,
+         "Rocky Mountain Lowland Native Grassland"  = 1L,
+         "Intermountain Steppe Native Grassland"    = 1L,
+         "?"                                        = 0L,
+         "Pacific Coastal Prairie Native Grassland" = 1L,
+         "Atlantic Coastal Native Grassland"        = 1L,
+         "Eastern Acidic Rocky Native Grassland"    = 1L,
+         "Developed & Other Ag"                     = 0L,
+         "Ag Pasture/Hay"                           = 0L,
+         "Ruderal Vegetation"                       = 0L,
+         # default if a Broad_Cat shows up that isn't listed:
+         { warning(sprintf("Unmapped Broad_Cat encountered: '%s' -> set to NA", bc)); NA_integer_ }
+  )
+}
+
+# Build the lookup table: Value -> native 
+stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
+
+# Normalize spaces just in case (optional but helpful)
+cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
+
+# Vectorized mapping
+n_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_n, integer(1))
+
+lut_n <- data.frame(
+  from = cnvc_cat$Value,  # original raster codes
+  to   = n_vec          # 0/1/NA per Broad_Cat
+)
+
+# Use classify with a two-column data.frame for exact value mapping
+# 'others=NA' means any raster value not present in 'from' becomes NA 
+cnvc_algn_native <- classify(cnvc_algn, rcl = lut_n, others = NA)
+
+# Verify results and plot
+print(cnvc_algn_native)
+plot(cnvc_algn_native, main = "Native grass")
+
+# Check unique output values (should be 0, 1, and NA)
+unique_vals_n <- unique(values(cnvc_algn_native, mat = FALSE))
+print(unique_vals_n)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_n_out_path <- file.path(cnvc_aligned_dir, "cnvc_algn_native.tif")
+writeRaster(cnvc_algn_native, cnvc_n_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################ isolate ruderal
+
+# Define the mapping from Broad_Cat -> ruderal
+bcat_to_rud <- function(bc) {
+  if (is.na(bc)) return(NA_integer_)  # keep NA as NA
+  
+  switch(bc,
+         "Other Native Upland Vegetation"           = 0L,
+         "Wetland & Water"                          = 0L,
+         "Ruderal Grassland"                        = 1L,
+         "Alvar Native Grassland"                   = 0L,
+         "Tallgrass Prairie Native Grassland"       = 0L,
+         "Mixedgrass Prairie Native Grassland"      = 0L,
+         "Rocky Mountain Montane Native Grassland"  = 0L,
+         "Rocky Mountain Lowland Native Grassland"  = 0L,
+         "Intermountain Steppe Native Grassland"    = 0L,
+         "?"                                        = 0L,
+         "Pacific Coastal Prairie Native Grassland" = 0L,
+         "Atlantic Coastal Native Grassland"        = 0L,
+         "Eastern Acidic Rocky Native Grassland"    = 0L,
+         "Developed & Other Ag"                     = 0L,
+         "Ag Pasture/Hay"                           = 0L,
+         "Ruderal Vegetation"                       = 0L,
+         # default if a Broad_Cat shows up that isn't listed:
+         { warning(sprintf("Unmapped Broad_Cat encountered: '%s' -> set to NA", bc)); NA_integer_ }
+  )
+}
+
+# Build the lookup table: Value -> ruderal
+stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
+
+# Normalize spaces just in case (optional but helpful)
+cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
+
+# Vectorized mapping
+rud_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_rud, integer(1))
+
+lut_rud <- data.frame(
+  from = cnvc_cat$Value,  # original raster codes
+  to   = rud_vec          # 0/1/NA per Broad_Cat
+)
+
+# Use classify with a two-column data.frame for exact value mapping
+# 'others=NA' means any raster value not present in 'from' becomes NA 
+cnvc_algn_ruderal <- classify(cnvc_algn, rcl = lut_rud, others = NA)
+
+# Verify results and plot
+print(cnvc_algn_ruderal)
+plot(cnvc_algn_ruderal, main = "Ruderal grass")
+
+# Check unique output values (should be 0, 1, and NA)
+unique_vals_rud <- unique(values(cnvc_algn_ruderal, mat = FALSE))
+print(unique_vals_rud)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_rud_out_path <- file.path(cnvc_aligned_dir, "cnvc_algn_ruderal.tif")
+writeRaster(cnvc_algn_ruderal, cnvc_rud_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################ isolate ag pasture/hay
+
+# load spreadsheet with broad categories
+cnvc_cat <- read_excel(cnvc_cat_file)
+head(cnvc_cat)
+
+# Inspect current levels (RAT)
+lev <- levels(cnvc_algn)[[1]]   # data.frame or NULL if not categorical
+if (is.null(lev)) {
+  stop("cnvc_algn does not have a levels table (RAT). Use Option B to ratify first.")
+}
+
+# Peek at column names to find the correct join key in the RAT
+print(names(lev))
+# The join key in the RAT might be called "Value", "value", or similar.
+
+# Harmonize a join key named "Value" in the RAT
+if (!"Value" %in% names(lev)) {
+  if ("value" %in% names(lev)) {
+    names(lev)[names(lev) == "value"] <- "Value"
+  } else if ("ID" %in% names(lev)) {
+    # In some rasters, the RAT only has ID and no explicit Value column.
+    # If your cnvc_cat maps ID -> Broad_Cat, you can join on ID instead.
+    # Otherwise you need Option B (ratify) to ensure the original values are recorded.
+    warning("No 'Value' column found in raster levels; found only 'ID'. If your cnvc_cat maps original pixel values, use Option B to ratify.")
+  }
+}
+
+# Join: keep all raster categories; attach Broad_Cat by matching Value
+lev_joined <- merge(
+  lev,
+  cnvc_cat[, c("Value", "Broad_Cat")],
+  by = "Value",
+  all.x = TRUE
+)
+
+# Write the joined table back to the raster
+levels(cnvc_algn)[[1]] <- lev_joined
+
+# check that new field is present
+cats(cnvc_algn)
+
+# Define the mapping from Broad_Cat -> ag pasture/hay
+bcat_to_past <- function(bc) {
+  if (is.na(bc)) return(NA_integer_)  # keep NA as NA
+  
+  switch(bc,
+         "Other Native Upland Vegetation"           = 0L,
+         "Wetland & Water"                          = 0L,
+         "Ruderal Grassland"                        = 0L,
+         "Alvar Native Grassland"                   = 0L,
+         "Tallgrass Prairie Native Grassland"       = 0L,
+         "Mixedgrass Prairie Native Grassland"      = 0L,
+         "Rocky Mountain Montane Native Grassland"  = 0L,
+         "Rocky Mountain Lowland Native Grassland"  = 0L,
+         "Intermountain Steppe Native Grassland"    = 0L,
+         "?"                                        = 0L,
+         "Pacific Coastal Prairie Native Grassland" = 0L,
+         "Atlantic Coastal Native Grassland"        = 0L,
+         "Eastern Acidic Rocky Native Grassland"    = 0L,
+         "Developed & Other Ag"                     = 0L,
+         "Ag Pasture/Hay"                           = 1L,
+         "Ruderal Vegetation"                       = 0L,
+         # default if a Broad_Cat shows up that isn't listed:
+         { warning(sprintf("Unmapped Broad_Cat encountered: '%s' -> set to NA", bc)); NA_integer_ }
+  )
+}
+
+# Build the lookup table: Value -> ag pasture/hay
+stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
+
+# Normalize spaces just in case (optional but helpful)
+cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
+
+# Vectorized mapping
+past_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_past, integer(1))
+
+lut_past <- data.frame(
+  from = cnvc_cat$Value,  # original raster codes
+  to   = past_vec          # 0/1/NA per Broad_Cat
+)
+
+# Use classify with a two-column data.frame for exact value mapping
+# 'others=NA' means any raster value not present in 'from' becomes NA 
+cnvc_algn_past <- classify(cnvc_algn, rcl = lut_past, others = NA)
+
+# Verify results and plot
+print(cnvc_algn_past)
+plot(cnvc_algn_past, main = "Ag pasture/hay")
+
+# Check unique output values (should be 0, 1, and NA)
+unique_vals_past <- unique(values(cnvc_algn_past, mat = FALSE))
+print(unique_vals_past)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_past_out_path <- file.path(cnvc_aligned_dir, "cnvc_algn_agpasturehay.tif")
+writeRaster(cnvc_algn_past, cnvc_past_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+####### for pilot area
+
 # Load study area raster
 pa <- rast(pa_file)
 
@@ -893,3 +1124,213 @@ writeRaster(cnvc_nt_masked, cnvc_nt_pa_out_path, datatype = "INT1U",
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+cnvc_file <- file.path(cnvc_aligned_dir, "cnvc_algn_good.tif")
+cnvc <- rast(cnvc_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cnvc_sa <- crop(cnvc, crop_ext)
+cnvc_sa
+plot (cnvc_sa)
+
+# mask to study area
+cnvc_masked <- mask(cnvc_sa, sa)
+cnvc_masked
+plot(cnvc_masked)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_masked.tif")
+writeRaster(cnvc_masked, cnvc_sa_out_path, datatype = "INT2U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 65535,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+cnvc_binary_file <- file.path(cnvc_aligned_dir, "cnvc_algn_binary.tif")
+cnvc_binary <- rast(cnvc_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cnvc_bin_sa <- crop(cnvc_binary, crop_ext)
+cnvc_bin_sa
+plot (cnvc_bin_sa)
+
+# mask to study area
+cnvc_bin_masked <- mask(cnvc_bin_sa, sa)
+cnvc_bin_masked
+plot(cnvc_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_bin_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_binary_masked.tif")
+writeRaster(cnvc_bin_masked, cnvc_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native vs tame raster
+cnvc_nattam_file <- file.path(cnvc_aligned_dir, "cnvc_algn_natvtam.tif")
+cnvc_nattam <- rast(cnvc_nattam_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cnvc_nt_sa <- crop(cnvc_nattam, crop_ext)
+cnvc_nt_sa
+plot (cnvc_nt_sa)
+
+# mask to study area
+cnvc_nt_masked <- mask(cnvc_nt_sa, sa)
+cnvc_nt_masked
+plot(cnvc_nt_masked)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_nt_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_natvtam_masked.tif")
+writeRaster(cnvc_nt_masked, cnvc_nt_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load ag pasture/hay raster
+cnvc_aph_file <- file.path(cnvc_aligned_dir, "cnvc_algn_agpasturehay.tif")
+cnvc_aph <- rast(cnvc_aph_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cnvc_aph_sa <- crop(cnvc_aph, crop_ext)
+cnvc_aph_sa
+plot (cnvc_aph_sa)
+
+# mask to study area
+cnvc_aph_masked <- mask(cnvc_aph_sa, sa)
+cnvc_aph_masked
+plot(cnvc_aph_masked)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_aph_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_agpasturehay_masked.tif")
+writeRaster(cnvc_aph_masked, cnvc_aph_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native raster
+cnvc_nat_file <- file.path(cnvc_aligned_dir, "cnvc_algn_native.tif")
+cnvc_nat <- rast(cnvc_nat_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cnvc_nat_sa <- crop(cnvc_nat, crop_ext)
+cnvc_nat_sa
+plot (cnvc_nat_sa)
+
+# mask to study area
+cnvc_nat_masked <- mask(cnvc_nat_sa, sa)
+cnvc_nat_masked
+plot(cnvc_nat_masked)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_nat_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_native_masked.tif")
+writeRaster(cnvc_nat_masked, cnvc_nat_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load ruderal raster
+cnvc_rud_file <- file.path(cnvc_aligned_dir, "cnvc_algn_ruderal.tif")
+cnvc_rud <- rast(cnvc_rud_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+cnvc_rud_sa <- crop(cnvc_rud, crop_ext)
+cnvc_rud_sa
+plot (cnvc_rud_sa)
+
+# mask to study area
+cnvc_rud_masked <- mask(cnvc_rud_sa, sa)
+cnvc_rud_masked
+plot(cnvc_rud_masked)
+
+# Save the raster as 8-bit unsigned integer
+cnvc_rud_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_ruderal_masked.tif")
+writeRaster(cnvc_rud_masked, cnvc_rud_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+##################################################
+
+# Crop to Prairies Ecozone for Don
+
+# read into terra
+pe <- vect(pe_file)
+plot(pe)
+
+# load native raster
+cnvc_nat_file <- file.path(cnvc_aligned_dir, "cnvc_algn_native.tif")
+cnvc_nat <- rast(cnvc_nat_file)
+plot(cnvc_nat)
+
+# --- Rasterize shapefile 'pe' to match raster 'sa' ---
+# Reproject classification study area to match CNVC raster CRS
+pe_vect_proj <- project(pe, crs(sa))
+
+# field = 1 makes all polygon cells have value 1
+pe_rast <- rasterize(
+  pe_vect_proj,
+  sa,
+  field = 1,
+  touches = TRUE     # include boundary cells
+)
+
+plot(pe_rast)
+pe_rast
+
+# --- Mask the CNVC raster using the new polygon raster ---
+crop_ext <- ext(pe_rast)
+
+# crop raster to PE
+cnvc_nat_crop <- crop(cnvc_nat, crop_ext)
+cnvc_nat_crop
+plot (cnvc_nat_crop)
+
+# mask to PE
+cnvc_nat_pe <- mask(cnvc_nat_crop, pe_rast)
+cnvc_nat_pe
+plot(cnvc_nat_pe)
+
+# --- Save result ---
+
+# Save the raster as 8-bit unsigned integer
+cnvc_nat_pe_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_native_masked_pe.tif")
+writeRaster(cnvc_nat_pe, cnvc_nat_pe_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# Save the raster as 8-bit unsigned integer
+pe_out_path <- file.path(pe_dir, "prairies_ecozone_algn_rast.tif")
+writeRaster(pe_rast, pe_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+

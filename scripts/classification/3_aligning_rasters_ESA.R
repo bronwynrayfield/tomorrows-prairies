@@ -72,6 +72,7 @@ esa_root <- file.path(raw_grass_data_dir, "Land Cover/ESA WorldCover 2021")
 esa_merged_dir <- file.path(proc_grass_data_dir, "esa_worldcover/merged")
 esa_aligned_dir <- file.path(proc_grass_data_dir, "esa_worldcover/aligned")
 esa_cropped_dir <- file.path(proc_grass_data_dir, "esa_worldcover/cropped")
+esa_masked_dir <- file.path(proc_grass_data_dir, "esa_worldcover/masked")
 esa_pilot_dir <- file.path(proc_grass_data_dir, "esa_worldcover/pilot")
 
 ####--- Files ---####
@@ -404,21 +405,7 @@ origin(esa_reproj_algn) # 6.696121 -2.550334
 #min value   :   0 
 #max value   : 100 
 
-# Trim NA-only rows/columns
-#esa_reproj_algn_trim <- trim(esa_reproj_algn)
 
-# visualize the trimmed raster
-#plot(esa_reproj_algn_trim)
-
-# print raster details 
-#origin(esa_reproj_algn_trim) # 6.696121 -2.550334
-
-# Save the raster as 8-bit unsigned integer
-#esa_trim_out_path <- file.path(esa_aligned_dir, "esa_reproj_algn_trim.tif")
-#writeRaster(esa_reproj_algn_trim, esa_trim_out_path, datatype = "INT1U", 
-#            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
-#            NAflag = 255,
-#            overwrite = TRUE)
 
 # reclassify to binary (grass = 1)
 esa_algn_binary <- classify(esa_reproj_algn, 
@@ -511,6 +498,58 @@ plot(esa_bin_masked)
 # Save the raster as 8-bit unsigned integer
 esa_bin_pa_out_path <- file.path(esa_pilot_dir, "esa_reproj_algn_crop_pa_binary_noshrub.tif")
 writeRaster(esa_bin_masked, esa_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+esa_file <- file.path(esa_aligned_dir, "esa_merged_reproj_algn.tif")
+esa <- rast(esa_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+esa_sa <- crop(esa, crop_ext)
+esa_sa
+plot (esa_sa)
+
+# mask to study area
+esa_masked <- mask(esa_sa, sa)
+esa_masked
+plot(esa_masked)
+
+# Save the raster as 8-bit unsigned integer
+esa_sa_out_path <- file.path(esa_masked_dir, "esa_merged_reproj_algn_masked.tif")
+writeRaster(esa_masked, esa_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+esa_binary_file <- file.path(esa_aligned_dir, "esa_reproj_algn_binary_noshrub.tif")
+esa_binary <- rast(esa_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+esa_bin_sa <- crop(esa_binary, crop_ext)
+esa_bin_sa
+plot (esa_bin_sa)
+
+# mask to study area
+esa_bin_masked <- mask(esa_bin_sa, sa)
+esa_bin_masked
+plot(esa_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+esa_bin_sa_out_path <- file.path(esa_masked_dir, "esa_reproj_algn_binary_noshrub_masked.tif")
+writeRaster(esa_bin_masked, esa_bin_sa_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

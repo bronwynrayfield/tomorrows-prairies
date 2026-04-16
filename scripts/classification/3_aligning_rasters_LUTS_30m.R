@@ -46,7 +46,7 @@ luts_merged_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/merged"
 luts_cropped_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/cropped")
 luts_aligned_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/aligned")
 luts_pilot_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/pilot")
-
+luts_mask_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/masked")
 
 ####--- Files ---####
 # Pilot Area
@@ -310,3 +310,28 @@ writeRaster(luts_bin_masked, luts_bin_pa_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+
+######### crop and mask to study area
+
+# load binary raster
+luts_binary_file <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_binary.tif")
+luts_algn_binary <- rast(luts_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop binary raster to pilot area
+luts_bin_sa <- crop(luts_algn_binary, crop_ext)
+luts_bin_sa
+plot (luts_bin_sa)
+
+# mask to pilot area
+luts_bin_masked <- mask(luts_bin_sa, sa)
+luts_bin_masked
+plot(luts_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+luts_bin_sa_out_path <- file.path(luts_mask_dir, "luts30_reproj_algn_binary_masked.tif")
+writeRaster(luts_bin_masked, luts_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)

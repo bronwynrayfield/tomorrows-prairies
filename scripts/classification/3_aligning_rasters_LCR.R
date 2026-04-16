@@ -12,7 +12,7 @@
 library(terra)
 library(sf)
 library(tidyverse)
-library(rnaturalearth)
+#library(rnaturalearth)
 
 # Set the temporary directory to a drive with sufficient space
 terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
@@ -34,6 +34,7 @@ out_grass_dir <- "./outputs/grass"
 lcr_root <- file.path(raw_grass_data_dir, "Land Cover/StatCan Land Cover Register 2020/LCR_RCT_2020")
 lcr_aligned_dir <- file.path(proc_grass_data_dir, "statcan_lcr/aligned")
 lcr_cropped_dir <- file.path(proc_grass_data_dir, "statcan_lcr/cropped")
+lcr_masked_dir <- file.path(proc_grass_data_dir, "statcan_lcr/masked")
 lcr_pilot_dir <- file.path(proc_grass_data_dir, "statcan_lcr/pilot")
 
 ####--- Files ---####
@@ -232,3 +233,54 @@ writeRaster(lcr_bin_masked, lcr_bin_pa_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+################
+
+######### crop and mask to study area
+
+# load raster
+lcr_file <- file.path(lcr_aligned_dir, "lcr_reproj_algn.tif")
+lcr <- rast(lcr_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+lcr_sa <- crop(lcr, crop_ext)
+lcr_sa
+plot (lcr_sa)
+
+# mask to study area
+lcr_masked <- mask(lcr_sa, sa)
+lcr_masked
+plot(lcr_masked)
+
+# Save the raster as 8-bit unsigned integer
+lcr_sa_out_path <- file.path(lcr_masked_dir, "lcr_reproj_algn_masked.tif")
+writeRaster(lcr_masked, lcr_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+lcr_binary_file <- file.path(lcr_aligned_dir, "lcr_reproj_algn_binary.tif")
+lcr_binary <- rast(lcr_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+lcr_bin_sa <- crop(lcr_binary, crop_ext)
+lcr_bin_sa
+plot (lcr_bin_sa)
+
+# mask to study area
+lcr_bin_masked <- mask(lcr_bin_sa, sa)
+lcr_bin_masked
+plot(lcr_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+lcr_bin_sa_out_path <- file.path(lcr_masked_dir, "lcr_reproj_algn_binary_masked.tif")
+writeRaster(lcr_bin_masked, lcr_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)

@@ -12,7 +12,7 @@
 library(terra)
 library(sf)
 library(tidyverse)
-library(rnaturalearth)
+#library(rnaturalearth)
 
 # Set the temporary directory to a drive with sufficient space
 terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
@@ -25,6 +25,9 @@ pa_dir <- "R:/CanadianGrasslands/processeddatasets/pilotarea"
 # study area
 sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
+# Prairies Ecozone
+pe_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecozones"
+
 # grasslands
 raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
 proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
@@ -34,6 +37,7 @@ out_grass_dir <- "./outputs/grass"
 lcc_root <- file.path(raw_grass_data_dir, "./Land Cover/NRCan Land Cover of Canada 2020")
 lcc_aligned_dir <- file.path(proc_grass_data_dir, "nrcan_lcc/aligned")
 lcc_cropped_dir <- file.path(proc_grass_data_dir, "nrcan_lcc/cropped")
+lcc_masked_dir <- file.path(proc_grass_data_dir, "nrcan_lcc/masked")
 lcc_pilot_dir <- file.path(proc_grass_data_dir, "nrcan_lcc/pilot")
 
 ####--- Files ---####
@@ -42,6 +46,9 @@ pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 
 # Study area
 sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
+
+# Prairies Ecozone
+pe_file <- file.path(pe_dir, "ecozone_clean_prairies.shp")
 
 # CNVC raster
 #cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
@@ -281,6 +288,110 @@ plot(lcc_bin_masked)
 # Save the raster as 8-bit unsigned integer
 lcc_bin_pa_out_path <- file.path(lcc_pilot_dir, "lcc_reproj_algn_crop_pa_binary_noshrub.tif")
 writeRaster(lcc_bin_masked, lcc_bin_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+lcc_file <- file.path(lcc_aligned_dir, "lcc_reproj_algn.tif")
+lcc <- rast(lcc_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+lcc_sa <- crop(lcc, crop_ext)
+lcc_sa
+plot (lcc_sa)
+
+# mask to study area
+lcc_masked <- mask(lcc_sa, sa)
+lcc_masked
+plot(lcc_masked)
+
+# Save the raster as 8-bit unsigned integer
+lcc_sa_out_path <- file.path(lcc_masked_dir, "lcc_reproj_algn_masked.tif")
+writeRaster(lcc_masked, lcc_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+lcc_binary_file <- file.path(lcc_aligned_dir, "lcc_reproj_algn_binary_noshrub.tif")
+lcc_binary <- rast(lcc_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+lcc_bin_sa <- crop(lcc_binary, crop_ext)
+lcc_bin_sa
+plot (lcc_bin_sa)
+
+# mask to study area
+lcc_bin_masked <- mask(lcc_bin_sa, sa)
+lcc_bin_masked
+plot(lcc_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+lcc_bin_sa_out_path <- file.path(lcc_masked_dir, "lcc_reproj_algn_binary_noshrub_masked.tif")
+writeRaster(lcc_bin_masked, lcc_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+##################################################
+
+# Crop to Prairies Ecozone for Don
+
+# read into terra
+pe <- vect(pe_file)
+
+# load native raster
+lcc_file <- file.path(lcc_masked_dir, "lcc_reproj_algn_binary_noshrub_masked.tif")
+lcc <- rast(lcc_file)
+
+# --- Rasterize shapefile 'pe' to match raster 'sa' ---
+# Reproject classification study area to match CNVC raster CRS
+pe_vect_proj <- project(pe, crs(sa))
+
+# field = 1 makes all polygon cells have value 1
+pe_rast <- rasterize(
+  pe_vect_proj,
+  sa,
+  field = 1,
+  touches = TRUE     # include boundary cells
+)
+
+# --- Mask the LCC raster using the new polygon raster ---
+crop_ext <- ext(pe_rast)
+
+# crop raster to PE
+lcc_crop <- crop(lcc, crop_ext)
+lcc_crop
+plot (lcc_crop)
+
+# mask to PE
+lcc_pe <- mask(lcc_crop, pe_rast)
+lcc_pe
+plot(lcc_pe)
+
+# --- Save result ---
+
+# Save the raster as 8-bit unsigned integer
+lcc_pe_out_path <- file.path(lcc_masked_dir, "lcc_reproj_algn_binary_noshrub_masked_pe.tif")
+writeRaster(lcc_pe, lcc_pe_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# Save the raster as 8-bit unsigned integer
+pe_out_path <- file.path(pe_dir, "prairies_ecozone_algn_rast.tif")
+writeRaster(pe_rast, cnvc_nat_pe_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

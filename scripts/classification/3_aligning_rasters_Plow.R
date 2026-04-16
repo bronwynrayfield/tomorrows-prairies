@@ -34,6 +34,7 @@ out_grass_dir <- "./outputs/grass"
 plow_root <- file.path(raw_grass_data_dir, "./Cropland/Plowprint WWF/WWF_Plowprint_2024/Spatial_data/WWF_PP_2024_report_full_extent")
 plow_aligned_dir <- file.path(proc_grass_data_dir, "wwf_plowprint/aligned")
 plow_cropped_dir <- file.path(proc_grass_data_dir, "wwf_plowprint/cropped")
+plow_masked_dir <- file.path(proc_grass_data_dir, "wwf_plowprint/masked")
 plow_pilot_dir <- file.path(proc_grass_data_dir, "wwf_plowprint/pilot")
 
 ####--- Files ---####
@@ -181,7 +182,7 @@ plot(plow_algn_binary)
 plow_algn_binary
 
 # Save the raster as 8-bit unsigned integer
-plow_binary_out_path <- file.path(plow_aligned_dir, "plow_reproj_algn_binary.tif")
+plow_binary_out_path <- file.path(plow_aligned_dir, "plow_reproj_algn_binary_intact.tif")
 writeRaster(plow_algn_binary, plow_binary_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -230,3 +231,124 @@ writeRaster(plow_bin_masked, plow_bin_pa_out_path, datatype = "INT1U",
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+plow_file <- file.path(plow_aligned_dir, "plow_reproj_algn.tif")
+plow <- rast(plow_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+plow_sa <- crop(plow, crop_ext)
+plow_sa
+plot (plow_sa)
+
+# mask to study area
+plow_masked <- mask(plow_sa, sa)
+plow_masked
+plot(plow_masked)
+
+# Save the raster as 8-bit unsigned integer
+plow_sa_out_path <- file.path(plow_masked_dir, "plow_reproj_algn_masked.tif")
+writeRaster(plow_masked, plow_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# load raster
+plow_int_file <- file.path(plow_aligned_dir, "Plowprint binary with intact as grass/plow_reproj_algn_binary.tif")
+plow_int <- rast(plow_int_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+plow_int_sa <- crop(plow_int, crop_ext)
+plow_int_sa
+plot(plow_int_sa)
+
+# mask to study area
+plow_int_masked <- mask(plow_int_sa, sa)
+plow_int_masked
+plot(plow_int_masked)
+
+# Save the raster as 8-bit unsigned integer
+plow_int_sa_out_path <- file.path(plow_masked_dir, "plow_reproj_algn_intact_masked.tif")
+writeRaster(plow_int_masked, plow_int_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######################################################
+######################################################
+
+# masking Plowprint with ACI to define native vs tame
+
+# --- Load rasters ---
+aci_2022  <- rast("R:/CanadianGrasslands/WG_Classification/processed/aafc_aci/aligned/aafc_aci_merged_reproj_algn.tif")  
+aci_2022
+
+# --- Safety checks: alignment ---
+stopifnot(
+  res(plow_masked) == res(aci_2022),
+  all.equal(ext(plow_masked), ext(aci_2022)) == TRUE,
+  crs(plow_masked) == crs(aci_2022),
+  origin(plow_masked)[1] == origin(aci_2022)[1],
+  origin(plow_masked)[2] == origin(aci_2022)[2]
+)
+
+# --- Reclassification function ---
+# Rules:
+# - If both present:
+#     plow_masked in {0,1} & aci_2022 in {110,122} -> 5
+#     plow_masked in {2,3} & aci_2022 in {110,122} -> 4
+#     else -> 6
+# - If only plow_masked present -> plow_masked
+# - If only aci_2022 present -> aci_2022
+# - If neither present -> NA
+
+print(plow_masked)
+print(aci_2022)
+
+is.factor(plow_masked)
+is.factor(aci_2022)
+
+# If either is TRUE, inspect levels (RAT)
+if (is.factor(plow_masked)) levels(plow_masked)
+if (is.factor(aci_2022))    levels(aci_2022)
+
+# Optional: spot-check the data type (helpful on huge rasters)
+# global(plow_masked, "range", na.rm = TRUE)
+# global(aci_2022,    "range", na.rm = TRUE)
+
+plow_masked <- as.integer(plow_masked)
+aci_2022    <- as.integer(aci_2022)
+
+plow <- plow_masked[[1]]
+aci  <- aci_2022[[1]]
+
+both   <- !is.na(plow) & !is.na(aci)
+only_p <- !is.na(plow) &  is.na(aci)
+only_a <-  is.na(plow) & !is.na(aci)
+
+cond5 <- (plow %in% c(0, 1)) & (aci %in% c(110, 122))
+cond4 <- (plow %in% c(2, 3)) & (aci %in% c(110, 122))
+
+# Start with NA; then fill in precedence order
+out <- rast(plow); values(out) <- NA
+
+out <- ifel(both, 6, out)
+out <- ifel(both & cond5, 5, out)
+out <- ifel(both & cond4, 4, out)
+out <- ifel(only_p, plow, out)
+out <- ifel(only_a, aci,  out)
+
+writeRaster(
+  out, "reclass_plow_aci_2022.tif",
+  overwrite = TRUE,
+  wopt = list(datatype = "INT2S", gdal = c("COMPRESS=LZW", "TILED=YES", "BIGTIFF=YES"))
+)
+

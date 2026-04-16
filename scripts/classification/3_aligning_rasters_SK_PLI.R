@@ -351,3 +351,241 @@ writeRaster(pli_nt_masked, pli_nt_pa_out_path, datatype = "INT1U",
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+############################################################################
+
+# align each ecoregion raster to study area for use in accuracy assessment
+
+# Load rasters
+r_ap <- rast(pli_ap_file)
+r_cu <- rast(pli_cu_file)
+r_mg <- rast(pli_mg_file)
+r_mm <- rast(pli_mm_file)
+
+# Set pixels with value 0 to NA 
+r_mm[r_mm == 0] <- NA
+
+# Mark as categorical (factor)
+r_ap <- as.factor(r_ap)
+r_cu <- as.factor(r_cu)
+r_mg <- as.factor(r_mg)
+r_mm <- as.factor(r_mm)
+
+plot(r_ap)
+plot(r_cu)
+plot(r_mg)
+plot(r_mm)
+
+# reproject before resampling
+r_ap_reproj <- project(r_ap, sa, method = "near") 
+r_cu_reproj <- project(r_cu, sa, method = "near")
+r_mg_reproj <- project(r_mg, sa, method = "near")
+r_mm_reproj <- project(r_mm, sa, method = "near")
+
+r_ap_reproj
+r_cu_reproj
+r_mg_reproj
+r_mm_reproj
+
+# align to reference raster 
+r_ap_reproj_algn <- resample(r_ap_reproj, sa, method = "near")
+r_cu_reproj_algn <- resample(r_cu_reproj, sa, method = "near")
+r_mg_reproj_algn <- resample(r_mg_reproj, sa, method = "near")
+r_mm_reproj_algn <- resample(r_mm_reproj, sa, method = "near")
+
+r_ap_reproj_algn
+r_cu_reproj_algn
+r_mg_reproj_algn
+r_mm_reproj_algn
+
+# Save the raster as 8-bit unsigned integer
+pli_ap_out_path <- file.path(pli_aligned_dir, "sk_pli_ap_reproj_algn.tif")
+writeRaster(r_ap_reproj_algn, pli_ap_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_cu_out_path <- file.path(pli_aligned_dir, "sk_pli_cu_reproj_algn.tif")
+writeRaster(r_cu_reproj_algn, pli_cu_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_mg_out_path <- file.path(pli_aligned_dir, "sk_pli_mg_reproj_algn.tif")
+writeRaster(r_mg_reproj_algn, pli_mg_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_mm_out_path <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn.tif")
+writeRaster(r_mm_reproj_algn, pli_mm_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to binary (0 = not grass, 1 = grass)
+pli_ap_algn_binary <- classify(r_ap_reproj_algn, 
+                            rcl = matrix(c(
+                              1, 0, # Cropland
+                              2, 1, # Native grassland
+                              3, 1, # Mixed/altered grassland
+                              4, 1, # Tame grassland
+                              5, 0, # Water
+                              6, 0, # Shrubs
+                              7, 0, # Trees
+                              #8, 0, # Woody plants
+                              9, 0), # Urban area
+                              ncol = 2, byrow = TRUE))
+
+pli_cu_algn_binary <- classify(r_cu_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 1, # Native grassland
+                                 #3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 6, 0, # Shrubs
+                                 7, 0, # Trees
+                                 #8, 0, # Woody plants
+                                 9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_mg_algn_binary <- classify(r_mg_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 1, # Native grassland
+                                 3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 6, 0, # Shrubs
+                                 7, 0), # Trees
+                                 #8, 0, # Woody plants
+                                 #9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_mm_algn_binary <- classify(r_mm_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 1, # Native grassland
+                                 3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 #6, 0, # Shrubs
+                                 #7, 0, # Trees
+                                 8, 0, # Woody plants
+                                 9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_ap_algn_binary
+plot(pli_ap_algn_binary)
+plot(pli_cu_algn_binary)
+plot(pli_mg_algn_binary)
+plot(pli_mm_algn_binary)
+
+# Save the raster as 8-bit unsigned integer
+pli_ap_binary_out_path <- file.path(pli_aligned_dir, "sk_pli_ap_reproj_algn_binary_noshrub.tif")
+writeRaster(pli_ap_algn_binary, pli_ap_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_cu_binary_out_path <- file.path(pli_aligned_dir, "sk_pli_cu_reproj_algn_binary_noshrub.tif")
+writeRaster(pli_cu_algn_binary, pli_cu_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_mg_binary_out_path <- file.path(pli_aligned_dir, "sk_pli_mg_reproj_algn_binary_noshrub.tif")
+writeRaster(pli_mg_algn_binary, pli_mg_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_mm_binary_out_path <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn_binary_noshrub.tif")
+writeRaster(pli_mm_algn_binary, pli_mm_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native)
+pli_ap_algn_nattam <- classify(r_ap_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 2, # Native grassland
+                                 3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 6, 0, # Shrubs
+                                 7, 0, # Trees
+                                 #8, 0, # Woody plants
+                                 9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_cu_algn_nattam <- classify(r_cu_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 2, # Native grassland
+                                 #3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 6, 0, # Shrubs
+                                 7, 0, # Trees
+                                 #8, 0, # Woody plants
+                                 9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_mg_algn_nattam <- classify(r_mg_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 2, # Native grassland
+                                 3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 6, 0, # Shrubs
+                                 7, 0), # Trees
+                                 #8, 0, # Woody plants
+                                 #9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_mm_algn_nattam <- classify(r_mm_reproj_algn, 
+                               rcl = matrix(c(
+                                 1, 0, # Cropland
+                                 2, 2, # Native grassland
+                                 3, 1, # Mixed/altered grassland
+                                 4, 1, # Tame grassland
+                                 5, 0, # Water
+                                 #6, 0, # Shrubs
+                                 #7, 0, # Trees
+                                 8, 0, # Woody plants
+                                 9, 0), # Urban area
+                                 ncol = 2, byrow = TRUE))
+
+pli_ap_algn_nattam
+pli_cu_algn_nattam
+pli_mg_algn_nattam
+pli_mm_algn_nattam
+
+# Save the raster as 8-bit unsigned integer
+pli_ap_nattam_out_path <- file.path(pli_aligned_dir, "sk_pli_ap_reproj_algn_natvtam_noshrub.tif")
+writeRaster(pli_ap_algn_nattam, pli_ap_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_cu_nattam_out_path <- file.path(pli_aligned_dir, "sk_pli_cu_reproj_algn_natvtam_noshrub.tif")
+writeRaster(pli_cu_algn_nattam, pli_cu_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_mg_nattam_out_path <- file.path(pli_aligned_dir, "sk_pli_mg_reproj_algn_natvtam_noshrub.tif")
+writeRaster(pli_mg_algn_nattam, pli_mg_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+pli_mm_nattam_out_path <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn_natvtam_noshrub.tif")
+writeRaster(pli_mm_algn_nattam, pli_mm_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)

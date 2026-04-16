@@ -1,5 +1,4 @@
 
-
 ###################################################################################
 ##               PREPROCESSING: ALIGNING RASTERS TO REFERENCE                    ##
 ###################################################################################
@@ -34,6 +33,7 @@ out_grass_dir <- "./outputs/grass"
 eccc_root <- file.path(raw_grass_data_dir, "eccc_grass")
 eccc_aligned_dir <- file.path(proc_grass_data_dir, "eccc_grass/aligned")
 eccc_cropped_dir <- file.path(proc_grass_data_dir, "eccc_grass/cropped")
+eccc_masked_dir <- file.path(proc_grass_data_dir, "eccc_grass/masked")
 eccc_pilot_dir <- file.path(proc_grass_data_dir, "eccc_grass/pilot")
 
 ####--- Files ---####
@@ -277,6 +277,221 @@ plot(eccc_nt_masked)
 # Save the raster as 8-bit unsigned integer
 eccc_nt_pa_out_path <- file.path(eccc_pilot_dir, "eccc_reproj_algn_crop_pa_natvtam.tif")
 writeRaster(eccc_nt_masked, eccc_nt_pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+################
+
+######### crop and mask to study area
+
+# load raster
+eccc_file <- file.path(eccc_aligned_dir, "eccc_reclass_reproj_algn.tif")
+eccc <- rast(eccc_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_sa <- crop(eccc, crop_ext)
+eccc_sa
+plot (eccc_sa)
+
+# mask to study area
+eccc_masked <- mask(eccc_sa, sa)
+eccc_masked
+plot(eccc_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_sa_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_masked.tif")
+writeRaster(eccc_masked, eccc_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load binary raster
+eccc_binary_file <- file.path(eccc_aligned_dir, "eccc_reclass_reproj_algn_binary.tif")
+eccc_binary <- rast(eccc_binary_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_bin_sa <- crop(eccc_binary, crop_ext)
+eccc_bin_sa
+plot (eccc_bin_sa)
+
+# mask to study area
+eccc_bin_masked <- mask(eccc_bin_sa, sa)
+eccc_bin_masked
+plot(eccc_bin_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_bin_sa_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_binary_masked.tif")
+writeRaster(eccc_bin_masked, eccc_bin_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+######### crop and mask to study area
+
+# load native vs tame raster
+eccc_nattam_file <- file.path(eccc_aligned_dir, "eccc_reclass_reproj_algn_natvtam.tif")
+eccc_nattam <- rast(eccc_nattam_file)
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_nt_sa <- crop(eccc_nattam, crop_ext)
+eccc_nt_sa
+plot(eccc_nt_sa)
+
+# mask to study area
+eccc_nt_masked <- mask(eccc_nt_sa, sa)
+eccc_nt_masked
+plot(eccc_nt_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_nt_sa_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_natvtam_masked.tif")
+writeRaster(eccc_nt_masked, eccc_nt_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+###### isolate individual classes
+
+# reclassify to undisturbed grass
+eccc_algn_undisturbgrass <- classify(eccc, 
+                             rcl = matrix(c(0, 0, # not currently grass or pasture
+                                            1, 0, # currently grass, was forest
+                                            2, 0, # currently grass, was shrub
+                                            3, 0, # currently grass, was crop
+                                            4, 0, # currently grass, was pasture
+                                            5, 1, # grassland with no detected disturbance (back to 1984)
+                                            6, 0, # currently grass, was built-up
+                                            7, 0, # currently grass, was bare
+                                            8, 0, # currently grass, was wetland
+                                            9, 0, # currently grass, was water
+                                            10, 0), # currently pasture (tame grasses)
+                                          ncol = 2, byrow = TRUE))
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_udg_sa <- crop(eccc_algn_undisturbgrass, crop_ext)
+eccc_udg_sa
+plot (eccc_udg_sa)
+
+# mask to study area
+eccc_udg_masked <- mask(eccc_udg_sa, sa)
+eccc_udg_masked
+plot(eccc_udg_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_udg_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_undisturbgrass_masked.tif")
+writeRaster(eccc_udg_masked, eccc_udg_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to pasture
+eccc_algn_past <- classify(eccc, 
+                                     rcl = matrix(c(0, 0, # not currently grass or pasture
+                                                    1, 0, # currently grass, was forest
+                                                    2, 0, # currently grass, was shrub
+                                                    3, 0, # currently grass, was crop
+                                                    4, 0, # currently grass, was pasture
+                                                    5, 0, # grassland with no detected disturbance (back to 1984)
+                                                    6, 0, # currently grass, was built-up
+                                                    7, 0, # currently grass, was bare
+                                                    8, 0, # currently grass, was wetland
+                                                    9, 0, # currently grass, was water
+                                                    10, 1), # currently pasture (tame grasses)
+                                                  ncol = 2, byrow = TRUE))
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_past_sa <- crop(eccc_algn_past, crop_ext)
+eccc_past_sa
+plot (eccc_past_sa)
+
+# mask to study area
+eccc_past_masked <- mask(eccc_past_sa, sa)
+eccc_past_masked
+plot(eccc_past_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_past_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_pasture_masked.tif")
+writeRaster(eccc_past_masked, eccc_past_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to currently grass, was crop
+eccc_algn_cgwc <- classify(eccc, 
+                           rcl = matrix(c(0, 0, # not currently grass or pasture
+                                          1, 0, # currently grass, was forest
+                                          2, 0, # currently grass, was shrub
+                                          3, 1, # currently grass, was crop
+                                          4, 0, # currently grass, was pasture
+                                          5, 0, # grassland with no detected disturbance (back to 1984)
+                                          6, 0, # currently grass, was built-up
+                                          7, 0, # currently grass, was bare
+                                          8, 0, # currently grass, was wetland
+                                          9, 0, # currently grass, was water
+                                          10, 0), # currently pasture (tame grasses)
+                                        ncol = 2, byrow = TRUE))
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_cgwc_sa <- crop(eccc_algn_cgwc, crop_ext)
+eccc_cgwc_sa
+plot (eccc_cgwc_sa)
+
+# mask to study area
+eccc_cgwc_masked <- mask(eccc_cgwc_sa, sa)
+eccc_cgwc_masked
+plot(eccc_cgwc_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_cgwc_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_currgrasswascrop_masked.tif")
+writeRaster(eccc_cgwc_masked, eccc_cgwc_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to currently grass, was pasture
+eccc_algn_cgwp <- classify(eccc, 
+                           rcl = matrix(c(0, 0, # not currently grass or pasture
+                                          1, 0, # currently grass, was forest
+                                          2, 0, # currently grass, was shrub
+                                          3, 0, # currently grass, was crop
+                                          4, 1, # currently grass, was pasture
+                                          5, 0, # grassland with no detected disturbance (back to 1984)
+                                          6, 0, # currently grass, was built-up
+                                          7, 0, # currently grass, was bare
+                                          8, 0, # currently grass, was wetland
+                                          9, 0, # currently grass, was water
+                                          10, 0), # currently pasture (tame grasses)
+                                        ncol = 2, byrow = TRUE))
+
+crop_ext <- ext(sa)
+
+# crop raster to study area
+eccc_cgwp_sa <- crop(eccc_algn_cgwp, crop_ext)
+eccc_cgwp_sa
+plot (eccc_cgwp_sa)
+
+# mask to study area
+eccc_cgwp_masked <- mask(eccc_cgwp_sa, sa)
+eccc_cgwp_masked
+plot(eccc_cgwp_masked)
+
+# Save the raster as 8-bit unsigned integer
+eccc_cgwp_out_path <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_currgrasswaspasture_masked.tif")
+writeRaster(eccc_cgwp_masked, eccc_cgwp_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)

@@ -38,6 +38,12 @@ mod_sa_file <- file.path(sa_dir, "TP_study_area_prairies_ecozone.shp")
 # modelling extent
 mod_ext_file <- file.path(sa_dir, "TP_study_area_ecodistrict_buffer.shp")
 
+# classification study area (modelling extent + Peace River)
+class_sa_file <- file.path(sa_dir, "class_sa_modext_peacriv.shp")
+
+# temperate scope
+temp_scope_file <- file.path(sa_dir, "temp_scope_union.shp")
+
 # CNVC raster
 #cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
 
@@ -55,19 +61,25 @@ crs(sa_rast)
 plot(sa_rast)
 
 # load study area shapefiles
-mod_sa_vect <- vect(mod_sa_file)
-mod_ext_vect <- vect(mod_ext_file)
-pa_vect <- vect(pa_file)
+mod_sa_vect     <- vect(mod_sa_file)
+mod_ext_vect    <- vect(mod_ext_file)
+pa_vect         <- vect(pa_file)
+class_sa_vect   <- vect(class_sa_file)
+temp_scope_vect <- vect(temp_scope_file)
 
 # Reproject study areas to match reference raster CRS
-mod_sa_vect_proj <- project(mod_sa_vect, crs(sa_rast))
-mod_ext_vect_proj <- project(mod_ext_vect, crs(sa_rast))
-pa_vect_proj <- project(pa_vect, crs(sa_rast))
+mod_sa_vect_proj       <- project(mod_sa_vect, crs(sa_rast))
+mod_ext_vect_proj      <- project(mod_ext_vect, crs(sa_rast))
+pa_vect_proj           <- project(pa_vect, crs(sa_rast))
+class_sa_vect_proj     <- project(class_sa_vect, crs(sa_rast))
+temp_scope_vect_proj   <- project(temp_scope_vect, crs(sa_rast))
 
 # Rasterize study areas using reference raster as template
 mod_sa_rast <- rasterize(mod_sa_vect_proj, sa_rast, field=1, touches=TRUE) # field=1 assigns constant value to rasterized cells
 mod_ext_rast <- rasterize(mod_ext_vect_proj, sa_rast, field=1, touches=TRUE) # touches=TRUE ensures that any cell touched by the polygon is included
 pa_rast <- rasterize(pa_vect_proj, sa_rast, field=1, touches=TRUE)
+class_sa_rast <- rasterize(class_sa_vect_proj, sa_rast, field=1, touches=TRUE)
+temp_scope_rast <- rasterize(temp_scope_vect_proj, sa_rast, field=1, touches=TRUE)
 
 # print raster details 
 origin(mod_sa_rast)
@@ -84,20 +96,34 @@ origin(pa_rast)
 res(pa_rast)
 crs(pa_rast)
 
+# print raster details 
+origin(class_sa_rast)
+class_sa_rast
+
+# print raster details 
+origin(temp_scope_rast)
+temp_scope_rast
+
 # visualize the new rasters
 plot(mod_sa_rast)
 plot(mod_ext_rast)
 plot(pa_rast)
+plot(class_sa_rast)
+plot(temp_scope_rast)
 
 # Trim NA-only rows/columns
-mod_sa_rast_trimmed <- trim(mod_sa_rast)
-mod_ext_rast_trimmed <- trim(mod_ext_rast)
-pa_rast_trimmed <- trim(pa_rast)
+mod_sa_rast_trimmed     <- trim(mod_sa_rast)
+mod_ext_rast_trimmed    <- trim(mod_ext_rast)
+pa_rast_trimmed         <- trim(pa_rast)
+class_sa_rast_trimmed   <- trim(class_sa_rast)
+temp_scope_rast_trimmed <- trim(temp_scope_rast)
 
 # plot again
 plot(mod_sa_rast_trimmed)
 plot(mod_ext_rast_trimmed)
 plot(pa_rast_trimmed)
+plot(class_sa_rast_trimmed)
+plot(temp_scope_rast_trimmed)
 
 # Check extents - they differ...
 #ext(sa_rast)
@@ -136,6 +162,18 @@ writeRaster(mod_ext_rast_trimmed, mod_ext_out_path, datatype = "INT1U",
 
 pa_out_path <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 writeRaster(pa_rast_trimmed, pa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+class_sa_out_path <- file.path(sa_dir, "classification_study_area_aligned_cnvc_Apr2026.tif")
+writeRaster(class_sa_rast_trimmed, class_sa_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+temp_scope_out_path <- file.path(sa_dir, "temperate_scope_aligned_cnvc_Apr2026.tif")
+writeRaster(temp_scope_rast_trimmed, temp_scope_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
