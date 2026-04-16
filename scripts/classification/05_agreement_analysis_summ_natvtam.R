@@ -61,7 +61,7 @@ pudl_file <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_natvtam_noshr
 pli_file  <- file.path(pli_aligned_dir,  "sk_pli_merged_reproj_algn_natvtam_noshrub.tif")
 gpw_file  <- file.path(gpw_masked_dir,   "gpw_reproj_algn_natvtam_noshrub_masked.tif")
 plow_file <- file.path(plow_masked_dir,  "??.tif")
-plvi_file <- file.path(plow_aligned_dir, "plvi_reproj_algn_natvtam.tif")
+plvi_file <- file.path(plvi_aligned_dir, "plvi_reproj_algn_natvtam.tif")
 hfi_file  <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary.tif") # tame only - same as binary
 
 ####--- READ INTO TERRA ---####
