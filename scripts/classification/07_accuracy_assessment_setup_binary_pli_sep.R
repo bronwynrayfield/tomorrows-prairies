@@ -31,7 +31,7 @@ sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 # grasslands
 raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
 proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment"
+out_dir <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points"
 
 # ground-truthed data
 gt_dir <- "R:/CanadianGrasslands/processeddatasets/groundtruth_data"
@@ -61,6 +61,7 @@ hfi_aligned_dir   <- file.path(proc_grass_data_dir, "abmi_hfi/aligned")
 gcc_aligned_dir   <- file.path(proc_grass_data_dir, "bc_gcc/aligned")
 dw_masked_dir     <- file.path(proc_grass_data_dir, "dw_2025_grass/masked")
 esri_masked_dir   <- file.path(proc_grass_data_dir, "esri_rangelands/masked")
+mgi_aligned_dir   <- file.path(proc_grass_data_dir, "mb_mgi/aligned")
 
 ####--- FILES ---####
 # Pilot area
@@ -103,6 +104,7 @@ hfi_file    <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary_gte2015.tif")
 gcc_file    <- file.path(gcc_aligned_dir, "gcc_reproj_algn_binary.tif")
 dw_file     <- file.path(dw_masked_dir, "dw_reproj_algn_masked_binary.tif")
 esri_file   <- file.path(esri_masked_dir, "esri_reproj_algn_masked_binary.tif")
+mgi_file    <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_binary_noshrub.tif")
 
 ####--- READ INTO TERRA ---####
 
@@ -116,13 +118,13 @@ files <- c(
   aci_file, luts10_file, luts30_file, cec_file, ngi_file, cgr_file, eccc_file,
   esa_file, glc_file, cnvc_file, lcc_file, pudl_file, pli_ap_file,
   pli_cu_file, pli_mg_file, pli_mm_file, lcr_file, gpw_file, plow_file,
-  plvi_file, hfi_file, gcc_file, dw_file, esri_file
+  plvi_file, hfi_file, gcc_file, dw_file, esri_file, mgi_file
 )
 
 keys <- c(
   "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
   "cnvc","lcc","pudl","pli_ap","pli_cu","pli_mg","pli_mm","lcr",
-  "gpw","plow","plvi","hfi","gcc","dw","esri"
+  "gpw","plow","plvi","hfi","gcc","dw","esri","mgi"
 )
 
 names(files) <- keys
@@ -257,7 +259,7 @@ head(attr_df)
 ####--- EXPORT ---####
 
 # write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_ecodist_pli_sep_Mar2026_v2.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_ecodist_pli_sep_Apr2026.csv")
 write.csv(attr_df, csv_out_path, row.names = FALSE)
 
 # filter attr_df to only include rows where Yer_Cll is 2015+
@@ -266,7 +268,7 @@ attr_df_2015 <- attr_df %>%
 
 head(attr_df_2015)
 
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Mar2026_v2.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Apr2026.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 ####--- CLEAN FOR NEXT STEP ---####
@@ -289,7 +291,7 @@ attr_df_2015 <- attr_df_2015 %>%
   )
 
 # write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Mar2026_clean_v2.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Apr2026_clean.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 #########################################################################################

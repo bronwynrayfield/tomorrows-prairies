@@ -28,7 +28,7 @@ sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 # grasslands
 raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
 proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment"
+out_dir <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points"
 
 # ground-truthed data
 gt_dir <- "R:/CanadianGrasslands/processeddatasets/groundtruth_data"
@@ -47,6 +47,7 @@ pli_aligned_dir  <- file.path(proc_grass_data_dir, "sk_pli/aligned")
 gpw_masked_dir   <- file.path(proc_grass_data_dir, "wri_gpw_ann/masked")
 plvi_aligned_dir <- file.path(proc_grass_data_dir, "ab_plvi/aligned")
 hfi_aligned_dir  <- file.path(proc_grass_data_dir, "abmi_hfi/aligned")
+mgi_aligned_dir   <- file.path(proc_grass_data_dir, "mb_mgi/aligned")
 
 ####--- FILES ---####
 # Pilot area
@@ -75,6 +76,7 @@ pli_mm_file <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn_natvtam_noshrub
 gpw_file    <- file.path(gpw_masked_dir, "gpw_reproj_algn_natvtam_noshrub_masked.tif")
 plvi_file   <- file.path(plvi_aligned_dir, "plvi_reproj_algn_natvtam_gte2015.tif")
 hfi_file    <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary_gte2015.tif") # tame only - same as binary
+mgi_file    <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_natvtam_noshrub.tif")
 
 ####--- READ INTO TERRA ---####
 
@@ -85,12 +87,12 @@ files <- c(
   aci_file, ngi_file, cgr_file, eccc_file,
   cnvc_file, pudl_file, pli_ap_file,
   pli_cu_file, pli_mg_file, pli_mm_file, gpw_file,
-  plvi_file, hfi_file
+  plvi_file, hfi_file, mgi_file
 )
 
 keys <- c(
   "aci","ngi","cgr","eccc","cnvc","pudl","pli_ap",
-  "pli_cu","pli_mg","pli_mm","gpw","plvi","hfi"
+  "pli_cu","pli_mg","pli_mm","gpw","plvi","hfi","mgi"
 )
 
 names(files) <- keys
@@ -195,7 +197,7 @@ g   <- terra::geom(gt_out, df = TRUE)       # has columns 'geom','part','x','y',
 xy  <- g[, c("x", "y")]
 
 # 3) Sanity check and combine
-stopifnot(nrow(vals) == nrow(xy))           # should both be 196,931 for points
+stopifnot(nrow(vals) == nrow(xy))           
 attr_df <- cbind(vals, xy, stringsAsFactors = FALSE)
 
 # rename coord columns
@@ -238,7 +240,7 @@ head(attr_df)
 ####--- EXPORT ---####
 
 # write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_Mar2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_Apr2026.csv")
 write.csv(attr_df, csv_out_path, row.names = FALSE)
 
 # filter attr_df to only include rows where Yer_Cll is 2015+
@@ -247,7 +249,7 @@ attr_df_2015 <- attr_df %>%
 
 head(attr_df_2015)
 
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Mar2026_v2.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Apr2026.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 ####--- CLEAN FOR NEXT STEP ---####
@@ -270,6 +272,6 @@ attr_df_2015_clean <- attr_df_2015_clean %>%
   )
 
 # write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Mar2026_clean_v2.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Apr2026_clean.csv")
 write.csv(attr_df_2015_clean, csv_out_path, row.names = FALSE)
 
