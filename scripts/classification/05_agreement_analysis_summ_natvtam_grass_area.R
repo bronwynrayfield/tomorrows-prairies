@@ -76,8 +76,8 @@ pudl_file <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_natvtam_noshr
 pli_file  <- file.path(pli_aligned_dir,  "sk_pli_merged_reproj_algn_natvtam_noshrub.tif")
 gpw_file  <- file.path(gpw_masked_dir,   "gpw_reproj_algn_natvtam_noshrub_masked.tif")
 #plow_file <- file.path(plow_masked_dir,  "??.tif")
-plvi_file <- file.path(plvi_aligned_dir, "plvi_reproj_algn_natvtam.tif")
-hfi_file  <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary.tif") # tame only - same as binary
+plvi_file <- file.path(plvi_aligned_dir, "plvi_reproj_algn_natvtam_gte2015.tif")
+hfi_file  <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary_gte2015.tif") # tame only - same as binary
 mgi_file    <- file.path(mgi_aligned_dir, "mb_mgi_merged_reproj_algn_natvtam_noshrub.tif")
 
 # ==================
@@ -91,6 +91,52 @@ files <- c(
 rast_stack <- rast(files)
 
 sa <- rast(sa_file)
+
+plvi <- rast(plvi_file)
+plvi
+plot(plvi)
+
+hfi <- rast(hfi_file)
+hfi
+plot(hfi)
+
+# crop to study area
+crop_ext <- ext(sa)
+plvi_sa <- crop(plvi, crop_ext)
+plvi_sa
+plot (plvi_sa, main = "PLVI cropped (native vs tame)")
+
+# mask to pilot area
+plvi_masked <- mask(plvi_sa, sa)
+plvi_masked
+plot(plvi_masked, main = "PLVI masked (native vs tame)")
+
+# print frequency table
+freq_table <- freq(plvi_masked) 
+print(freq_table)
+
+#  layer value    count
+#1     1     0 18310256
+#2     1     1  4056463 x 0.09 = 365,081.67 ha tame
+#3     1     2   841174 x 0.09 = 75,705.66 ha native
+
+# crop to study area
+crop_ext <- ext(sa)
+hfi_sa <- crop(hfi, crop_ext)
+hfi_sa
+plot (hfi_sa, main = "HFI cropped (native vs tame)")
+
+# mask to pilot area
+hfi_masked <- mask(hfi_sa, sa)
+hfi_masked
+plot(hfi_masked, main = "HFI masked (native vs tame)")
+
+# print frequency table
+freq_table <- freq(hfi_masked) 
+print(freq_table)
+
+#  layer value   count
+#1     1     1 1449098 x 0.09 = 130,418.82 ha tame
 
 # ==================
 # CHECK CRS
@@ -246,6 +292,52 @@ files <- c(
 rast_stack <- rast(files)
 
 sa <- rast(sa_file)
+
+plvi <- rast(plvi_file)
+plvi
+plot(plvi)
+
+hfi <- rast(hfi_file)
+hfi
+plot(hfi)
+
+# crop to study area
+crop_ext <- ext(sa)
+plvi_sa <- crop(plvi, crop_ext)
+plvi_sa
+plot (plvi_sa, main = "PLVI cropped (native vs tame)")
+
+# mask to pilot area
+plvi_masked <- mask(plvi_sa, sa)
+plvi_masked
+plot(plvi_masked, main = "PLVI masked (native vs tame)")
+
+# print frequency table
+freq_table <- freq(plvi_masked) 
+print(freq_table)
+
+#  layer value    count
+#1     1     0 17472181
+#2     1     1  3843452 x 0.09 = 345,910.68 ha tame
+#3     1     2   773768 x 0.09 = 69,639.12 ha native
+
+# crop to study area
+crop_ext <- ext(sa)
+hfi_sa <- crop(hfi, crop_ext)
+hfi_sa
+plot (hfi_sa, main = "HFI cropped (native vs tame)")
+
+# mask to pilot area
+hfi_masked <- mask(hfi_sa, sa)
+hfi_masked
+plot(hfi_masked, main = "HFI masked (native vs tame)")
+
+# print frequency table
+freq_table <- freq(hfi_masked) 
+print(freq_table)
+
+#  layer value   count
+#1     1     1  465519 x 0.09 = 41,896.71 ha tame
 
 # ==================
 # CHECK CRS
