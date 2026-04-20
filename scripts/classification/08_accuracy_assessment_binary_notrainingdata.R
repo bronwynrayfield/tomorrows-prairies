@@ -273,6 +273,10 @@ readr::write_csv(per_year_summary,  file.path(out_dir, "raster_per_year_accuracy
 # ----------------------------
 p <- ggplot(summary_by_raster, aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
   labs(title = "Overall Accuracy by Raster",

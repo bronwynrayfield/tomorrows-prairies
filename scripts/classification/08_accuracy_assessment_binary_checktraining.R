@@ -91,7 +91,20 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 # ----------------------------
 # 4) Load points and normalize basic fields
 # ----------------------------
-points <- readxl::read_excel(points_excel_path)
+#points <- readxl::read_excel(points_excel_path)
+#points <- readxl::read_excel(
+#  points_excel_path,
+#  col_types = c("guess", "text", rep("guess", 39))
+#)
+points <- readxl::read_excel(
+  points_excel_path,
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 27))
+)
+
+names(points)
+str(points)
+unique(points$Source)
+table(points$Source, useNA = "ifany")
 
 required_cols <- c("LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
@@ -229,6 +242,12 @@ long <- points_norm %>%
     allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
   )
 
+# Create a canonical evaluation key
+long <- long %>%
+  mutate(
+    raster_eval = raster_group   # <-- canonical evaluation identity
+  )
+
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
 # ----------------------------
@@ -263,7 +282,19 @@ eval_data <- long %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
-  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  #filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  filter(is.na(Source_norm) | Source_norm != raster_eval) # filter using canonical evaluation identity
+
+# Check filtering
+table(eval_data$Source_norm, eval_data$raster, useNA = "ifany")
+
+eval_data %>%
+  filter(!is.na(Source_norm)) %>%
+  distinct(Source_norm, raster)
+
+eval_data %>%
+  count(raster_eval) %>%
+  arrange(n)
 
 # ----------------------------
 # 8) Metrics helpers
@@ -323,7 +354,7 @@ summary_by_raster_atomic <- summarize_block(
 
 # GROUPED: collapse pli_* -> "pli"; combine counts across all matched_year within group
 summary_by_raster_grouped <- eval_data %>%
-  mutate(raster = raster_group) %>%
+  mutate(raster = raster_eval) %>%
   group_by(raster) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -363,7 +394,7 @@ per_year_summary_atomic <- summarize_block(
 
 # GROUPED: per grouped raster × Yer_Cll (mix of multiple matched years inside)
 per_year_summary_grouped <- summarize_block(
-  eval_data %>% mutate(raster = raster_group),
+  eval_data %>% mutate(raster = raster_eval),
   key_cols = c("raster", "Yer_Cll")
 ) %>%
   mutate(raster_year = NA_integer_) %>%
@@ -390,28 +421,42 @@ readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_a
 p_grouped <- ggplot(summary_by_raster_grouped,
                     aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  #geom_text(aes(label = paste0("n = ", N_evaluated)),
+  #          hjust = -0.1,              # place text just beyond bar end
+  #          size = 2) +
   coord_flip() +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+    hjust = 1.1,
+    color = "white",
+    size = 3.5) +
+  #coord_cartesian(clip = "off") + # allow labels to draw beyond panel
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
-  labs(title = "Overall Accuracy by Raster (Grouped: pli combines variants)",
+  labs(title = "Overall Accuracy by raster (no training points excluded)",
        x = "Raster", y = "Overall Accuracy") +
   theme_minimal(base_size = 12) +
-  theme(panel.grid.minor = element_blank())
+  theme(panel.grid.minor = element_blank())#,
+        #plot.margin = margin(5.5, 40, 5.5, 5.5))
 
-ggsave(file.path(out_dir, "raster_accuracy_plot.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_no_pts_excld.png"),
        p_grouped, width = 7, height = 5, dpi = 200)
 
 # ATOMIC plot
 p_atomic <- ggplot(summary_by_raster_atomic,
                    aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
+  #coord_cartesian(clip = "off") + # allow labels to draw beyond panel
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
   labs(title = "Overall Accuracy by Raster (Atomic: pli_ap, pli_cu, pli_mg, pli_mm)",
        x = "Raster", y = "Overall Accuracy") +
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot_atomic.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_no_pts_excld.png"),
        p_atomic, width = 7, height = 5, dpi = 200)
 
 # Warning message:
@@ -977,7 +1022,21 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 # ----------------------------
 # 4) Load points and normalize basic fields
 # ----------------------------
-points <- readxl::read_excel(points_excel_path)
+#points <- readxl::read_excel(points_excel_path)
+#points <- readxl::read_excel(
+#  points_excel_path,
+#  col_types = c("guess", "text", rep("guess", 39))
+#)
+
+points <- readxl::read_excel(
+  points_excel_path,
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 27))
+)
+
+names(points)
+str(points)
+unique(points$Source)
+table(points$Source, useNA = "ifany")
 
 required_cols <- c("LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
@@ -1115,6 +1174,12 @@ long <- points_norm %>%
     allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
   )
 
+# Create a canonical evaluation key
+long <- long %>%
+  mutate(
+    raster_eval = raster_group   # <-- canonical evaluation identity
+  )
+
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
 # ----------------------------
@@ -1149,7 +1214,19 @@ eval_data <- long %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
-  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  #filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  filter(is.na(Source_norm) | Source_norm != raster_eval) # filter using canonical evaluation identity
+
+# Check filtering
+table(eval_data$Source_norm, eval_data$raster, useNA = "ifany")
+
+eval_data %>%
+  filter(!is.na(Source_norm)) %>%
+  distinct(Source_norm, raster)
+
+eval_data %>%
+  count(raster_eval) %>%
+  arrange(n)
 
 # ----------------------------
 # 8) Metrics helpers
@@ -1209,7 +1286,7 @@ summary_by_raster_atomic <- summarize_block(
 
 # GROUPED: collapse pli_* -> "pli"; combine counts across all matched_year within group
 summary_by_raster_grouped <- eval_data %>%
-  mutate(raster = raster_group) %>%
+  mutate(raster = raster_eval) %>%
   group_by(raster) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -1249,7 +1326,7 @@ per_year_summary_atomic <- summarize_block(
 
 # GROUPED: per grouped raster × Yer_Cll (mix of multiple matched years inside)
 per_year_summary_grouped <- summarize_block(
-  eval_data %>% mutate(raster = raster_group),
+  eval_data %>% mutate(raster = raster_eval),
   key_cols = c("raster", "Yer_Cll")
 ) %>%
   mutate(raster_year = NA_integer_) %>%
@@ -1276,20 +1353,28 @@ readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_a
 p_grouped <- ggplot(summary_by_raster_grouped,
                     aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
-  labs(title = "Overall Accuracy by Raster (Grouped: pli combines variants)",
+  labs(title = "Overall Accuracy by raster (training points per EL)",
        x = "Raster", y = "Overall Accuracy") +
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_EL_pts_excld2.png"),
        p_grouped, width = 7, height = 5, dpi = 200)
 
 # ATOMIC plot
 p_atomic <- ggplot(summary_by_raster_atomic,
                    aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
   labs(title = "Overall Accuracy by Raster (Atomic: pli_ap, pli_cu, pli_mg, pli_mm)",
@@ -1297,7 +1382,7 @@ p_atomic <- ggplot(summary_by_raster_atomic,
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot_atomic.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_EL_pts_excld.png"),
        p_atomic, width = 7, height = 5, dpi = 200)
 
 # Warning message:
@@ -1865,7 +1950,16 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 # ----------------------------
 # 4) Load points and normalize basic fields
 # ----------------------------
-points <- readxl::read_excel(points_excel_path)
+#points <- readxl::read_excel(points_excel_path)
+points <- readxl::read_excel(
+  points_excel_path,
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 27))
+)
+
+names(points)
+str(points)
+unique(points$Source)
+table(points$Source, useNA = "ifany")
 
 required_cols <- c("LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
@@ -1885,6 +1979,9 @@ points <- points %>%
       z
     }
   )
+
+head(points)
+str(points)
 
 # Normalize Source (if present) for training exclusion
 has_source <- "Source" %in% names(points)
@@ -2003,6 +2100,14 @@ long <- points_norm %>%
     allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
   )
 
+sum(!is.na(long$Source_norm))
+
+# Create a canonical evaluation key
+long <- long %>%
+  mutate(
+    raster_eval = raster_group   # <-- canonical evaluation identity
+  )
+
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
 # ----------------------------
@@ -2037,7 +2142,19 @@ eval_data <- long %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
-  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  #filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  filter(is.na(Source_norm) | Source_norm != raster_eval) # filter using canonical evaluation identity
+
+# Check filtering
+table(eval_data$Source_norm, eval_data$raster, useNA = "ifany")
+
+eval_data %>%
+  filter(!is.na(Source_norm)) %>%
+  distinct(Source_norm, raster)
+
+eval_data %>%
+  count(raster_eval) %>%
+  arrange(n)
 
 # ----------------------------
 # 8) Metrics helpers
@@ -2097,7 +2214,7 @@ summary_by_raster_atomic <- summarize_block(
 
 # GROUPED: collapse pli_* -> "pli"; combine counts across all matched_year within group
 summary_by_raster_grouped <- eval_data %>%
-  mutate(raster = raster_group) %>%
+  mutate(raster = raster_eval) %>%
   group_by(raster) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -2160,24 +2277,32 @@ readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_a
 # ----------------------------
 # 13) Plots: Overall accuracy (GROUPED and ATOMIC)
 # ----------------------------
-# GROUPED (legacy) plot
+# GROUPED plot
 p_grouped <- ggplot(summary_by_raster_grouped,
                     aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
-  labs(title = "Overall Accuracy by Raster (Grouped: pli combines variants)",
+  labs(title = "Overall Accuracy by raster (more points excluded)",
        x = "Raster", y = "Overall Accuracy") +
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_more_pts_excld2.png"),
        p_grouped, width = 7, height = 5, dpi = 200)
 
 # ATOMIC plot
 p_atomic <- ggplot(summary_by_raster_atomic,
                    aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
   labs(title = "Overall Accuracy by Raster (Atomic: pli_ap, pli_cu, pli_mg, pli_mm)",
@@ -2185,7 +2310,7 @@ p_atomic <- ggplot(summary_by_raster_atomic,
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot_atomic.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_more_pts_excld.png"),
        p_atomic, width = 7, height = 5, dpi = 200)
 
 # Warning message:

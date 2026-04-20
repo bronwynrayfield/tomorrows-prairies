@@ -848,6 +848,10 @@ readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_a
 p_grouped <- ggplot(summary_by_raster_grouped,
                     aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
   labs(title = "Overall Accuracy by Raster (Grouped: pli combines variants) — Multiclass (0/1/2)",
@@ -861,6 +865,10 @@ ggsave(file.path(out_dir, "raster_accuracy_plot_multiclass.png"),
 p_atomic <- ggplot(summary_by_raster_atomic,
                    aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
   geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
   labs(title = "Overall Accuracy by Raster (Atomic: pli_ap, pli_cu, pli_mg, pli_mm) — Multiclass (0/1/2)",
