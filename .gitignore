@@ -15,6 +15,9 @@
 # existingdatasets
 existingdatasets/**
 
+# processeddatasets
+processeddatasets/**
+
 # results
 results/*
 .Rproj.user
