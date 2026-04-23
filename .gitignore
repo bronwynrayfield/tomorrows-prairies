@@ -15,8 +15,21 @@
 # existingdatasets
 existingdatasets/**
 
-# processeddatasets
-processeddatasets/**
+# ignore everything inside processeddatasets
+processeddatasets/*
+
+# keep these subfolders
+!processeddatasets/cropland/
+!processeddatasets/landcover/
+!processeddatasets/management/
+!processeddatasets/pilot_area/
+!processeddatasets/soil/
+!processeddatasets/studyarea/
+!processeddatasets/topography/
+!processeddatasets/boundaries/
+
+# but ignore everything inside those subfolders
+processeddatasets/*/*
 
 # results
 results/*
