@@ -1,429 +1,11 @@
 
 #######################################################################################
-## PRELIMINARY ACCURACY ASSESSMENT: NATIVE AND TAME CLASSES (NATIVE AND TAME POINTS) ##
+##              PRELIMINARY ACCURACY ASSESSMENT: NATIVE AND TAME CLASSES             ##
 #######################################################################################
 
 ##----------------------- Alison Long - March 2026 -------------------------
 
-# step 6 (multiclass): assess accuracy of datasets mapping grasslands
-# against ground-truthed point data (2015 to present), with 3 classes:
-#   0 = not grass, 1 = tame grass, 2 = native grass
-#   (filter out groundtruthed points that are classified as 0)
-#
-# Key changes from binary version:
-#   - Uses LC_class3 (0/1/2) instead of LC_grass (0/1)
-#   - Rasters expected as 0/1/2
-#   - Time-aligned rules:
-#         native (2): latest allowed_year <= Yer_Cll
-#         tame   (1): allowed_year == Yer_Cll
-#   - 3x3 confusion matrices and per-class metrics
-
-# ----------------------------
-# 1) Setup
-# ----------------------------
-
-# load packages
-library(readxl)
-library(readr)
-library(dplyr)
-library(tidyr)
-library(stringr)
-library(ggplot2)
-library(purrr)
-library(tibble)
-library(sf)
-library(scales)
-
-# Small utility: "x %||% y" returns y if x is NULL
-`%||%` <- function(x, y) if (is.null(x)) y else x
-
-# ----------------------------
-# 2) File paths 
-# ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Mar2026_clean_v2.xlsx"
-metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
-
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame"
-#dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-
-# ----------------------------
-# 3) Configuration
-# ----------------------------
-# IMPORTANT: Handle PLI as four separate rasters in the points file and metadata.
-pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
-
-# Expected raster columns (3-class values 0/1/2)
-raster_cols <- c("aci","ngi","cgr","eccc",
-                 "cnvc","pudl",
-                 pli_variants,            # four atomic PLI rasters
-                 "gpw","plvi","hfi")
-
-# Grouping helper: collapse pli_* -> "pli"; all others remain themselves
-raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
-
-# ----------------------------
-# 4) Load points and normalize basic fields
-# ----------------------------
-points <- readxl::read_excel(points_excel_path)
-
-required_cols <- c("LC_class3", "Yer_Cll")
-missing_req <- setdiff(required_cols, names(points))
-if (length(missing_req) > 0) {
-  stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
-}
-
-# Normalize LC_class3 to integer 0/1/2, Yer_Cll to year int
-points <- points %>%
-  mutate(
-    LC_class3 = {
-      x <- as.character(LC_class3)
-      x <- str_trim(tolower(x))
-      x[x %in% c("", "na", "nan", "null", "missing")] <- NA_character_
-      # Accept words if present
-      x <- dplyr::case_match(
-        x,
-        "0" ~ "0", "1" ~ "1", "2" ~ "2",
-        "not grass" ~ "0", "nongrass" ~ "0", "non-grass" ~ "0",
-        "tame" ~ "1", "tame grass" ~ "1",
-        "native" ~ "2", "native grass" ~ "2",
-        .default = x
-      )
-      ifelse(x %in% c("0","1","2"), as.integer(x), NA_integer_)
-    },
-    Yer_Cll  = suppressWarnings(as.integer(as.numeric(Yer_Cll)))
-  )
-
-# Normalize LC_Cl_N (used only for SHRUB exclusion if present)
-has_lccln <- "LC_Cl_N" %in% names(points)
-if (has_lccln) {
-  points <- points %>%
-    mutate(
-      LC_Cl_N = {
-        z <- as.character(LC_Cl_N)
-        z <- stringr::str_trim(toupper(z))
-        z[z %in% c("", "NA", "NAN", "NULL", "MISSING")] <- NA_character_
-        z
-      }
-    )
-} else {
-  points <- points %>% mutate(LC_Cl_N = NA_character_)
-}
-
-# Normalize Source (if present) for training exclusion
-has_source <- "Source" %in% names(points)
-if (has_source) {
-  points <- points %>%
-    mutate(
-      Source_norm = {
-        s <- as.character(Source)
-        s <- stringr::str_trim(tolower(s))
-        s[s %in% c("", "na", "nan", "null", "missing")] <- NA_character_
-        s
-      }
-    )
-} else {
-  points <- points %>% mutate(Source_norm = NA_character_)
-}
-
-# Identify which raster columns actually exist in the points file
-present_rasters <- intersect(raster_cols, names(points))
-if (length(present_rasters) == 0) {
-  stop("None of the expected raster columns were found in the points file.")
-}
-
-# ----------------------------
-# 5) Load metadata and allow MULTIPLE years per raster
-# ----------------------------
-meta_raw <- readr::read_csv(metadata_csv_path, show_col_types = FALSE)
-
-parse_year_vector <- function(y) {
-  # Accept numbers or delimited strings "2020|2021" or "2020, 2021"
-  if (is.null(y) || (length(y) == 1 && is.na(y))) return(integer(0))
-  if (is.numeric(y)) return(as.integer(stats::na.omit(y)))
-  y_chr <- as.character(y)
-  y_chr <- stringr::str_trim(y_chr)
-  y_chr[y_chr %in% c("", "NA", "NaN", "null", "NULL", "missing")] <- NA_character_
-  y_chr <- y_chr[!is.na(y_chr)]
-  if (length(y_chr) == 0) return(integer(0))
-  parts <- unlist(strsplit(y_chr, "[|,]"))
-  parts <- stringr::str_trim(parts)
-  suppressWarnings(as.integer(stats::na.omit(as.numeric(parts))))
-}
-
-if (all(c("raster", "year") %in% names(meta_raw))) {
-  # Long format
-  meta_norm <- meta_raw %>%
-    transmute(
-      raster = str_trim(tolower(as.character(raster))),
-      year_raw = year
-    ) %>%
-    group_by(raster) %>%
-    summarise(years = list(parse_year_vector(year_raw)), .groups = "drop")
-} else if (nrow(meta_raw) == 1 && any(intersect(raster_cols, names(meta_raw)) %in% names(meta_raw))) {
-  # Wide single-row
-  meta_norm <- tibble(
-    raster = raster_cols,
-    years  = map(raster_cols, ~ parse_year_vector(meta_raw[[.x]]))
-  ) %>%
-    mutate(raster = tolower(raster))
-} else {
-  stop(
-    "Metadata format not recognized. Provide either:\n",
-    "  (A) Long CSV with columns: raster, year (multiple rows allowed per raster), OR\n",
-    "  (B) Wide 1-row CSV with raster columns; cells may be single years or delimited lists (e.g., '2020|2021')."
-  )
-}
-
-# Build named list: raster -> unique sorted integer vector of years
-raster_years_map <- meta_norm %>%
-  mutate(years = map(years, ~ unique(sort(as.integer(.x))))) %>%
-  deframe()
-
-# Warn if any present raster has no metadata years
-rasters_missing_years <- setdiff(present_rasters, names(raster_years_map))
-if (length(rasters_missing_years) > 0) {
-  warning("These rasters are present in points but have no years in metadata (they will be excluded): ",
-          paste(rasters_missing_years, collapse = ", "))
-}
-
-# ----------------------------
-# 6) Reshape points to long and attach allowed years (list-column)
-# ----------------------------
-# Convert raster columns to integer 0/1/2/NA. Anything not 0/1/2 becomes NA.
-points_norm <- points %>%
-  mutate(
-    across(
-      all_of(present_rasters),
-      ~ {
-        x <- as.character(.)
-        x <- str_trim(x)
-        x[x %in% c("", "NA", "NaN", "null", "NULL")] <- NA_character_
-        ifelse(x %in% c("0","1","2"), as.integer(x), NA_integer_)
-      }
-    )
-  )
-
-# Long format: one row per point × raster
-# Also attach:
-#   - raster_group (pli_* -> pli)
-#   - allowed_years (list of integers from metadata)
-long <- points_norm %>%
-  select(all_of(required_cols), LC_Cl_N, Source_norm, all_of(present_rasters)) %>%
-  pivot_longer(
-    cols = all_of(present_rasters),
-    names_to = "raster",
-    values_to = "pred"
-  ) %>%
-  mutate(
-    raster = tolower(raster),
-    raster_group = raster_to_group(raster),
-    allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
-  )
-
-# ----------------------------
-# 7) Filter rows via class-based time rules using MULTIPLE allowed years
-# ----------------------------
-compute_matched_year_class3 <- function(yrs, yer, lc3, notgrass_rule = c("exact","lte")) {
-  notgrass_rule <- match.arg(notgrass_rule)
-  yrs <- as.integer(yrs)
-  if (length(yrs) == 0L || is.na(yer) || is.na(lc3)) return(NA_integer_)
-  if (lc3 == 2L) {                # native
-    ok <- yrs[yrs <= yer]
-    if (length(ok) == 0L) return(NA_integer_)
-    return(max(ok))
-  } else if (lc3 == 1L) {         # tame
-    if (yer %in% yrs) return(yer) else return(NA_integer_)
-  } else if (lc3 == 0L) {         # not grass
-    if (notgrass_rule == "exact") {
-      if (yer %in% yrs) return(yer) else return(NA_integer_)
-    } else { # "lte"
-      ok <- yrs[yrs <= yer]
-      if (length(ok) == 0L) return(NA_integer_)
-      return(max(ok))
-    }
-  } else {
-    return(NA_integer_)
-  }
-}
-
-# Apply full filtering:
-#   - require LC_class3 ∈ {0,1,2}, Yer_Cll present, pred present
-#   - filter out data points where LC_class3 is 0 (not grass) - only 2 here
-#   - optional exclusion: LC_Cl_N == "SHRUB"
-#   - require allowed_years matching via matched_year
-#   - exclude training sources that match atomic raster or grouped alias
-eval_data <- long %>%
-  filter(!is.na(LC_class3), LC_class3 %in% c(1L,2L), !is.na(Yer_Cll)) %>%  # <— keep only tame/native
-  { if ("LC_Cl_N" %in% names(.)) filter(., is.na(LC_Cl_N) | LC_Cl_N != "SHRUB") else . } %>%
-  filter(!is.na(pred)) %>%
-  rowwise() %>%
-  mutate(matched_year = compute_matched_year_class3(allowed_years, Yer_Cll, LC_class3)) %>%
-  ungroup() %>%
-  filter(!is.na(matched_year)) %>%
-  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
-
-
-# ----------------------------
-# 8) Multiclass metrics helpers
-# ----------------------------
-safe_div <- function(n, d) ifelse(d == 0 | is.na(d), NA_real_, n / d)
-
-compute_confusion_3 <- function(df, truth_col = "LC_class3", pred_col = "pred") {
-  lvls <- c(0L,1L,2L)
-  truth <- factor(df[[truth_col]], levels = lvls)
-  pred  <- factor(df[[pred_col]],  levels = lvls)
-  tab <- as.matrix(table(truth, pred))
-  # Ensure full 3x3 even if missing levels
-  if (!all(dimnames(tab)$truth == as.character(lvls))) {
-    dimnames(tab)$truth <- as.character(lvls)
-  }
-  if (!all(dimnames(tab)$pred == as.character(lvls))) {
-    dimnames(tab)$pred <- as.character(lvls)
-  }
-  n <- sum(tab)
-  counts_long <- as_tibble(as.data.frame(as.table(tab))) %>%
-    transmute(
-      Truth = as.integer(as.character(truth)),
-      Pred  = as.integer(as.character(pred)),
-      N     = as.integer(Freq)
-    )
-  list(tab = tab, n = n, counts_long = counts_long)
-}
-
-compute_metrics_3 <- function(tab) {
-  n <- sum(tab)
-  diagv <- diag(tab)
-  rows <- rowSums(tab)  # support by truth
-  cols <- colSums(tab)  # predicted totals
-  
-  overall <- safe_div(sum(diagv), n)
-  
-  prec <- mapply(function(tp, colsum) safe_div(tp, colsum), diagv, cols)
-  rec  <- mapply(function(tp, rowsum) safe_div(tp, rowsum), diagv, rows)
-  f1   <- ifelse(is.na(prec) | is.na(rec) | (prec + rec) == 0, NA_real_, 2 * prec * rec / (prec + rec))
-  
-  macro_prec <- mean(prec, na.rm = TRUE)
-  macro_rec  <- mean(rec, na.rm  = TRUE)
-  macro_f1   <- mean(f1, na.rm   = TRUE)
-  bal_acc    <- macro_rec
-  
-  weights <- safe_div(rows, sum(rows))
-  weighted_f1 <- if (all(is.na(weights))) NA_real_ else sum((weights %||% 0) * (f1 %||% 0), na.rm = TRUE)
-  
-  # Cohen's kappa
-  pe <- safe_div(sum(rows * cols), n * n)
-  kappa <- ifelse(is.na(pe) | (1 - pe) == 0, NA_real_, (overall - pe) / (1 - pe))
-  
-  tibble(
-    N_evaluated       = as.integer(n),
-    Overall_Accuracy  = overall,
-    Kappa             = kappa,
-    Macro_Precision   = macro_prec,
-    Macro_Recall      = macro_rec,
-    Macro_F1          = macro_f1,
-    Weighted_F1       = weighted_f1,
-    Balanced_Accuracy = bal_acc,
-    # Per-class metrics (suffix _0, _1, _2)
-    Precision_0 = prec[1], Recall_0 = rec[1], F1_0 = f1[1], Support_0 = rows[1],
-    Precision_1 = prec[2], Recall_1 = rec[2], F1_1 = f1[2], Support_1 = rows[2],
-    Precision_2 = prec[3], Recall_2 = rec[3], F1_2 = f1[3], Support_2 = rows[3]
-  )
-}
-
-summarize_block_multiclass <- function(df, key_cols) {
-  # Group by key_cols; compute a 3x3 confusion + metrics per group
-  df %>%
-    group_by(across(all_of(key_cols))) %>%
-    group_modify(~ {
-      c3 <- compute_confusion_3(.x)
-      met <- compute_metrics_3(c3$tab)
-      # Return counts long in separate table; here only metrics + N
-      met
-    }) %>%
-    ungroup()
-}
-
-confusion_block_multiclass <- function(df, key_cols) {
-  # Return long-form confusion counts per group
-  df %>%
-    group_by(across(all_of(key_cols))) %>%
-    group_modify(~ {
-      compute_confusion_3(.x)$counts_long
-    }) %>%
-    ungroup()
-}
-
-# ----------------------------
-# 9) Per-raster summaries (ATOMIC and GROUPED)
-# ----------------------------
-
-# ATOMIC: by (raster, matched_year)
-summary_by_raster_atomic <- summarize_block_multiclass(
-  eval_data,
-  key_cols = c("raster", "matched_year")
-) %>%
-  rename(raster_year = matched_year) %>%
-  arrange(desc(Overall_Accuracy))
-
-# GROUPED: collapse pli_* -> "pli"; combine rows, recompute confusion+metrics
-eval_grouped <- eval_data %>% mutate(raster = raster_group)
-
-summary_by_raster_grouped <- summarize_block_multiclass(
-  eval_grouped,
-  key_cols = c("raster")
-) %>%
-  mutate(raster_year = NA_integer_) %>%
-  relocate(raster, raster_year) %>%
-  arrange(desc(Overall_Accuracy))
-
-# ----------------------------
-# 10) Confusion counts tables (3×3, long form)
-# ----------------------------
-confusion_counts_atomic <- confusion_block_multiclass(
-  eval_data,
-  key_cols = c("raster", "matched_year")
-) %>%
-  rename(raster_year = matched_year) %>%
-  arrange(raster, raster_year, Truth, Pred)
-
-confusion_counts_grouped <- confusion_block_multiclass(
-  eval_grouped,
-  key_cols = c("raster")
-) %>%
-  mutate(raster_year = NA_integer_) %>%
-  relocate(raster, raster_year) %>%
-  arrange(raster, Truth, Pred)
-
-# ----------------------------
-# 11) Per ground-truth year breakdowns (ATOMIC & GROUPED)
-# ----------------------------
-per_year_summary_atomic <- summarize_block_multiclass(
-  eval_data,
-  key_cols = c("raster", "matched_year", "Yer_Cll")
-) %>%
-  rename(raster_year = matched_year) %>%
-  arrange(raster, Yer_Cll)
-
-per_year_summary_grouped <- summarize_block_multiclass(
-  eval_grouped,
-  key_cols = c("raster", "Yer_Cll")
-) %>%
-  mutate(raster_year = NA_integer_) %>%
-  relocate(raster, raster_year) %>%
-  arrange(raster, Yer_Cll)
-
-# ----------------------------
-# 12) Save outputs (CSV)
-# ----------------------------
-readr::write_csv(summary_by_raster_grouped, file.path(out_dir, "raster_accuracy_summary_multiclass.csv"))
-readr::write_csv(confusion_counts_grouped,  file.path(out_dir, "raster_confusion_counts_multiclass.csv"))
-readr::write_csv(per_year_summary_grouped,  file.path(out_dir, "raster_per_year_accuracy_multiclass.csv"))
-
-readr::write_csv(summary_by_raster_atomic, file.path(out_dir, "raster_accuracy_summary_multiclass_atomic.csv"))
-readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_counts_multiclass_atomic.csv"))
-readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_multiclass_atomic.csv"))
-
-# step 6 (multiclass): assess accuracy of datasets mapping grasslands
+# step 8 (multiclass): assess accuracy of datasets mapping grasslands
 # against ground-truthed point data (2015 to present), with 3 classes:
 #   0 = not grass, 1 = tame grass, 2 = native grass
 #   (filter out groundtruthed points that are classified as 0)
@@ -435,6 +17,7 @@ readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_a
 #         native (2): latest allowed_year <= Yer_Cll
 #         tame   (1): allowed_year == Yer_Cll
 #   - 3×3 confusion matrices and per-class metrics
+#   - 2×2 confusion matrices and per-class metrics (native vs tame only)
 #   - More accuracy metrics (not just recall)
 
 # ----------------------------
@@ -483,7 +66,16 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 # ----------------------------
 # 4) Load points and normalize basic fields
 # ----------------------------
-points <- readxl::read_excel(points_excel_path)
+#points <- readxl::read_excel(points_excel_path)
+points <- readxl::read_excel(
+  points_excel_path,
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 27))
+)
+
+names(points)
+str(points)
+unique(points$Source)
+table(points$Source, useNA = "ifany")
 
 required_cols <- c("LC_class3", "Yer_Cll")
 missing_req <- setdiff(required_cols, names(points))
@@ -1924,3 +1516,426 @@ p3 <- ggplot(eco_plot_df) +
   theme_minimal()
 
 ggsave(file.path(out_dir, "map_f1_imbalance.png"), p3, width=8, height=6, dpi=200)
+
+##########################################################################################
+##########################################################################################
+
+# OLD VERSION:
+
+# step 8 (multiclass): assess accuracy of datasets mapping grasslands
+# against ground-truthed point data (2015 to present), with 3 classes:
+#   0 = not grass, 1 = tame grass, 2 = native grass
+#   (filter out groundtruthed points that are classified as 0)
+#
+# Key changes from binary version:
+#   - Uses LC_class3 (0/1/2) instead of LC_grass (0/1)
+#   - Rasters expected as 0/1/2
+#   - Time-aligned rules:
+#         native (2): latest allowed_year <= Yer_Cll
+#         tame   (1): allowed_year == Yer_Cll
+#   - 3x3 confusion matrices and per-class metrics
+
+# ----------------------------
+# 1) Setup
+# ----------------------------
+
+# load packages
+library(readxl)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(purrr)
+library(tibble)
+library(sf)
+library(scales)
+
+# Small utility: "x %||% y" returns y if x is NULL
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+# ----------------------------
+# 2) File paths 
+# ----------------------------
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Mar2026_clean_v2.xlsx"
+metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
+
+out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame"
+#dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+# ----------------------------
+# 3) Configuration
+# ----------------------------
+# IMPORTANT: Handle PLI as four separate rasters in the points file and metadata.
+pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
+
+# Expected raster columns (3-class values 0/1/2)
+raster_cols <- c("aci","ngi","cgr","eccc",
+                 "cnvc","pudl",
+                 pli_variants,            # four atomic PLI rasters
+                 "gpw","plvi","hfi")
+
+# Grouping helper: collapse pli_* -> "pli"; all others remain themselves
+raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
+
+# ----------------------------
+# 4) Load points and normalize basic fields
+# ----------------------------
+points <- readxl::read_excel(points_excel_path)
+
+required_cols <- c("LC_class3", "Yer_Cll")
+missing_req <- setdiff(required_cols, names(points))
+if (length(missing_req) > 0) {
+  stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
+}
+
+# Normalize LC_class3 to integer 0/1/2, Yer_Cll to year int
+points <- points %>%
+  mutate(
+    LC_class3 = {
+      x <- as.character(LC_class3)
+      x <- str_trim(tolower(x))
+      x[x %in% c("", "na", "nan", "null", "missing")] <- NA_character_
+      # Accept words if present
+      x <- dplyr::case_match(
+        x,
+        "0" ~ "0", "1" ~ "1", "2" ~ "2",
+        "not grass" ~ "0", "nongrass" ~ "0", "non-grass" ~ "0",
+        "tame" ~ "1", "tame grass" ~ "1",
+        "native" ~ "2", "native grass" ~ "2",
+        .default = x
+      )
+      ifelse(x %in% c("0","1","2"), as.integer(x), NA_integer_)
+    },
+    Yer_Cll  = suppressWarnings(as.integer(as.numeric(Yer_Cll)))
+  )
+
+# Normalize LC_Cl_N (used only for SHRUB exclusion if present)
+has_lccln <- "LC_Cl_N" %in% names(points)
+if (has_lccln) {
+  points <- points %>%
+    mutate(
+      LC_Cl_N = {
+        z <- as.character(LC_Cl_N)
+        z <- stringr::str_trim(toupper(z))
+        z[z %in% c("", "NA", "NAN", "NULL", "MISSING")] <- NA_character_
+        z
+      }
+    )
+} else {
+  points <- points %>% mutate(LC_Cl_N = NA_character_)
+}
+
+# Normalize Source (if present) for training exclusion
+has_source <- "Source" %in% names(points)
+if (has_source) {
+  points <- points %>%
+    mutate(
+      Source_norm = {
+        s <- as.character(Source)
+        s <- stringr::str_trim(tolower(s))
+        s[s %in% c("", "na", "nan", "null", "missing")] <- NA_character_
+        s
+      }
+    )
+} else {
+  points <- points %>% mutate(Source_norm = NA_character_)
+}
+
+# Identify which raster columns actually exist in the points file
+present_rasters <- intersect(raster_cols, names(points))
+if (length(present_rasters) == 0) {
+  stop("None of the expected raster columns were found in the points file.")
+}
+
+# ----------------------------
+# 5) Load metadata and allow MULTIPLE years per raster
+# ----------------------------
+meta_raw <- readr::read_csv(metadata_csv_path, show_col_types = FALSE)
+
+parse_year_vector <- function(y) {
+  # Accept numbers or delimited strings "2020|2021" or "2020, 2021"
+  if (is.null(y) || (length(y) == 1 && is.na(y))) return(integer(0))
+  if (is.numeric(y)) return(as.integer(stats::na.omit(y)))
+  y_chr <- as.character(y)
+  y_chr <- stringr::str_trim(y_chr)
+  y_chr[y_chr %in% c("", "NA", "NaN", "null", "NULL", "missing")] <- NA_character_
+  y_chr <- y_chr[!is.na(y_chr)]
+  if (length(y_chr) == 0) return(integer(0))
+  parts <- unlist(strsplit(y_chr, "[|,]"))
+  parts <- stringr::str_trim(parts)
+  suppressWarnings(as.integer(stats::na.omit(as.numeric(parts))))
+}
+
+if (all(c("raster", "year") %in% names(meta_raw))) {
+  # Long format
+  meta_norm <- meta_raw %>%
+    transmute(
+      raster = str_trim(tolower(as.character(raster))),
+      year_raw = year
+    ) %>%
+    group_by(raster) %>%
+    summarise(years = list(parse_year_vector(year_raw)), .groups = "drop")
+} else if (nrow(meta_raw) == 1 && any(intersect(raster_cols, names(meta_raw)) %in% names(meta_raw))) {
+  # Wide single-row
+  meta_norm <- tibble(
+    raster = raster_cols,
+    years  = map(raster_cols, ~ parse_year_vector(meta_raw[[.x]]))
+  ) %>%
+    mutate(raster = tolower(raster))
+} else {
+  stop(
+    "Metadata format not recognized. Provide either:\n",
+    "  (A) Long CSV with columns: raster, year (multiple rows allowed per raster), OR\n",
+    "  (B) Wide 1-row CSV with raster columns; cells may be single years or delimited lists (e.g., '2020|2021')."
+  )
+}
+
+# Build named list: raster -> unique sorted integer vector of years
+raster_years_map <- meta_norm %>%
+  mutate(years = map(years, ~ unique(sort(as.integer(.x))))) %>%
+  deframe()
+
+# Warn if any present raster has no metadata years
+rasters_missing_years <- setdiff(present_rasters, names(raster_years_map))
+if (length(rasters_missing_years) > 0) {
+  warning("These rasters are present in points but have no years in metadata (they will be excluded): ",
+          paste(rasters_missing_years, collapse = ", "))
+}
+
+# ----------------------------
+# 6) Reshape points to long and attach allowed years (list-column)
+# ----------------------------
+# Convert raster columns to integer 0/1/2/NA. Anything not 0/1/2 becomes NA.
+points_norm <- points %>%
+  mutate(
+    across(
+      all_of(present_rasters),
+      ~ {
+        x <- as.character(.)
+        x <- str_trim(x)
+        x[x %in% c("", "NA", "NaN", "null", "NULL")] <- NA_character_
+        ifelse(x %in% c("0","1","2"), as.integer(x), NA_integer_)
+      }
+    )
+  )
+
+# Long format: one row per point × raster
+# Also attach:
+#   - raster_group (pli_* -> pli)
+#   - allowed_years (list of integers from metadata)
+long <- points_norm %>%
+  select(all_of(required_cols), LC_Cl_N, Source_norm, all_of(present_rasters)) %>%
+  pivot_longer(
+    cols = all_of(present_rasters),
+    names_to = "raster",
+    values_to = "pred"
+  ) %>%
+  mutate(
+    raster = tolower(raster),
+    raster_group = raster_to_group(raster),
+    allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
+  )
+
+# ----------------------------
+# 7) Filter rows via class-based time rules using MULTIPLE allowed years
+# ----------------------------
+compute_matched_year_class3 <- function(yrs, yer, lc3, notgrass_rule = c("exact","lte")) {
+  notgrass_rule <- match.arg(notgrass_rule)
+  yrs <- as.integer(yrs)
+  if (length(yrs) == 0L || is.na(yer) || is.na(lc3)) return(NA_integer_)
+  if (lc3 == 2L) {                # native
+    ok <- yrs[yrs <= yer]
+    if (length(ok) == 0L) return(NA_integer_)
+    return(max(ok))
+  } else if (lc3 == 1L) {         # tame
+    if (yer %in% yrs) return(yer) else return(NA_integer_)
+  } else if (lc3 == 0L) {         # not grass
+    if (notgrass_rule == "exact") {
+      if (yer %in% yrs) return(yer) else return(NA_integer_)
+    } else { # "lte"
+      ok <- yrs[yrs <= yer]
+      if (length(ok) == 0L) return(NA_integer_)
+      return(max(ok))
+    }
+  } else {
+    return(NA_integer_)
+  }
+}
+
+# Apply full filtering:
+#   - require LC_class3 ∈ {0,1,2}, Yer_Cll present, pred present
+#   - filter out data points where LC_class3 is 0 (not grass) - only 2 here
+#   - optional exclusion: LC_Cl_N == "SHRUB"
+#   - require allowed_years matching via matched_year
+#   - exclude training sources that match atomic raster or grouped alias
+eval_data <- long %>%
+  filter(!is.na(LC_class3), LC_class3 %in% c(1L,2L), !is.na(Yer_Cll)) %>%  # <— keep only tame/native
+  { if ("LC_Cl_N" %in% names(.)) filter(., is.na(LC_Cl_N) | LC_Cl_N != "SHRUB") else . } %>%
+  filter(!is.na(pred)) %>%
+  rowwise() %>%
+  mutate(matched_year = compute_matched_year_class3(allowed_years, Yer_Cll, LC_class3)) %>%
+  ungroup() %>%
+  filter(!is.na(matched_year)) %>%
+  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+
+
+# ----------------------------
+# 8) Multiclass metrics helpers
+# ----------------------------
+safe_div <- function(n, d) ifelse(d == 0 | is.na(d), NA_real_, n / d)
+
+compute_confusion_3 <- function(df, truth_col = "LC_class3", pred_col = "pred") {
+  lvls <- c(0L,1L,2L)
+  truth <- factor(df[[truth_col]], levels = lvls)
+  pred  <- factor(df[[pred_col]],  levels = lvls)
+  tab <- as.matrix(table(truth, pred))
+  # Ensure full 3x3 even if missing levels
+  if (!all(dimnames(tab)$truth == as.character(lvls))) {
+    dimnames(tab)$truth <- as.character(lvls)
+  }
+  if (!all(dimnames(tab)$pred == as.character(lvls))) {
+    dimnames(tab)$pred <- as.character(lvls)
+  }
+  n <- sum(tab)
+  counts_long <- as_tibble(as.data.frame(as.table(tab))) %>%
+    transmute(
+      Truth = as.integer(as.character(truth)),
+      Pred  = as.integer(as.character(pred)),
+      N     = as.integer(Freq)
+    )
+  list(tab = tab, n = n, counts_long = counts_long)
+}
+
+compute_metrics_3 <- function(tab) {
+  n <- sum(tab)
+  diagv <- diag(tab)
+  rows <- rowSums(tab)  # support by truth
+  cols <- colSums(tab)  # predicted totals
+  
+  overall <- safe_div(sum(diagv), n)
+  
+  prec <- mapply(function(tp, colsum) safe_div(tp, colsum), diagv, cols)
+  rec  <- mapply(function(tp, rowsum) safe_div(tp, rowsum), diagv, rows)
+  f1   <- ifelse(is.na(prec) | is.na(rec) | (prec + rec) == 0, NA_real_, 2 * prec * rec / (prec + rec))
+  
+  macro_prec <- mean(prec, na.rm = TRUE)
+  macro_rec  <- mean(rec, na.rm  = TRUE)
+  macro_f1   <- mean(f1, na.rm   = TRUE)
+  bal_acc    <- macro_rec
+  
+  weights <- safe_div(rows, sum(rows))
+  weighted_f1 <- if (all(is.na(weights))) NA_real_ else sum((weights %||% 0) * (f1 %||% 0), na.rm = TRUE)
+  
+  # Cohen's kappa
+  pe <- safe_div(sum(rows * cols), n * n)
+  kappa <- ifelse(is.na(pe) | (1 - pe) == 0, NA_real_, (overall - pe) / (1 - pe))
+  
+  tibble(
+    N_evaluated       = as.integer(n),
+    Overall_Accuracy  = overall,
+    Kappa             = kappa,
+    Macro_Precision   = macro_prec,
+    Macro_Recall      = macro_rec,
+    Macro_F1          = macro_f1,
+    Weighted_F1       = weighted_f1,
+    Balanced_Accuracy = bal_acc,
+    # Per-class metrics (suffix _0, _1, _2)
+    Precision_0 = prec[1], Recall_0 = rec[1], F1_0 = f1[1], Support_0 = rows[1],
+    Precision_1 = prec[2], Recall_1 = rec[2], F1_1 = f1[2], Support_1 = rows[2],
+    Precision_2 = prec[3], Recall_2 = rec[3], F1_2 = f1[3], Support_2 = rows[3]
+  )
+}
+
+summarize_block_multiclass <- function(df, key_cols) {
+  # Group by key_cols; compute a 3x3 confusion + metrics per group
+  df %>%
+    group_by(across(all_of(key_cols))) %>%
+    group_modify(~ {
+      c3 <- compute_confusion_3(.x)
+      met <- compute_metrics_3(c3$tab)
+      # Return counts long in separate table; here only metrics + N
+      met
+    }) %>%
+    ungroup()
+}
+
+confusion_block_multiclass <- function(df, key_cols) {
+  # Return long-form confusion counts per group
+  df %>%
+    group_by(across(all_of(key_cols))) %>%
+    group_modify(~ {
+      compute_confusion_3(.x)$counts_long
+    }) %>%
+    ungroup()
+}
+
+# ----------------------------
+# 9) Per-raster summaries (ATOMIC and GROUPED)
+# ----------------------------
+
+# ATOMIC: by (raster, matched_year)
+summary_by_raster_atomic <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "matched_year")
+) %>%
+  rename(raster_year = matched_year) %>%
+  arrange(desc(Overall_Accuracy))
+
+# GROUPED: collapse pli_* -> "pli"; combine rows, recompute confusion+metrics
+eval_grouped <- eval_data %>% mutate(raster = raster_group)
+
+summary_by_raster_grouped <- summarize_block_multiclass(
+  eval_grouped,
+  key_cols = c("raster")
+) %>%
+  mutate(raster_year = NA_integer_) %>%
+  relocate(raster, raster_year) %>%
+  arrange(desc(Overall_Accuracy))
+
+# ----------------------------
+# 10) Confusion counts tables (3×3, long form)
+# ----------------------------
+confusion_counts_atomic <- confusion_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "matched_year")
+) %>%
+  rename(raster_year = matched_year) %>%
+  arrange(raster, raster_year, Truth, Pred)
+
+confusion_counts_grouped <- confusion_block_multiclass(
+  eval_grouped,
+  key_cols = c("raster")
+) %>%
+  mutate(raster_year = NA_integer_) %>%
+  relocate(raster, raster_year) %>%
+  arrange(raster, Truth, Pred)
+
+# ----------------------------
+# 11) Per ground-truth year breakdowns (ATOMIC & GROUPED)
+# ----------------------------
+per_year_summary_atomic <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "matched_year", "Yer_Cll")
+) %>%
+  rename(raster_year = matched_year) %>%
+  arrange(raster, Yer_Cll)
+
+per_year_summary_grouped <- summarize_block_multiclass(
+  eval_grouped,
+  key_cols = c("raster", "Yer_Cll")
+) %>%
+  mutate(raster_year = NA_integer_) %>%
+  relocate(raster, raster_year) %>%
+  arrange(raster, Yer_Cll)
+
+# ----------------------------
+# 12) Save outputs (CSV)
+# ----------------------------
+readr::write_csv(summary_by_raster_grouped, file.path(out_dir, "raster_accuracy_summary_multiclass.csv"))
+readr::write_csv(confusion_counts_grouped,  file.path(out_dir, "raster_confusion_counts_multiclass.csv"))
+readr::write_csv(per_year_summary_grouped,  file.path(out_dir, "raster_per_year_accuracy_multiclass.csv"))
+
+readr::write_csv(summary_by_raster_atomic, file.path(out_dir, "raster_accuracy_summary_multiclass_atomic.csv"))
+readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_counts_multiclass_atomic.csv"))
+readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_multiclass_atomic.csv"))
