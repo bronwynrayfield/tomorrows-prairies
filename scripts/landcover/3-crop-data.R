@@ -1,8 +1,8 @@
 # Data pre-processing -> cropping
 
 # Setup
-source(file.path("scripts", "0-setup.R"))
-source(file.path("scripts", "0-functions-general.R"))
+source(file.path("scripts/landcover", "0-setup.R"))
+source(file.path("scripts/landcover/functions", "0-functions-general.R"))
 
 #--- Load files ----
 # Study area

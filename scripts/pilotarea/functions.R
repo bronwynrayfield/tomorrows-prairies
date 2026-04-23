@@ -1,3 +1,48 @@
+# Functions to write spatial data to disk with helpful tags (e.g. cropped)
+# Generic tagging
+collapse_tags <- function(...) {
+  tags <- c(...)
+  tags <- tags[nzchar(tags)]
+  if (length(tags) == 0) NULL else paste(tags, collapse = "_")
+}
+
+tagged_path <- function(root, rel_dir, filename, ...) {
+  stem <- tools::file_path_sans_ext(filename)
+  ext  <- tools::file_ext(filename)
+  tag  <- collapse_tags(...)
+  name <- if (is.null(tag)) stem else sprintf("%s_%s", stem, tag)
+  if (identical(ext, "")) ext <- "tif"
+  file.path(root, rel_dir, sprintf("%s.%s", name, ext))
+}
+# Write vector data
+write_sf_tagged <- function(x, root, rel_dir, filename, ..., quiet = TRUE) {
+  stopifnot(inherits(x, "sf"))
+  stem <- tools::file_path_sans_ext(filename)
+  tag  <- collapse_tags(...)
+  layer <- if (is.null(tag)) stem else sprintf("%s_%s", stem, tag)
+  dsn <- file.path(root, rel_dir)
+  dir.create(dsn, recursive = TRUE, showWarnings = FALSE)
+  sf::st_write(
+    x,
+    dsn = dsn,
+    layer = layer,
+    driver = "ESRI Shapefile",
+    delete_layer = TRUE,
+    quiet = quiet
+  )
+}
+# Write raster data
+write_rast_tagged <- function(r, root, rel_dir, filename, ..., overwrite = TRUE,
+                              gdal = c("COMPRESS=LZW", "TILED=YES")) {
+  stopifnot(inherits(r, "SpatRaster"))
+  out <- tagged_path(root, rel_dir, filename, ...)
+  dir.create(dirname(out), recursive = TRUE, showWarnings = FALSE)
+  terra::writeRaster(r, out, overwrite = overwrite, gdal = gdal)
+}
+
+
+
+
 #--- Reusable function to summarize grassland loss area by destination class and year ----
 # Assumptions per user request:
 #   • class and year rasters are ALREADY reprojected to an equal‑area CRS
