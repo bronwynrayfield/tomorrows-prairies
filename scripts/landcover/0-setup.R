@@ -1,13 +1,23 @@
 library(terra)
 library(sf)
 library(dplyr)
-library(stringr)
+#library(stringr)
 library(tidyr)
 library(ggplot2)
-library(maptiles)
+#library(maptiles)
 library(ranger)
-library(caret)
-library(pROC)
+#library(caret)
+#library(pROC)
+
+
+#
+# check available space on different mount points
+system("df -h")
+
+# set terra options for memory, temp directory, and progress bar
+terraOptions(memfrac = 0.8,
+             tempdir = "D:/terra-temp",
+             progress = 1)
 
 #--- Parameters ---
 # Resolution of rasters in m
@@ -96,7 +106,7 @@ builtup_gain_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/Most
 crop_suit_2019_filepath <- "cropland/OlimbRobinson_GrassToGrain_EcologicalIndicators2019_datashare"
 
 # Protected Areas
-pa_filepath <- "management/ProtectedConservedArea_2024"
+pa_filepath <- "management/Canadian Protected and Conserved Areas Database/ProtectedConservedArea_2024"
 
 # Soil
 soil_filepath <- "soil"
