@@ -45,8 +45,11 @@ crop_gain_year_reproj <- rast(tagged_path("./processeddatasets", crop_gain_filep
 builtup_gain_class_reproj <- rast(tagged_path("./processeddatasets", builtup_gain_filepath, builtup_gain_class_filename, "proj-naaea"))
 builtup_gain_year_reproj <- rast(tagged_path("./processeddatasets", builtup_gain_filepath, builtup_gain_year_filename, "proj-naaea"))
 
-# Protected areas
-#pa_reproj <- st_read(file.path("./processeddatasets", pa_filepath, paste0(pa_filename, ".gdb")), layer = pa_filename)
+# Protected Areas
+pa_reproj <- st_read(
+  tagged_path("./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG"),
+  layer = paste0(tools::file_path_sans_ext(pa_filename), "_proj-naaea")
+)
 
 # Soil
 oc_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, oc_filename, "proj-naaea"))
@@ -75,6 +78,11 @@ census <- st_intersection(census_reproj, me)
 ecozones <- st_intersection(ecozones_reproj, me)
 ecoregions <- st_intersection(ecoregions_reproj, me)
 ecodistricts <- st_intersection(ecodistricts_reproj, me)
+
+# Protected Areas
+# using st_crop() instead of st_intersection() for speed
+# will rasterize later which will take care of NAs
+pa <- st_crop(pa_reproj, st_bbox(me_r))
 
 # Roads
 roads <- st_intersection(roads_reproj, me)
@@ -132,8 +140,9 @@ write_sf_tagged(census, "./processeddatasets", census_subdivision_filepath, cens
 write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_filename, "modelling-extent")
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
-write_sf_tagged(roads, "./processeddatasets", road_filepath, road_filename, "modelling-extent", layer = "roads_merge")
-write_rast_tagged(roads, "./processeddatasets", road_filepath, "roads.tif", "modelling-extent")
+write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
+#write_sf_tagged(roads, "./processeddatasets", road_filepath, road_filename, "modelling-extent", layer = "roads_merge")
+#write_rast_tagged(roads, "./processeddatasets", road_filepath, "roads.tif", "modelling-extent")
 write_rast_tagged(crop_suit, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent")
 write_rast_tagged(lulc2020, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent")
 write_rast_tagged(lulc2015, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2015_filename, "modelling-extent")
@@ -163,9 +172,6 @@ write_rast_tagged(aspect, "./processeddatasets", dem_filepath, aspect_filename, 
 
 
 #st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
-#st_write(pa, file.path("./processeddatasets", pilot_filepath, "pa_pilot.shp"), delete_dsn = TRUE)
-#st_write(gnp, file.path("./processeddatasets", pilot_filepath, "gnp_park_pilot.shp"))
-
 
 
 dist_to_road_m <- distance(roads)
