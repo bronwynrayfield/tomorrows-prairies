@@ -1,9 +1,46 @@
-# Data projection
-# Apply NA values and scaling factor if necessary
-# Executed separately because very slow for rasters especially
-# Only run once
+# =============================================================================
+# 2-project-data.R
+# =============================================================================
+#
+# Purpose:
+#   Reprojects all raw datasets to the common CRS (NAE Albers Equal Area).
+#   Also applies scaling factors and NoData values to soil rasters.
+#   Slow to run — only needs to be re-run if raw inputs change.
+#
+# Inputs:
+#   - Modelling extent raster template (me_r) defines target CRS and raster grid
+#   - Raw datasets from existingdatasets/:
+#       Olimb & Robinson 2019 cropland suitability
+#       Census subdivisions
+#       National ecological framework (ecozones, ecoregions, ecodistricts)
+#       AAFC LUTS 2000, 2010, 2015, 2020 (merged)
+#       ECCC most recent change layers (grass, improved pasture,
+#         unimproved pasture, crop, built-up)
+#       Protected areas (CPCAD 2024)
+#       Soil (OC, BD, clay, sand, silt, pH)
+#       DEM (NRCan MRDEM 30m)
+#
+# Outputs:
+#   - All datasets reprojected to NAE Albers Equal Area
+#   - Soil rasters unscaled to real units and NoData values applied
+#   - Protected areas cast to MULTIPOLYGON and validated
+#   - All outputs saved to processeddatasets/ with "proj-naaea" tag
+#
+# Notes:
+#   - Raster reprojection uses method = "near" for categorical data (LULC,
+#     change layers) and method = "bilinear" for continuous data (soil, DEM)
+#   - Roads processing is incomplete and commented out pending resolution
+#     of the merged road layer workflow
+#   - Ecoregions and ecodistricts were preprocessed manually in QGIS to
+#     resolve geometry misalignment issues before being read in here
+#   - CPCAD geometry cleaning (st_cast, st_make_valid) is done here
+#     before reprojection to avoid propagating invalid geometries
+#
+# Dependencies:
+#   - 0-setup.R (parameters, file paths, functions)
+#   - 1-merge-tiled-data.R outputs (AAFC LUTS merged rasters)
+# =============================================================================
 
-# Setup
 source(file.path("scripts/landcover", "0-setup.R"))
 source(file.path("scripts/landcover/functions", "0-functions-general.R"))
 
@@ -66,7 +103,7 @@ sand_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath)
 silt_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), silt_filename))
 ph_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), ph_filename))
 # Topography
-#dem_raw <- rast(file.path("./existingdatasets", capitalize_first(dem_filepath), dem_filename))
+dem_raw <- rast(file.path("./existingdatasets", capitalize_first(dem_filepath), dem_filename))
 
 #--- Unscale to real units and apply NAs ----
 oc_raw[oc_raw == oc_nodata] <- NA

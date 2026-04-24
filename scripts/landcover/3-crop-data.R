@@ -1,6 +1,41 @@
-# Data pre-processing -> cropping
+# =============================================================================
+# 3-crop-data.R
+# =============================================================================
+#
+# Purpose:
+#   Crops and masks all datasets to the modelling extent.
+#   Also derives topographic layers (slope, aspect) from the DEM.
+#   All outputs are saved to processeddatasets/ with "modelling-extent" tag.
+#
+# Inputs:
+#   - Modelling extent (shapefile and raster template)
+#   - Pilot area shapefile
+#   - All reprojected datasets from 2-project-data.R:
+#       AAFC LUTS 2000, 2010, 2015, 2020
+#       ECCC most recent change layers (grass, improved pasture, 
+#         unimproved pasture, crop, built-up)
+#       Olimb & Robinson 2019 cropland suitability
+#       Census subdivisions
+#       National ecological framework (ecozones, ecoregions, ecodistricts)
+#       Protected areas (CPCAD 2024)
+#       Soil (OC, BD, clay, sand, silt, pH)
+#       DEM (NRCan MRDEM 30m)
+#
+# Outputs:
+#   - All datasets cropped/masked to modelling extent
+#   - All datasets cropped/masked to pilot area (AAFC LUTS only)
+#   - Slope and aspect derived from DEM
+#
+# Notes:
+#   - Roads processing incomplete — rasterization pending
+#   - pa uses st_crop() to bounding box rather than st_intersection()
+#     for speed; NA handling deferred to rasterization step
+#
+# Dependencies:
+#   - 0-setup.R (parameters, file paths, functions)
+#   - 2-project-data.R outputs
+# =============================================================================
 
-# Setup
 source(file.path("scripts/landcover", "0-setup.R"))
 source(file.path("scripts/landcover/functions", "0-functions-general.R"))
 

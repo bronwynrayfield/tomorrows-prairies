@@ -32,8 +32,6 @@
 #   - 3-crop-data.R outputs
 # =============================================================================
 
-
-#--- Setup ----
 source(file.path("scripts/landcover", "0-setup.R"))
 source(file.path("scripts/landcover/functions", "0-functions-general.R"))
 source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
