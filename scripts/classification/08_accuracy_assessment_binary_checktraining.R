@@ -1228,6 +1228,14 @@ eval_data %>%
   count(raster_eval) %>%
   arrange(n)
 
+# Collapse lists to strings and export
+eval_data$allowed_years <- sapply(
+  eval_data$allowed_years,
+  function(x) paste(x, collapse = ";")
+)
+
+write.csv(eval_data, file.path(out_dir, "eval_data.csv"))
+
 # ----------------------------
 # 8) Metrics helpers
 # ----------------------------

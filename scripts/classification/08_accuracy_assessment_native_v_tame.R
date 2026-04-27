@@ -104,7 +104,7 @@ points <- points %>%
     Yer_Cll  = suppressWarnings(as.integer(as.numeric(Yer_Cll)))
   )
 
-# Optional: Normalize LC_Cl_N (used only for SHRUB exclusion if present)
+# Normalize LC_Cl_N (used only for SHRUB exclusion if present)
 has_lccln <- "LC_Cl_N" %in% names(points)
 if (has_lccln) {
   points <- points %>%
@@ -271,7 +271,7 @@ eval_data <- long %>%
   mutate(matched_year = compute_matched_year_class3(allowed_years, Yer_Cll, LC_class3)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
-  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group))) # exclude row if Source_norm == raster or raster_group
 
 
 # ----------------------------
