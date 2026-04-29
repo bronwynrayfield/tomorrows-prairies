@@ -24,3 +24,7 @@ results/*
 
 # scratch scripts
 scripts/pilot/scratch/*
+
+# presentation scripts
+scripts/presentation-candidate-locations.R
+output/presentation/
