@@ -8,12 +8,15 @@ output:
     toc_depth: 3
     theme: readable
 params:
-  raster_a: "R:/CanadianGrasslands/WG_Classification/processed/natureserve_cnvc/masked/cnvc_algn_native_masked.tif"
-  raster_b: "R:/CanadianGrasslands/WG_Classification/processed/nrcan_lcc/masked/lcc_reproj_algn_binary_noshrub_masked.tif"
+  #raster_a: "R:/CanadianGrasslands/WG_Classification/processed/natureserve_cnvc/masked/cnvc_algn_native_masked.tif"
+  #raster_b: "R:/CanadianGrasslands/WG_Classification/processed/nrcan_lcc/masked/lcc_reproj_algn_binary_noshrub_masked.tif"
+  raster_a: "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/natureserve_cnvc/masked/cnvc_algn_native_masked.tif"
+  raster_b: "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/nrcan_lcc/masked/lcc_reproj_algn_binary_noshrub_masked.tif"
   raster_a_label: "CNVC"
   raster_b_label: "LCC"
   # Shapefile for ecoregion boundaries (Prairies Ecozone)
-  ecoreg: "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecoregions/ecoregions_clean_prairies.shp"
+  #ecoreg: "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecoregions/ecoregions_clean_prairies.shp"
+  ecoreg: "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecoregions/ecoregions_clean_prairies.shp"
   # Optional CSV with columns: value,label,color
   class_key_csv: !r NULL
   # If TRUE, both rasters will be projected to target_crs before area calcs
@@ -184,7 +187,7 @@ valuesB <- get_unique_values(B)
 classes <- sort(unique(c(valuesA, valuesB)))
 
 gc()
-terra::mem_info() # Force garbage collection after each major block to free memory 
+#terra::mem_info() # Force garbage collection after each major block to free memory 
 
 ```
 
@@ -338,7 +341,7 @@ kable(
 )
 
 gc()
-terra::mem_info() # Force garbage collection after each major block to free memory 
+#terra::mem_info() # Force garbage collection after each major block to free memory 
 
 ```
 
@@ -468,7 +471,7 @@ df_ch$change <- factor(df_ch$CH_values,
                          "CNVC=not grass, LCC=grass"))
 
 gc()
-terra::mem_info() # Force garbage collection after each major block to free memory 
+#terra::mem_info() # Force garbage collection after each major block to free memory 
 
 ```
 
