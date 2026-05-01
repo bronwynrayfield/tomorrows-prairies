@@ -273,7 +273,6 @@ eval_data <- long %>%
   filter(!is.na(matched_year)) %>%
   filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group))) # exclude row if Source_norm == raster or raster_group
 
-
 # ----------------------------
 # 8) Multiclass metrics helpers
 # ----------------------------

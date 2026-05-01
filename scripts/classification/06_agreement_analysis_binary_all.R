@@ -52,8 +52,8 @@ terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
 # ----------------------------
 #RASTER_DIR   <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/full_binary"
 #RASTER_GLOB  <- "\\.tif$"
-META_CSV     <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata.csv"  # columns: raster,year,model,source (year optional)
-OUT_DIR      <- "R:/CanadianGrasslands/WG_Classification/results/outputs_pairwise_partial_extent"
+META_CSV     <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary.csv"  # columns: raster,year,model,source (year optional)
+OUT_DIR      <- "R:/CanadianGrasslands/WG_Classification/results/outputs_pairwise_partial_extent" 
 
 ####--- DIRECTORIES ---####
 
@@ -66,21 +66,28 @@ proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
 #out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment"
 
 # grass raster directories
-aci_aligned_dir <- file.path(proc_grass_data_dir, "aafc_aci/aligned")
-luts_aligned_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/aligned")
-cec_aligned_dir <- file.path(proc_grass_data_dir, "cec_nalcms/aligned")
-ngi_aligned_dir <- file.path(proc_grass_data_dir, "cfga_ngi/aligned")
-cgr_aligned_dir <- file.path(proc_grass_data_dir, "cgr_gam_adv/aligned")
-eccc_aligned_dir <- file.path(proc_grass_data_dir, "eccc_grass/aligned")
-esa_aligned_dir <- file.path(proc_grass_data_dir, "esa_worldcover/aligned")
-glc_aligned_dir <- file.path(proc_grass_data_dir, "glc_fcs30d/aligned")
-cnvc_aligned_dir <- file.path(proc_grass_data_dir, "natureserve_cnvc/aligned")
-lcc_aligned_dir <- file.path(proc_grass_data_dir, "nrcan_lcc/aligned")
-pudl_aligned_dir <- file.path(proc_grass_data_dir, "phjv_pudl/aligned")
-pli_aligned_dir <- file.path(proc_grass_data_dir, "sk_pli/aligned")
-lcr_aligned_dir <- file.path(proc_grass_data_dir, "statcan_lcr/aligned")
-gpw_aligned_dir <- file.path(proc_grass_data_dir, "wri_gpw_ann/aligned")
-plow_aligned_dir <- file.path(proc_grass_data_dir, "wwf_plowprint/aligned")
+aci_aligned_dir   <- file.path(proc_grass_data_dir, "aafc_aci/aligned")
+luts30_masked_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/masked")
+luts10_masked_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_10m_v1/masked")
+cec_masked_dir    <- file.path(proc_grass_data_dir, "cec_nalcms/masked")
+ngi_aligned_dir   <- file.path(proc_grass_data_dir, "cfga_ngi/aligned")
+cgr_masked_dir    <- file.path(proc_grass_data_dir, "cgr_gam_adv/masked")
+eccc_masked_dir   <- file.path(proc_grass_data_dir, "eccc_grass/masked")
+esa_masked_dir    <- file.path(proc_grass_data_dir, "esa_worldcover/masked")
+glc_masked_dir    <- file.path(proc_grass_data_dir, "glc_fcs30d/masked")
+cnvc_masked_dir   <- file.path(proc_grass_data_dir, "natureserve_cnvc/masked")
+lcc_masked_dir    <- file.path(proc_grass_data_dir, "nrcan_lcc/masked")
+pudl_aligned_dir  <- file.path(proc_grass_data_dir, "phjv_pudl/aligned")
+pli_aligned_dir   <- file.path(proc_grass_data_dir, "sk_pli/aligned")
+lcr_masked_dir    <- file.path(proc_grass_data_dir, "statcan_lcr/masked")
+gpw_masked_dir    <- file.path(proc_grass_data_dir, "wri_gpw_ann/masked")
+plow_masked_dir   <- file.path(proc_grass_data_dir, "wwf_plowprint/masked")
+plvi_aligned_dir  <- file.path(proc_grass_data_dir, "ab_plvi/aligned")
+hfi_aligned_dir   <- file.path(proc_grass_data_dir, "abmi_hfi/aligned")
+gcc_aligned_dir   <- file.path(proc_grass_data_dir, "bc_gcc/aligned")
+dw_masked_dir     <- file.path(proc_grass_data_dir, "dw_2025_grass/masked")
+esri_masked_dir   <- file.path(proc_grass_data_dir, "esri_rangelands/masked")
+mgi_aligned_dir   <- file.path(proc_grass_data_dir, "mb_mgi/aligned")
 
 ####--- FILES ---####
 
@@ -88,21 +95,31 @@ plow_aligned_dir <- file.path(proc_grass_data_dir, "wwf_plowprint/aligned")
 #sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 
 # grass raster files
-aci_file <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_binary_noshrub.tif")
-luts_file <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_binary.tif")
-cec_file <- file.path(cec_aligned_dir, "nalcms_reproj_algn_binary_noshrub.tif")
-ngi_file <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_binary.tif")
-cgr_file <- file.path(cgr_aligned_dir, "cgr_reclass_reproj_algn_binary.tif")
-eccc_file <- file.path(eccc_aligned_dir, "eccc_reclass_reproj_algn_binary.tif")
-#esa_file <- file.path(esa_aligned_dir, ".tif")
-#glc_file <- file.path(glc_aligned_dir, ".tif")
-cnvc_file <- file.path(cnvc_aligned_dir, "cnvc_algn_binary.tif")
-lcc_file <- file.path(lcc_aligned_dir, "lcc_reproj_algn_binary_noshrub.tif")
-pudl_file <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_binary_noshrub.tif")
-pli_file <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_binary_noshrub.tif")
-lcr_file <- file.path(lcr_aligned_dir, "lcr_reproj_algn_binary.tif")
-gpw_file <- file.path(gpw_aligned_dir, "gpw_reclass_reproj_algn_binary_noshrub.tif")
-plow_file <- file.path(plow_aligned_dir, "plow_reproj_algn_binary.tif")
+aci_file    <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_binary_noshrub.tif")
+luts30_file <- file.path(luts30_masked_dir, "luts30_reproj_algn_binary_masked.tif")
+luts10_file <- file.path(luts10_masked_dir, "luts10_reproj_algn_binary_masked.tif")
+cec_file    <- file.path(cec_masked_dir, "nalcms_reproj_algn_binary_noshrub_masked.tif")
+ngi_file    <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_binary.tif")
+cgr_file    <- file.path(cgr_masked_dir, "cgr_reproj_algn_binary_masked.tif")
+eccc_file   <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_binary_masked.tif")
+esa_file    <- file.path(esa_masked_dir, "esa_reproj_algn_binary_noshrub_masked.tif")
+glc_file    <- file.path(glc_masked_dir, "glc_reproj_algn_binary_noshrub_masked.tif")
+cnvc_file   <- file.path(cnvc_masked_dir, "cnvc_algn_binary_masked.tif")
+lcc_file    <- file.path(lcc_masked_dir, "lcc_reproj_algn_binary_noshrub_masked.tif")
+pudl_file   <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_binary_noshrub.tif")
+pli_file    <- file.path(pli_aligned_dir, "sk_pli_merge_reproj_algn_binary_noshrub.tif")
+#pli_cu_file <- file.path(pli_aligned_dir, "sk_pli_cu_reproj_algn_binary_noshrub.tif")
+#pli_mg_file <- file.path(pli_aligned_dir, "sk_pli_mg_reproj_algn_binary_noshrub.tif")
+#pli_mm_file <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn_binary_noshrub.tif")
+lcr_file    <- file.path(lcr_masked_dir, "lcr_reproj_algn_binary_masked.tif")
+gpw_file    <- file.path(gpw_masked_dir, "gpw_reproj_algn_binary_noshrub_masked.tif")
+plow_file   <- file.path(plow_masked_dir, "plow_reproj_algn_intact_masked.tif")
+plvi_file   <- file.path(plvi_aligned_dir, "plvi_reproj_algn_binary_gte2015.tif")
+hfi_file    <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary_gte2015.tif")
+gcc_file    <- file.path(gcc_aligned_dir, "gcc_reproj_algn_binary.tif")
+dw_file     <- file.path(dw_masked_dir, "dw_reproj_algn_masked_binary.tif")
+esri_file   <- file.path(esri_masked_dir, "esri_reproj_algn_masked_binary.tif")
+mgi_file    <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_binary_noshrub.tif")
 
 # Sampling within each pairwise overlap to speed up large rasters:
 # - NULL = use all overlapping pixels (may be slow/large)
@@ -123,7 +140,7 @@ MAKE_UNION_CONSENSUS <- TRUE
 
 SEED <- 42
 set.seed(SEED)
-dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+#dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # -----------------------
 # ECODISTRICT SUMMARY SETTINGS
@@ -166,32 +183,19 @@ meta <- read_csv(META_CSV, show_col_types = FALSE) %>%
 
 ####--- READ INTO TERRA ---####
 
-aci <- rast(aci_file)
-luts <- rast(luts_file)
-cec <- rast(cec_file)
-ngi <- rast(ngi_file)
-cgr <- rast(cgr_file)
-eccc <- rast(eccc_file)
-#esa <- rast(esa_file)
-#glc <- rast(glc_file)
-cnvc <- rast(cnvc_file)
-lcc <- rast(lcc_file)
-pudl <- rast(pudl_file)
-pli <- rast(pli_file)
-lcr <- rast(lcr_file)
-gpw <- rast(gpw_file)
-plow <- rast(plow_file)
-
 files <- c(
-  aci_file, luts_file, cec_file, ngi_file, cgr_file, eccc_file,
-  #esa_file, glc_file, 
-  cnvc_file, lcc_file, pudl_file, pli_file,
-  lcr_file, gpw_file, plow_file
+  aci_file, luts10_file, luts30_file, cec_file, ngi_file, cgr_file, eccc_file,
+  esa_file, glc_file, cnvc_file, lcc_file, pudl_file, pli_file,
+  #pli_cu_file, pli_mg_file, pli_mm_file, 
+  lcr_file, gpw_file, plow_file,
+  plvi_file, hfi_file, gcc_file, dw_file, esri_file, mgi_file
 )
 
 keys <- c(
-  "aci","luts","cec","ngi","cgr","eccc", #   "esa","glc",
-  "cnvc","lcc","pudl","pli","lcr","gpw","plow"
+  "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
+  "cnvc","lcc","pudl","pli",
+  #"pli_cu","pli_mg","pli_mm",
+  "lcr","gpw","plow","plvi","hfi","gcc","dw","esri","mgi"
 )
 
 names(files) <- keys

@@ -13,8 +13,8 @@ library(ggrepel)
 
 data_dir <- "R:/CanadianGrasslands/WG_Classification/results"
 
-df <- read_excel(file.path(data_dir,"grass_area_pe_noprov.xlsx"))
-#df <- read_excel(file.path(data_dir,"grass_area_pe.xlsx"))
+df <- read_excel(file.path(data_dir,"grass_area_pe_noprov.xlsx")) # without provincial datasets
+#df <- read_excel(file.path(data_dir,"grass_area_pe.xlsx"))       # with provincial datasets
 
 str(df)
 

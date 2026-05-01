@@ -240,7 +240,7 @@ head(attr_df)
 ####--- EXPORT ---####
 
 # write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_Apr2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_29Apr2026.csv")
 write.csv(attr_df, csv_out_path, row.names = FALSE)
 
 # filter attr_df to only include rows where Yer_Cll is 2015+
@@ -249,21 +249,22 @@ attr_df_2015 <- attr_df %>%
 
 head(attr_df_2015)
 
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Apr2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_29Apr2026.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 ####--- CLEAN FOR NEXT STEP ---####
 
 # filter out any non-grass points (woody and annual cropland)
-attr_df_2015_clean <- attr_df_2015 %>%
-  filter(LC_class3 %in% c(1, 2))
+#attr_df_2015_clean <- attr_df_2015 %>%
+#  filter(LC_class3 %in% c(1, 2))
 
 # add source column and fill when points were used as training data 
-attr_df_2015_clean <- attr_df_2015_clean %>%
+attr_df_2015_clean <- attr_df_2015 %>%
   mutate(
     Source = case_when(
       Sorc_ID == "PLI_SKMoE" ~ "pli",
       Sorc_ID == "ABMI_HFI" ~ "hfi",
+      Sorc_ID == "ABMI_THF" ~ "hfi",
       Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
       Sorc_ID == "ACI_field_2024" ~ "aci",
       Sorc_ID == "BC_ACI_2025" ~ "aci",
@@ -271,7 +272,9 @@ attr_df_2015_clean <- attr_df_2015_clean %>%
     )
   )
 
+# Move last two columns to first two
+
 # write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Apr2026_clean.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_29Apr2026_clean_withnongrass.csv")
 write.csv(attr_df_2015_clean, csv_out_path, row.names = FALSE)
 
