@@ -38,12 +38,12 @@
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "0-functions-general.R"))
+source(file.path("scripts/landcover/functions", "functions-general.R"))
 source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 # ---- Resolution setting ----
 # Change to 30 for final run
-target_res <- 300
+target_res <- 30
 agg_fact   <- target_res / 30
 
 # ---- Window sizes ----
@@ -145,7 +145,7 @@ crop_suit_filled  <- ifel(is.na(crop_suit) & !is.na(me_r), ecodistrict_means, cr
 freq(is.na(crop_suit_filled))
 
 # Save
-write_rast_tagged(crop_suit_filled, "./processeddatasets", predictors_filepath, crop_suit_2019_filename, paste0(target_res, "m"), "filled")
+write_rast_tagged(crop_suit_filled, outdir, crop_suit_2019_filename, paste0(target_res, "m"), "filled")
 
 # ---- Moving window focal statistics ----
 # Define layers and names for focal loop
