@@ -48,11 +48,9 @@ lulc2015 <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "c
 lulc2020 <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent"))
 
 # Protected areas
-pa <- read_sf_tagged("./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
-
-# Olimb & Robinson 2019 cropland suitability
-crop_suit <- rast(tagged_path("./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent"))
-
+pa <- st_read(tagged_path("./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG"),
+  layer = paste0(tools::file_path_sans_ext(pa_filename), "_modelling-extent")
+)
 
 
 #--- LULC binary layers ----
@@ -85,11 +83,11 @@ water2010_bin      <- reclass_aafc(lulc2010, scheme = "binary", binary_class = "
 #   "NGO/Land Trust/Agency - Fee Simple Property",
 #   "Private Ecologically Significant Area"
 # )
-# 
+#
 # ngo_ownership_types <- c(
 #   "Ownership by Environmental Non-Governmental Organization"
 # )
-# 
+#
 # additional_hard_types <- c(
 #   "Fee Simple Property",
 #   "Fee simple – Ownership by land trust or conservancy",
@@ -100,7 +98,7 @@ water2010_bin      <- reclass_aafc(lulc2010, scheme = "binary", binary_class = "
 #   "Privately Owned Conservation Area",
 #   "Privately Owned Conservation Area (INT)"
 # )
-# 
+#
 # # Hard protection mask
 # pa_hard <- pa |>
 #   filter(
@@ -121,14 +119,14 @@ water2010_bin      <- reclass_aafc(lulc2010, scheme = "binary", binary_class = "
 #          TYPE_E %in% ngo_ownership_types |
 #          TYPE_E %in% additional_hard_types)
 #   )
-# 
+#
 # # Easements
 # pa_easements <- pa |>
 #   filter(
 #     STATUS %in% c(1, 2) &
 #       TYPE_E %in% easement_types
 #   )
-# 
+#
 # # Provincial pastures
 # pa_provpasture <- pa |>
 #   filter(
@@ -137,8 +135,25 @@ water2010_bin      <- reclass_aafc(lulc2010, scheme = "binary", binary_class = "
 #   )
 
 # Hard protection mask — IUCN I-V, established areas only
-# Note: interim filter pending expert review of CPCAD classification conventions
-# Other filtering options in the comments above
+# -----------------------------------------------------------------------------
+# TODO: Revisit filtering before final model run:
+#   1. IUCN category filter — currently using I-V (codes 1-5); strict Barnes
+#      et al. equivalent would be I-III only (codes 1-3) but this gives only
+#      194 features, suggesting many Prairie protected areas are miscoded in
+#      CPCAD. Pending expert review of CPCAD classification conventions.
+#   2. Establishment year — consider filtering to ESTYEAR <= 2010 to match
+#      predictor year. However 2,798 of 4,663 features have no ESTYEAR,
+#      including NGO ownership (n=2,238) and Provincial Pastures (n=112)
+#      which almost certainly predate 2010. Low practical impact but worth
+#      noting as a limitation. 739 features confirmed post-2010.
+#   3. TYPE_E inclusions — earlier analysis identified TYPE_E types coded as
+#      IUCN 8/9 ("Not Applicable"/"Not Reported") that represent genuine hard
+#      protection (Provincial Parks, Ecological Reserves, Migratory Bird
+#      Sanctuaries, National Wildlife Areas etc.) and are currently excluded
+#      by the IUCN I-V filter. Consider adding explicit TYPE_E inclusions for
+#      these well-defined protection types regardless of IUCN coding.
+#      See earlier exploration code for full list of TYPE_E values in codes 8/9.
+# -----------------------------------------------------------------------------
 pa_hard <- pa |>
   filter(
     STATUS %in% c(1, 2) &
@@ -189,19 +204,22 @@ sum(pa_easements$O_AREA_HA, na.rm = TRUE)
 sum(pa_provpasture$O_AREA_HA, na.rm = TRUE)
 
 
-# Rasterize and save pa_hard
+# Rasterize
 pa_hard_rast <- rasterize(vect(pa_hard), me_r,
                           field = 1,
                           background = 0,
                           touches = TRUE)
 
-# Rasterize and save pa_provpasture
+# Mask to modelling extent
+pa_hard_rast <- mask(pa_hard_rast, me_r)
+
+# Rasterize
 pa_provpasture_rast <- rasterize(vect(pa_provpasture), me_r,
                                  field = 1,
                                  background = 0,
                                  touches = TRUE)
-
-
+# Mask to modelling extent
+pa_provpasture_rast <- mask(pa_provpasture_rast, me_r)
 
 
 #--- Save to disk ----
