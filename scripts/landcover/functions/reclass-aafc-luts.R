@@ -86,12 +86,7 @@ reclass_aafc <- function(lulc, scheme = "5class", binary_class = NULL, check = F
   
   # ---- Handle factor raster ----
   if (is.factor(lulc)) {
-    lut         <- levels(lulc)[[1]]
-    id_col      <- names(lut)[1]
-    lulc        <- as.numeric(lulc)
-    idx_to_code <- setNames(lut[[id_col]], seq_len(nrow(lut)))
-    lulc        <- classify(lulc, cbind(as.integer(names(idx_to_code)),
-                                        as.integer(idx_to_code)))
+    lulc <- as.numeric(lulc)
   }
   
   # ---- Validate all raster codes are covered ----
