@@ -5,7 +5,7 @@
 
 ##----------------------- Alison Long - February 2026 -------------------------
 
-# step 5: run descriptive data summaries to assess similarities and differences
+# step 6: run descriptive data summaries to assess similarities and differences
 #        among existing grassland datasets. This version handles all grassland
 #        data products regardless of extent.
 
@@ -16,6 +16,7 @@ library(pheatmap)
 library(vegan)
 library(dplyr)
 library(tidyr)
+library(aws.s3) # for sagemaker
 library(readr)
 library(ggrepel)
 library(ape)
@@ -52,8 +53,9 @@ terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
 # ----------------------------
 #RASTER_DIR   <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/full_binary"
 #RASTER_GLOB  <- "\\.tif$"
-META_CSV     <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary.csv"  # columns: raster,year,model,source (year optional)
-OUT_DIR      <- "R:/CanadianGrasslands/WG_Classification/results/outputs_pairwise_partial_extent" 
+#META_CSV     <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary.csv"  # columns: raster,year,model,source (year optional)
+META_CSV     <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary.csv"
+#OUT_DIR      <- "R:/CanadianGrasslands/WG_Classification/results/outputs_pairwise_partial_extent" 
 
 ####--- DIRECTORIES ---####
 
@@ -61,9 +63,11 @@ OUT_DIR      <- "R:/CanadianGrasslands/WG_Classification/results/outputs_pairwis
 sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
 # grasslands
-raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
-proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
+#raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
+#proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
+proc_grass_data_dir <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed"
 #out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment"
+out_dir <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis/outputs_binary"
 
 # grass raster directories
 aci_aligned_dir   <- file.path(proc_grass_data_dir, "aafc_aci/aligned")
@@ -88,6 +92,7 @@ gcc_aligned_dir   <- file.path(proc_grass_data_dir, "bc_gcc/aligned")
 dw_masked_dir     <- file.path(proc_grass_data_dir, "dw_2025_grass/masked")
 esri_masked_dir   <- file.path(proc_grass_data_dir, "esri_rangelands/masked")
 mgi_aligned_dir   <- file.path(proc_grass_data_dir, "mb_mgi/aligned")
+gcc_aligned_dir   <- file.path(proc_grass_data_dir, "bc_gcc/aligned")
 
 ####--- FILES ---####
 
@@ -107,7 +112,7 @@ glc_file    <- file.path(glc_masked_dir, "glc_reproj_algn_binary_noshrub_masked.
 cnvc_file   <- file.path(cnvc_masked_dir, "cnvc_algn_binary_masked.tif")
 lcc_file    <- file.path(lcc_masked_dir, "lcc_reproj_algn_binary_noshrub_masked.tif")
 pudl_file   <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_binary_noshrub.tif")
-pli_file    <- file.path(pli_aligned_dir, "sk_pli_merge_reproj_algn_binary_noshrub.tif")
+pli_file    <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_binary_noshrub.tif")
 #pli_cu_file <- file.path(pli_aligned_dir, "sk_pli_cu_reproj_algn_binary_noshrub.tif")
 #pli_mg_file <- file.path(pli_aligned_dir, "sk_pli_mg_reproj_algn_binary_noshrub.tif")
 #pli_mm_file <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn_binary_noshrub.tif")
@@ -120,6 +125,7 @@ gcc_file    <- file.path(gcc_aligned_dir, "gcc_reproj_algn_binary.tif")
 dw_file     <- file.path(dw_masked_dir, "dw_reproj_algn_masked_binary.tif")
 esri_file   <- file.path(esri_masked_dir, "esri_reproj_algn_masked_binary.tif")
 mgi_file    <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_binary_noshrub.tif")
+gcc_file    <- file.path(gcc_aligned_dir, "gcc_reproj_algn_binary.tif")
 
 # Sampling within each pairwise overlap to speed up large rasters:
 # - NULL = use all overlapping pixels (may be slow/large)
@@ -170,11 +176,21 @@ OUT_ECO_PAIRWISE_SUM   <- file.path(OUT_DIR, "ecodistrict_pairwise_summary.csv")
 # READ METADATA
 # -----------------------
 # metadata.csv: raster,year,model,source
-meta <- read_csv(META_CSV, show_col_types = FALSE) %>%
+#meta <- read_csv(META_CSV, show_col_types = FALSE) %>%
+#  mutate(
+#    year  = as.factor(year),
+#    source_simp = as.factor(source_simp),
+#    #year = if ("year" %in% names(.)) as.POSIXct(year, tz = "UTC") else NA
+#  )
+
+meta <- s3read_using(
+  FUN = read_csv,
+  object = META_CSV,
+  show_col_types = FALSE
+) %>%
   mutate(
-    model  = as.factor(model),
-    source = as.factor(source),
-    year = if ("year" %in% names(.)) as.POSIXct(year, tz = "UTC") else NA
+    year = as.factor(year),
+    source_simp = as.factor(source_simp)
   )
 
 # -----------------------
@@ -184,38 +200,42 @@ meta <- read_csv(META_CSV, show_col_types = FALSE) %>%
 ####--- READ INTO TERRA ---####
 
 files <- c(
-  aci_file, luts10_file, luts30_file, cec_file, ngi_file, cgr_file, eccc_file,
-  esa_file, glc_file, cnvc_file, lcc_file, pudl_file, pli_file,
+  aci_file, luts30_file, luts10_file, cec_file, ngi_file, cgr_file, eccc_file,
+  cnvc_file, lcc_file, pudl_file, lcr_file, gpw_file, plow_file, pli_file,
   #pli_cu_file, pli_mg_file, pli_mm_file, 
-  lcr_file, gpw_file, plow_file,
-  plvi_file, hfi_file, gcc_file, dw_file, esri_file, mgi_file
+  esa_file, glc_file, plvi_file, hfi_file, dw_file, esri_file, mgi_file, gcc_file
 )
 
 keys <- c(
-  "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
-  "cnvc","lcc","pudl","pli",
+  "aci","luts30","luts10","cec","ngi","cgr","eccc","cnvc",
+  "lcc","pudl","lcr","gpw","plow","pli","esa","glc",
   #"pli_cu","pli_mg","pli_mm",
-  "lcr","gpw","plow","plvi","hfi","gcc","dw","esri","mgi"
+  "plvi","hfi","dw","esri","mgi","gcc"
 )
 
 names(files) <- keys
-rlist <- lapply(files, rast)  # each is single-layer SpatRaster
+#rlist <- lapply(files, rast)  # each is single-layer SpatRaster
+
+rlist <- lapply(names(files), function(k) {
+  r <- rast(files[[k]])
+  names(r) <- k     # set raster layer name
+  r
+})
+
+names(rlist) <- names(files)
+
 
 #files <- list.files(RASTER_DIR, pattern = RASTER_GLOB, full.names = TRUE)
 #if (length(files) == 0) stop("No rasters found in RASTER_DIR matching RASTER_GLOB.")
 
 files_df <- tibble(
-  file = files,
-  raster = basename(files),
-  raster_nox = tools::file_path_sans_ext(basename(files))
+  raster = names(files),
+  file   = unname(files)
 )
 
 meta2 <- meta %>%
-  left_join(files_df, by = "raster") %>%
-  mutate(file = ifelse(is.na(file),
-                       files_df$file[match(raster, files_df$raster_nox)],
-                       file)) %>%
-  mutate(file = as.character(file))
+  mutate(raster = as.character(raster)) %>%
+  left_join(files_df, by = "raster")
 
 if (any(is.na(meta2$file))) {
   missing <- meta2$raster[is.na(meta2$file)]
@@ -224,6 +244,36 @@ if (any(is.na(meta2$file))) {
 
 rlist <- lapply(meta2$file, terra::rast)
 names(rlist) <- meta2$raster
+
+# -----------------------
+# CONFIGURE PARALLEL PROCESSING
+# -----------------------
+
+library(parallel)
+library(doFuture)
+library("future.callr")
+total_cores <- detectCores(logical = FALSE) # this fxn is in parallel package
+
+par_mode <- "mem_limited" # use "manual" for individual pc or "mem_limited" for cloud instance
+
+if (par_mode == "mem_limited") {
+  # if running on a cloud instance, set cores_to_use according to fraction of total
+  # memory used by each worker. this avoids memory overruns and other crashes
+  mem_free <- as.numeric(system("awk '/MemFree/ {print $2}' /proc/meminfo", intern=TRUE))
+  mem_per_core <- 25 # max memory expected to be used by each worker, in gb
+  cores_to_use <- max(1, min(total_cores, floor(mem_free / 1000000 / mem_per_core)))
+} else if (par_mode == "manual") {
+  # alternatively, set cores_to_use manually. for a windows pc, half of total_cores
+  # is typically okay.  if things get crashy, decrease cores_to_use
+  cores_to_use <- total_cores / 2
+} else {
+  stop("Error: 'par_mode' must be 'manual' or 'mem_limited'")
+}
+
+future::plan(callr, workers = cores_to_use) # callr plan seems to be most stable
+# future::plan(multisession, workers = cores_to_use) # alternative parallel plan
+
+# terraOptions(memfrac = 0.9)
 
 # -----------------------
 # BASIC CHECKS / STANDARDIZE VALUES
@@ -236,7 +286,8 @@ rlist <- lapply(rlist, function(r) {
   r
 })
 
-# Integrity table
+# Integrity table - safely extracts the spatial extent (bounding box) of a Terra SpatRaster (or other Terra spatial object).
+# If the raster is invalid, missing, or causes an error, it fails gracefully by returning NAs instead of crashing the script.
 safe_ext2 <- function(r) {
   e <- tryCatch(terra::ext(r), error = function(e) NULL)
   if (is.null(e)) return(c(xmin=NA_real_, xmax=NA_real_, ymin=NA_real_, ymax=NA_real_))
@@ -471,7 +522,8 @@ saveRDS(D_jac, file.path(OUT_DIR, "pairwise_jaccard_distance_matrix.rds"))
 saveRDS(D_sor, file.path(OUT_DIR, "pairwise_sorensen_distance_matrix.rds"))
 saveRDS(K_mat, file.path(OUT_DIR, "pairwise_kappa_matrix.rds"))
 
-#-------------------------------------------------------------------
+#====================================================================================
+#====================================================================================
 
 # alternate method for pairwise computations :
 # (pairwise loop above is very slow)
@@ -479,7 +531,7 @@ saveRDS(K_mat, file.path(OUT_DIR, "pairwise_kappa_matrix.rds"))
 # Fast pairwise metrics for binary/categorical rasters using terra
 
 # optional parallel
-# library(future.apply); plan(multisession, workers = max(1, parallel::detectCores() - 1))
+library(future.apply); plan(multisession, workers = max(1, parallel::detectCores() - 1))
 
 # --- helper for κ, Jaccard, Sørensen from confusion counts ---
 .metrics_from_counts <- function(n00, n01, n10, n11, jaccard_empty = "zero") {
