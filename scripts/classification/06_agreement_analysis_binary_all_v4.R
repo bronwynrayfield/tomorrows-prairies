@@ -9,7 +9,8 @@
 #         differences among existing grassland datasets. This version handles all 
 #         grassland data products regardless of extent.
 
-# For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge)
+# For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
+# trying ml.m5d.4xlarge
 # Prefer instances with NVMe local storage
 
 ## ---- Setup ---- ##
@@ -150,9 +151,28 @@ log_msg("Starting blockwise processing")
 
 # Block size determined by terraOptions(memfrac=...), available RAM, and number of layers
 # Can force smaller chunks for lower RAM per iteration (increase # of blocks)
-bs <- blocks(r_stack, n = 10000) # Try 8-20k
+bs <- blocks(r_stack) #, n = 10000) # Try 8-20k
 str(bs)
 total_blocks <- bs$n
+summary(bs$nrows)
+
+# Derive block size from terra's default
+#bs_default <- blocks(r_stack)
+
+#mean_rows <- mean(bs_default$nrows)
+
+# shrink blocks moderately (not drastically)
+#target_rows <- floor(mean_rows / 3)
+
+#rows <- seq(1, nrow(r_stack), by = target_rows)
+
+#bs <- list(
+#  row = rows,
+#  nrows = pmin(target_rows, nrow(r_stack) - rows + 1),
+#  n = length(rows)
+#)
+
+#total_blocks <- bs$n
 
 # ✅ OPEN FILE CONNECTIONS
 readStart(r_stack)
@@ -174,18 +194,15 @@ for (i in 1:total_blocks) {
   # Skip empty block
   if (all(is.na(vals))) next
   
-  # Convert to binary (0/1)
-  M <- vals > 0
-  storage.mode(M) <- "integer"
-  
   # Keep vals (not M yet)
   valid_rows <- rowSums(!is.na(vals)) > 0
   vals <- vals[valid_rows, , drop = FALSE]
   
   if (nrow(vals) == 0) next
   
-  # Binary conversion AFTER filtering
+  # Convert to binary (0/1)
   M <- vals > 0
+  #storage.mode(M) <- "integer"
   
   # Build NA mask per raster so NA pixels can be excluded from comparison
   # Pixels beyond raster extent should not be included in analysis
@@ -200,21 +217,37 @@ for (i in 1:total_blocks) {
   M_int <- M * 1
   valid_int <- valid_mat * 1
   
-  # n11: both 1 AND both observed
-  n11_block <- t(M_int) %*% M_int
+  # Zero out invalid cells
+  M_int[valid_int == 0] <- 0
   
   # valid counts for each pair
   N_block_mat <- t(valid_int) %*% valid_int
   
+  # n11: both 1 AND both observed
+  n11_block <- t(M_int) %*% M_int
+  
+  # n10 and n01 only where both rasters are valid
+  present_i <- t(M_int) %*% valid_int
+  present_j <- t(valid_int) %*% M_int
+  
   # per-raster presence
-  col_sum <- colSums(M_int)
+  #col_sum <- colSums(M_int)
   
   # n10 and n01 (only where valid)
-  n10_block <- outer(col_sum, col_sum, "-") - n11_block
-  n01_block <- t(n10_block)
+  #n10_block <- outer(col_sum, col_sum, "-") - n11_block
+  #n01_block <- t(n10_block)
+  
+  n10_block <- present_i - n11_block
+  n01_block <- present_j - n11_block
   
   # n00 derived correctly - does not include NAs
   n00_block <- N_block_mat - (n11_block + n10_block + n01_block)
+  
+  # Validate correct handling of NAs
+  if (anyNA(n11_block) || anyNA(n10_block) ||
+      anyNA(n01_block) || anyNA(n00_block)) {
+    stop("NA detected in block matrices")
+  }
   
   ## ---- Accumulate ---- ##
   n11 <- n11 + n11_block
@@ -244,7 +277,7 @@ for (i in 1:(n_rasters - 1)) {
     
     N <- n00[i,j] + n01[i,j] + n10[i,j] + n11[i,j]
     
-    if (N == 0) {
+    if (is.na(N) || N == 0) {
       d_j <- 1
       d_s <- 1
       kappa <- NA
