@@ -141,6 +141,8 @@ ras_names <- names(r_stack)
 
 ## ---- Initialize count matrices ---- ##
 classes <- c(0,1,2)
+#stopifnot(all(values(r_stack) %in% classes | is.na(values(r_stack))))
+
 n_classes <- length(classes)
 
 counts <- array(
@@ -178,7 +180,7 @@ summary(bs$nrows)
 
 #total_blocks <- bs$n
 
-# ✅ OPEN FILE CONNECTIONS
+# OPEN FILE CONNECTIONS
 readStart(r_stack)
 
 for (i in 1:total_blocks) {
@@ -208,40 +210,24 @@ for (i in 1:total_blocks) {
   M <- vals 
   #storage.mode(M) <- "integer"
   
-  # Build NA mask per raster so NA pixels can be excluded from comparison
-  # Pixels beyond raster extent should not be included in analysis
-  # Converting NAs to 0s would inflate agreement and penalize rasters with smaller extent
-  NA_mask <- is.na(vals)
-  
-  # Valid co-observation mask
-  valid_mat <- !NA_mask
-  
   ## ---- Class-wise counting ---- ##
-  for (ci in seq_along(classes)) {
-    for (cj in seq_along(classes)) {
+  # For each pair, only count pixels where both rasters are non-NA
+  for (ri in 1:(n_rasters - 1)) {
+    for (rj in (ri + 1):n_rasters) {
       
-      class_i <- classes[ci]
-      class_j <- classes[cj]
+      valid <- !is.na(M[,ri]) & !is.na(M[,rj])
+      if (!any(valid)) next
       
-      # Logical matrices
-      Mi <- (M == class_i)
-      Mj <- (M == class_j)
+      Mi <- M[valid, ri]
+      Mj <- M[valid, rj]
       
-      # Valid pairs only
-      valid_pair <- valid_mat
+      # Build contingency table
+      tab <- table(factor(Mi, levels = classes),
+                   factor(Mj, levels = classes))
       
-      Mi[!valid_pair] <- FALSE
-      Mj[!valid_pair] <- FALSE
-      
-      # Convert to integer
-      Mi_int <- Mi * 1
-      Mj_int <- Mj * 1
-      
-      # Cross-product counts
-      counts_block <- t(Mi_int) %*% Mj_int
-      storage.mode(counts_block) <- "integer"
-      
-      counts[,,ci,cj] <- counts[,,ci,cj] + counts_block
+      # Add to counts
+      counts[ri, rj, , ] <- counts[ri, rj, , ] + tab
+      counts[rj, ri, , ] <- counts[rj, ri, , ] + t(tab)
     }
   }
   

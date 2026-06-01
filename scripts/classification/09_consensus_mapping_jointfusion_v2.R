@@ -302,7 +302,7 @@ process_tile <- function(i) {
   pbin <- crop(penalty_bin_stack, tile)
   pnt  <- crop(penalty_nt_stack, tile)
   
-  # effective weights
+  # effective weight = accuracy x redundancy penalty
   bin_w_eff   <- rbin * pbin
   nt_w_tame   <- rt * pnt
   nt_w_native <- rn * pnt
@@ -376,9 +376,82 @@ results <- future_lapply(seq_along(tiles), process_tile)
 
 print("All tiles completed.")
 
+# =========================
+# MOSAIC AND EXPORT
+# =========================
+
+# Get tile outputs
+files <- Filter(Negate(is.null), results)
+
+if (length(files) == 0) {
+  files <- list.files("tiles_out", full.names=TRUE, pattern="\\.tif$")
+}
+
+# Ensure files exist
+files <- files[file.exists(files)]
+
+if (length(files) == 0) {
+  stop("No tile files found for mosaicking")
+}
+
+cat("Mosaicking", length(files), "tiles...\n")
+
+# Check layer consistency
+#stopifnot(all(sapply(files, function(f) nlyr(rast(f)) == 4)))
+stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 4, logical(1))))
+
+# Mosaic all tiles together
+mosaic_out <- mosaic(rast(files), fun="mean")
+
+#rast_list <- lapply(files, rast)
+#mosaic_out <- do.call(mosaic, c(rast_list, list(
+#  fun="mean"
+#)))
+
+# Assign layer names
+names(mosaic_out) <- c("p_not", "p_tame", "p_native", "entropy")
+
+# Export raster to TIF
+out_file <- "/mnt/tmp/joint_prob_full.tif"
+
+writeRaster(
+  mosaic_out,
+  out_file,
+  overwrite=TRUE,
+  wopt=list(
+    datatype="FLT4S",
+    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
+  )
+)
+
+aws.s3::put_object(
+  file   = out_file,
+  object = paste0(out_dir, "/joint_prob_full.tif")
+)
+
+# Local
+#writeRaster(
+#  mosaic_out,
+#  "joint_prob_full.tif",
+#  overwrite=TRUE,
+#  wopt=list(
+#    datatype="FLT4S",
+#    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")))
+
 # upload log to S3
 aws.s3::put_object(
   file = log_file_local,
   object = log_file
 )
+
+#--------- Possible next steps (examples) ---------------
+
+# Hard classification
+class <- which.max(joint_prob) - 1
+
+# Thresholding - high confidence native grass
+p_native > 0.8 & entropy < 0.3
+
+# Uncertainty masking - remove unreliable areas
+entropy > 0.7 
 
