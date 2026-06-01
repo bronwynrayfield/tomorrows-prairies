@@ -1,4 +1,16 @@
 
+###################################################################################
+##          ANALYSIS: SPATIAL AGREEMENT (BINARY GRASS VS NON-GRASS)              ##
+###################################################################################
+
+##----------------------- Alison Long - May 2026 -------------------------
+
+# step 6: calculate pairwise spatial agreement metrics to assess similarities and 
+#         differences among existing grassland datasets. This version handles all 
+#         grassland data products regardless of extent.
+
+#### VISUALIZE AGREEMENT RESULTS FROM V4 SCRIPT ####
+
 ## ---- Load libraries ---- ##
 library(tidyverse)
 library(reshape2)
@@ -8,26 +20,88 @@ library(igraph)
 library(ggraph)
 
 ## ---- Load results ---- ##
-# Update path if needed
-results_file <- file.path(Sys.getenv("HOME"), "r_tmp", "pairwise_results.csv")
 
+# Set directories
+results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_binary_pairwise")
+
+# Results file
+results_file <- file.path(results_dir, "pairwise_binary_spatial_agreement_21May2026.csv")
+
+# Load results file
 pairwise_long <- read_csv(results_file, show_col_types = FALSE)
 
+# Inspect pairs with no overlapping valid data (provincial datasets)
+pairwise_long %>% filter(!is.finite(d_jaccard) | !is.finite(kappa))
+
+# Filter out pairs with no overlapping valid data
+pairwise_clean <- pairwise_long %>%
+  filter(N > 0)
+
 ## ---- Helper: convert to matrix ---- ##
+#to_matrix <- function(df, value_col) {
+  
+#  mat <- df %>%
+#    select(raster_i, raster_j, !!sym(value_col)) %>%
+#    pivot_wider(names_from = raster_j, values_from = !!sym(value_col))
+  
+#  mat_df <- as.data.frame(mat)
+#  rownames(mat_df) <- mat_df$raster_i
+#  mat_df$raster_i <- NULL
+  
+#  mat_mat <- as.matrix(mat_df)
+  
+  # Make symmetric
+#  mat_mat[lower.tri(mat_mat)] <- t(mat_mat)[lower.tri(mat_mat)]
+#  diag(mat_mat) <- 0
+  
+#  return(mat_mat)
+#}
+
 to_matrix <- function(df, value_col) {
   
-  mat <- df %>%
-    select(raster_i, raster_j, !!sym(value_col)) %>%
-    pivot_wider(names_from = raster_j, values_from = !!sym(value_col))
+  # Get full set of raster names
+  rasters <- sort(unique(c(df$raster_i, df$raster_j)))
   
+  # Create full grid of all combinations
+  full_grid <- expand.grid(
+    raster_i = rasters,
+    raster_j = rasters,
+    stringsAsFactors = FALSE
+  )
+  
+  # Join values onto full grid
+  df_full <- full_grid %>%
+    left_join(df, by = c("raster_i", "raster_j"))
+  
+  # Pivot to wide format with enforced column order
+  mat <- df_full %>%
+    select(raster_i, raster_j, !!sym(value_col)) %>%
+    pivot_wider(
+      names_from = raster_j,
+      values_from = !!sym(value_col)
+    )
+  
+  # Convert to matrix
   mat_df <- as.data.frame(mat)
   rownames(mat_df) <- mat_df$raster_i
   mat_df$raster_i <- NULL
   
   mat_mat <- as.matrix(mat_df)
   
-  # Make symmetric
-  mat_mat[lower.tri(mat_mat)] <- t(mat_mat)[lower.tri(mat_mat)]
+  # Enforce same ordering on rows & columns
+  mat_mat <- mat_mat[rasters, rasters]
+  
+  # Symmetrize safely
+  for (i in seq_len(nrow(mat_mat))) {
+    for (j in seq_len(ncol(mat_mat))) {
+      if (is.na(mat_mat[i, j]) && !is.na(mat_mat[j, i])) {
+        mat_mat[i, j] <- mat_mat[j, i]
+      } else if (!is.na(mat_mat[i, j]) && is.na(mat_mat[j, i])) {
+        mat_mat[j, i] <- mat_mat[i, j]
+      }
+    }
+  }
+  
   diag(mat_mat) <- 0
   
   return(mat_mat)
@@ -38,61 +112,177 @@ mat_jaccard  <- to_matrix(pairwise_long, "d_jaccard")
 mat_sorensen <- to_matrix(pairwise_long, "d_sorensen")
 mat_kappa    <- to_matrix(pairwise_long, "kappa")
 
+# Make cells with value = 1 NA (no valid overlap)
+mat_jaccard[mat_jaccard == 1]   <- NA
+mat_sorensen[mat_sorensen == 1] <- NA
+mat_kappa[mat_kappa == 1]       <- NA
+
 ## ---- Heatmaps ---- ##
 pheatmap(mat_jaccard,
          main = "Jaccard Dissimilarity",
          clustering_distance_rows = "euclidean",
-         clustering_distance_cols = "euclidean")
+         clustering_distance_cols = "euclidean",
+         na_col = "black",
+         filename = file.path(results_dir, "heatmap_jaccard.png"))
 
 pheatmap(mat_sorensen,
-         main = "Sorensen Dissimilarity")
+         main = "Sorensen Dissimilarity",
+         na_col = "black",
+         filename = file.path(results_dir, "heatmap_sorensen.png"))
 
 pheatmap(mat_kappa,
          main = "Cohen's Kappa",
-         color = colorRampPalette(c("blue","white","red"))(50))
+         color = colorRampPalette(c("blue","white","red"))(50),
+         na_col = "black",
+         filename = file.path(results_dir, "heatmap_kappa.png"))
 
 ## ---- Long format for ggplot ---- ##
-pairwise_plot <- pairwise_long %>%
+pairwise_plot <- pairwise_clean %>%
   pivot_longer(cols = c(d_jaccard, d_sorensen, kappa),
                names_to = "metric",
                values_to = "value")
 
 ## ---- Distribution plots ---- ##
-ggplot(pairwise_plot, aes(x = value, fill = metric)) +
+dist <- ggplot(pairwise_plot, aes(x = value, fill = metric)) +
   geom_histogram(bins = 40, alpha = 0.6) +
   facet_wrap(~metric, scales = "free") +
   theme_minimal() +
   labs(title = "Distribution of Pairwise Agreement Metrics")
 
+# Save as PNG
+ggsave(filename = file.path(results_dir, "distribution_metrics.png"),
+       plot = dist,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
 ## ---- Scatter relationships ---- ##
-ggplot(pairwise_long, aes(d_jaccard, kappa)) +
-  geom_point(alpha = 0.4) +
+# As Jaccard dissimilarity increases, Kappa should decrease 
+# Strong negative relationship means metrics are consistent, both capture the same structure of agreement
+# Kappa is frequently near zero even when Jaccard varies widely - some raster pairs have little better-than-random agreement,
+# even when their overlap (Jaccard) differs. Kappa is very sensitive to marginal totals while Jaccard is not -
+# Kappa penalizes imbalance, chance agreement, absence (zeroes)
+# Kappa can also drop due to spatial mismatch structure - some overlap but disagreement in WHERE values occur
+# Kappa may not be a reliable summary metric for land cover classification
+scatt.jk <- ggplot(pairwise_clean, aes(d_jaccard, kappa, color = N)) +
+  geom_point(alpha = 0.6) +
   theme_minimal() +
   labs(title = "Jaccard vs Kappa")
 
-ggplot(pairwise_long, aes(d_sorensen, kappa)) +
-  geom_point(alpha = 0.4) +
+# Save as PNG
+ggsave(filename = file.path(results_dir, "scatter_jaccard_vs_kappa_N.png"),
+       plot = scatt.jk,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+scatt.sk <- ggplot(pairwise_clean, aes(d_sorensen, kappa, color = N)) +
+  geom_point(alpha = 0.6) +
   theme_minimal() +
   labs(title = "Sorensen vs Kappa")
 
+# Save as PNG
+ggsave(filename = file.path(results_dir, "scatter_sorensen_vs_kappa_N.png"),
+       plot = scatt.sk,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+
+scatt.js <- ggplot(pairwise_clean, aes(d_jaccard, d_sorensen)) +
+  geom_point() +
+  theme_minimal()
+
+# Save as PNG
+ggsave(filename = file.path(results_dir, "scatter_sorensen_vs_jaccard.png"),
+       plot = scatt.js,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+# Correlation between jaccard and kappa
+cor(pairwise_clean$d_jaccard, pairwise_clean$kappa)
+
+# Calculate proportion of presence in each raster to see if this explains pattern
+
 ## ---- Clustering dendrogram ---- ##
+# Rebuild matrices but don't replace 1 with NA
 dist_mat <- as.dist(mat_jaccard)
 hc <- hclust(dist_mat)
 
+png(file.path(results_dir, "dendrogram_jaccard.png"),
+    width = 1200, height = 1000, res = 150)
+
 plot(hc, main = "Raster Clustering (Jaccard)")
+
+dev.off()
+
+# Exclude pairs with no overlap
+# Keep only rows/cols with no NA
+mat_jaccard[mat_jaccard == 1]   <- NA
+keep <- complete.cases(mat_jaccard)
+mat_jaccard_clean <- mat_jaccard[keep, keep]
+
+dist_mat <- as.dist(mat_jaccard_clean)
+hc <- hclust(dist_mat)
+
+png(file.path(results_dir, "dendrogram_jaccard_validpairsonly.png"),
+    width = 1200, height = 1000, res = 150)
+
+plot(hc, main = "Raster Clustering (Jaccard)")
+
+dev.off()
 
 ## ---- Network visualization (threshold) ---- ##
 # Define similarity threshold (adjust!)
-threshold <- 0.7
+threshold <- 0.75
 
-edges <- pairwise_long %>%
+# Edges (aka lines) will only be retained where Kappa is above threshold
+# Lines in plot mean high agreement beyond chance
+edges <- pairwise_clean %>%
   filter(kappa > threshold)
 
 g <- graph_from_data_frame(edges, directed = FALSE)
 
-ggraph(g, layout = "fr") +
+# Highly similar rasters cluster close together
+# Nodes with many edges agree strongly with many others and may represent consensus product
+net.plot <- ggraph(g, layout = "fr") +
   geom_edge_link(alpha = 0.3) +
   geom_node_point(size = 5) +
   geom_node_text(aes(label = name), repel = TRUE) +
   theme_void() +
   ggtitle(paste("Raster Similarity Network (Kappa >", threshold, ")"))
+
+# Save as PNG
+ggsave(filename = file.path(results_dir, "network_kappa_threshold_075.png"),
+       plot = net.plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+#---- Same but for MCC ----#
+# Define similarity threshold (adjust!)
+threshold <- 0.7
+
+# Edges (aka lines) will only be retained where Kappa is above threshold
+# Lines in plot mean high agreement beyond chance
+edges <- pairwise_clean %>%
+  filter(mcc > threshold)
+
+g <- graph_from_data_frame(edges, directed = FALSE)
+
+# Highly similar rasters cluster close together
+# Nodes with many edges agree strongly with many others and may represent consensus product
+net.plot <- ggraph(g, layout = "fr") +
+  geom_edge_link(alpha = 0.3) +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_void() +
+  ggtitle(paste("Raster Similarity Network (MCC >", threshold, ")"))
+
+# Save as PNG
+ggsave(filename = file.path(results_dir, "network_mcc_threshold_070.png"),
+       plot = net.plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
