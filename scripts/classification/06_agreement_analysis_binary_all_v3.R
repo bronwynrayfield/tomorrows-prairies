@@ -289,7 +289,7 @@ pairwise_long <- bind_rows(results)
 log_msg("Pairwise computation completed")
 
 ## ---- Save outputs ----
-out_csv <- file.path(out_dir, "pairwise_binary_spatial_agreement_01Jun2026.csv")
+out_csv <- file.path(out_dir, "pairwise_binary_spatial_agreement.csv")
 out_rds <- file.path(out_dir, "pairwise_binary_spatial_agreement.rds")
 
 write_csv(pairwise_long, out_csv)
