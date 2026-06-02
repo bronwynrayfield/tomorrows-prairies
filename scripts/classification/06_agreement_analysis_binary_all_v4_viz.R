@@ -25,7 +25,7 @@ library(ggraph)
 results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_binary_pairwise")
 
 # Results file
-results_file <- file.path(results_dir, "pairwise_binary_spatial_agreement_21May2026.csv")
+results_file <- file.path(results_dir, "pairwise_binary_spatial_agreement_1Jun2026.csv")
 
 # Load results file
 pairwise_long <- read_csv(results_file, show_col_types = FALSE)
