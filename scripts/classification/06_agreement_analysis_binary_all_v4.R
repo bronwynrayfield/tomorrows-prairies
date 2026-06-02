@@ -323,10 +323,10 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_binary_spatial_agreement.csv")
+  object = file.path(out_dir, "pairwise_binary_spatial_agreement_01Jun2026.csv")
 )
 
-message("Finished pairwise spatial agreement analysis.")
+message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
 
 # Upload log to S3

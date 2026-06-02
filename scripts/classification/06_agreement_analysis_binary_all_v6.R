@@ -13,7 +13,7 @@
 #### SAME AS V4 BUT ADD F1 and MCC AS METRICS ####
 
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
-# trying ml.m5d.4xlarge
+# trying ml.m5d.8xlarge
 # Prefer instances with NVMe local storage
 
 ## ---- Setup ---- ##
@@ -351,10 +351,10 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_binary_spatial_agreement.csv")
+  object = file.path(out_dir, "pairwise_binary_spatial_agreement_01Jun2026.csv")
 )
 
-message("Finished pairwise spatial agreement analysis.")
+message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
 
 # Upload log to S3

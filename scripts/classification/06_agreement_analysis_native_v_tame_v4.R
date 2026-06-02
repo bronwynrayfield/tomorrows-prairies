@@ -20,7 +20,7 @@ tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 
 # Load packages
 library(terra)
-library(future.apply)
+library(future.apply)  # running sequentially to avoid disk contention
 library(readr)
 library(dplyr)
 library(aws.s3)
@@ -33,7 +33,7 @@ terraOptions(
 )
 
 ## ---- Parallel (light use only) ---- ##
-n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
+#n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
 future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
@@ -68,7 +68,7 @@ log_msg <- function(..., level = "INFO") {
 }
 
 log_msg("Starting spatial agreement analysis")
-log_msg("Parallel workers detected: ", n_cores)
+#log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -84,15 +84,45 @@ log_msg("Metadata rows loaded: ", nrow(meta))
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
 
+#rfiles_local <- sapply(names(rfiles_s3), function(nm) {
+#  dest <- file.path(local_dir, paste0(nm, ".tif"))
+#  if (!file.exists(dest)) {
+#    aws.s3::save_object(rfiles_s3[[nm]], file = dest)
+#  }
+#  dest
+#}, USE.NAMES = TRUE)
+
 rfiles_local <- sapply(names(rfiles_s3), function(nm) {
+  
+  s3_path <- rfiles_s3[[nm]]
+  
+  s3_clean <- sub("^s3://", "", s3_path)
+  parts <- strsplit(s3_clean, "/", fixed = TRUE)[[1]]
+  
+  bucket <- parts[1]
+  key <- paste(parts[-1], collapse = "/")
+  
   dest <- file.path(local_dir, paste0(nm, ".tif"))
-  if (!file.exists(dest)) {
-    aws.s3::save_object(rfiles_s3[[nm]], file = dest)
-  }
+  
+  aws.s3::save_object(object = key, bucket = bucket, file = dest)
+  
   dest
 }, USE.NAMES = TRUE)
 
 log_msg("All rasters downloaded locally")
+
+# Check file size to ensure correct download
+bad_files <- names(rfiles_local)[file.size(rfiles_local) < 10000]
+if (length(bad_files) > 0) {
+  stop(paste("These rasters failed to download correctly:",
+             paste(bad_files, collapse = ", ")))
+}
+
+file.info(rfiles_local)
+rfiles_s3[c("aci", "ngi", "cgr")]
+
+#unlink(local_dir, recursive = TRUE)
+#dir.create(local_dir, recursive = TRUE)
 
 ## ---- Confirm raster alignment ---- ##
 message("Checking alignment...")
@@ -260,6 +290,9 @@ for (i in 1:(n_rasters - 1)) {
       accuracy <- NA
       jacc <- rep(NA, n_classes)
       jaccard_macro <- NA
+      f1_class <- rep(NA, n_classes)
+      f1_macro <- NA
+      mcc_multi <- NA
     } else {
     
     # Multi-class Kappa
@@ -289,6 +322,43 @@ for (i in 1:(n_rasters - 1)) {
     
     # Overall accuracy
     accuracy <- sum(diag(C)) / N
+    
+    # Per-class F1
+    f1_class <- numeric(n_classes)
+    
+    for (k in 1:n_classes) {
+      
+      TP <- C[k, k]
+      FN <- sum(C[k, ]) - TP
+      FP <- sum(C[, k]) - TP
+      
+      precision <- ifelse((TP + FP) == 0, NA, TP / (TP + FP))
+      recall    <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))
+      
+      f1_class[k] <- ifelse(
+        is.na(precision) | is.na(recall) | (precision + recall == 0),
+        NA,
+        2 * precision * recall / (precision + recall)
+      )
+    }
+    
+    # Macro F1
+    f1_macro <- mean(f1_class, na.rm = TRUE)
+    
+    # Multi-class MCC (Gorodkin 2004 formulation)
+    t_sum <- sum(C)                     # total N
+    sum_row_prod <- sum(rowSums(C) * colSums(C))
+    trace_C <- sum(diag(C))
+    
+    numerator <- (trace_C * t_sum) - sum_row_prod
+    
+    denom_row <- t_sum^2 - sum(colSums(C)^2)
+    denom_col <- t_sum^2 - sum(rowSums(C)^2)
+    
+    denominator <- sqrt(denom_row * denom_col)
+    
+    mcc_multi <- ifelse(denominator == 0, NA, numerator / denominator)
+    
   }
     
     # Define output
@@ -301,6 +371,11 @@ for (i in 1:(n_rasters - 1)) {
       jaccard_class0 = jacc[1],
       jaccard_class1 = jacc[2],
       jaccard_class2 = jacc[3],
+      f1_macro = f1_macro,
+      f1_class0 = f1_class[1],
+      f1_class1 = f1_class[2],
+      f1_class2 = f1_class[3],
+      mcc_multi = mcc_multi,
       N = N
     )
   }
@@ -316,10 +391,10 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_nattam_spatial_agreement.csv")
+  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_01Jun2026.csv")
 )
 
-message("Finished pairwise spatial agreement analysis.")
+message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
 
 # Upload log to S3
