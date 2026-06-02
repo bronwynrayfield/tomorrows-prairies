@@ -10,7 +10,7 @@
 #         grassland data products regardless of extent.
 
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
-# trying ml.m5d.4xlarge
+# ran using ml.m5d.8xlarge
 # Prefer instances with NVMe local storage
 
 ## ---- Setup ---- ##
