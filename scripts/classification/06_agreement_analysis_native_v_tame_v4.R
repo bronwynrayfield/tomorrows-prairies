@@ -37,7 +37,8 @@ terraOptions(
 future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
-meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path.csv"
+#meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path.csv"
+meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path_plicombined.csv"
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
 log_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
 local_dir <- file.path(tmp_root, "data")
@@ -391,7 +392,7 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_01Jun2026.csv")
+  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_02Jun2026.csv")
 )
 
 message("Finished pairwise spatial agreement analysis")
