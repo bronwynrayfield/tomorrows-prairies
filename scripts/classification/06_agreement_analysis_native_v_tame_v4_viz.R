@@ -22,10 +22,11 @@ library(ggraph)
 ## ---- Load results ---- ##
 
 # Set directories
-results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_natvtam_pairwise")
+results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_nattam_pairwise")
 
 # Results file
-results_file <- file.path(results_dir, "pairwise_nattam_spatial_agreement_01Jun2026.csv")
+#results_file <- file.path(results_dir, "pairwise_nattam_spatial_agreement_01Jun2026.csv")
+results_file <- file.path(results_dir, "pairwise_nattam_spatial_agreement_02Jun2026_plicombined.csv")
 
 # Load results file
 pairwise_long <- read_csv(results_file, show_col_types = FALSE)
@@ -36,6 +37,10 @@ pairwise_long <- read_csv(results_file, show_col_types = FALSE)
 # Filter out pairs with no overlapping valid data
 pairwise_clean <- pairwise_long %>%
   filter(N > 0)
+
+# Filter out pairs with very little overlapping data (PLI subsections)
+pairwise_clean <- pairwise_clean %>%
+  filter(N > 3400)
 
 ## ---- Helper: convert to matrix ---- ##
 to_matrix <- function(df, value_col) {
@@ -83,7 +88,7 @@ to_matrix <- function(df, value_col) {
     }
   }
   
-  diag(mat_mat) <- 0
+  diag(mat_mat) <- 1 # 1 for similarity, 0 for dissimilarity
   
   return(mat_mat)
 }
@@ -107,14 +112,18 @@ pheatmap(mat_kappa,
          na_col = "black",
          filename = file.path(results_dir, "heatmap_kappa.png"))
 
-pheatmap(mat_mcc,
+# Remove HFI
+mat_mcc_nohfi <- mat_mcc[rownames(mat_mcc) != "hfi",
+                         colnames(mat_mcc) != "hfi"]
+
+pheatmap(mat_mcc_nohfi,
          main = "Multi-class MCC",
          color = colorRampPalette(c("blue","white","red"))(50),
          na_col = "black",
          filename = file.path(results_dir, "heatmap_mcc.png"))
 
 pheatmap(mat_jacc_macro,
-         main = "Macro Jaccard",
+         main = "Macro Jaccard Similarity",
          na_col = "black",
          filename = file.path(results_dir, "heatmap_jaccard_macro.png"))
 
@@ -132,7 +141,7 @@ for (cls in c("0","1","2")) {
            main = paste("Jaccard - Class", cls),
            na_col = "black",
            filename = file.path(results_dir,
-                                paste0("heatmap_jaccard_class_", cls, ".png")))
+                                paste0("heatmap_jaccard_similarity_class_", cls, ".png")))
 }
 
 ## ---- Distribution plots ---- ##
@@ -155,7 +164,7 @@ ggsave(file.path(results_dir, "distribution_metrics.png"),
 ggplot(pairwise_clean, aes(jaccard_macro, kappa, color = N)) +
   geom_point(alpha = 0.6) +
   theme_minimal() +
-  labs(title = "Jaccard (macro) vs Kappa")
+  labs(title = "Jaccard similarity (macro) vs Kappa")
 
 ggsave(file.path(results_dir, "scatter_jaccard_vs_kappa.png"),
        width = 8, height = 6, dpi = 300)
@@ -172,13 +181,19 @@ ggsave(file.path(results_dir, "scatter_mcc_vs_kappa.png"),
 
 ggplot(pairwise_clean, aes(jaccard_macro, mcc_multi)) +
   geom_point() +
-  theme_minimal()
+  theme_minimal() +
+  labs(title = "Jaccard similarity (macro) vs MCC")
 
 ggsave(file.path(results_dir, "scatter_jaccard_vs_mcc.png"),
        width = 8, height = 6, dpi = 300)
 
 ## ---- Clustering ---- ##
-dist_mat <- as.dist(1 - mat_mcc)
+
+# Keep only rasters with full pairwise comparisons
+keep <- complete.cases(mat_mcc_nohfi)
+mat_mcc_clean <- mat_mcc_nohfi[keep, keep]
+
+dist_mat <- as.dist(1 - mat_mcc_clean)
 hc <- hclust(dist_mat)
 
 png(file.path(results_dir, "dendrogram_mcc.png"),
@@ -188,7 +203,7 @@ plot(hc, main = "Raster Clustering (MCC)")
 dev.off()
 
 ## ---- Network visualization ---- ##
-threshold <- 0.6
+threshold <- 0.55
 
 edges <- pairwise_clean %>%
   filter(mcc_multi > threshold)
@@ -202,7 +217,7 @@ ggraph(g, layout = "fr") +
   theme_void() +
   ggtitle(paste("Network (MCC >", threshold, ")"))
 
-ggsave(file.path(results_dir, "network_mcc.png"),
+ggsave(file.path(results_dir, "network_mcc_055.png"),
        width = 8, height = 6, dpi = 300)
 
 # For Kappa
@@ -220,10 +235,15 @@ ggraph(g, layout = "fr") +
   theme_void() +
   ggtitle(paste("Network (Kappa >", threshold, ")"))
 
-ggsave(file.path(results_dir, "network_kappa.png"),
+ggsave(file.path(results_dir, "network_kappa_060.png"),
        width = 8, height = 6, dpi = 300)
 
 ## ---- Class driving disagreement ---- ##
+# Across all raster pairs, which class most often has the poorest spatial agreement?
+# Assign each raster pair to the class with the lowest Jaccard similarity
+# Low Jaccard = low overlap = high disagreement
+# The “worst class” = the class where the two rasters agree the least
+# Limitations: ignores effect size, sensitive to ties/small differences, doesn't account for class importance
 pairwise_clean %>%
   mutate(
     worst_class = case_when(
@@ -236,3 +256,264 @@ pairwise_clean %>%
   geom_bar() +
   theme_minimal() +
   labs(title = "Class Driving Disagreement")
+
+ggsave(file.path(results_dir, "class_driving_disagreement.png"),
+       width = 8, height = 6, dpi = 300)
+
+# Add magnitude (how much worse the worst class is)
+pairwise_clean %>%
+  mutate(
+    min_jacc = pmin(jaccard_class0, jaccard_class1, jaccard_class2, na.rm = TRUE)
+  )
+
+# Evaluate how strongly one class drives disagreement
+# Compare max and min Jaccard
+pairwise_clean %>%
+  mutate(
+    max_jacc = pmax(jaccard_class0, jaccard_class1, jaccard_class2, na.rm = TRUE),
+    min_jacc = pmin(jaccard_class0, jaccard_class1, jaccard_class2, na.rm = TRUE),
+    disagreement_gap = max_jacc - min_jacc
+  )
+
+# Focus on only strong disagreement
+
+
+## ---- Compute disagreement diagnostics ---- ##
+
+pairwise_diag <- pairwise_clean %>%
+  rowwise() %>%
+  mutate(
+    jacc_vec = list(c(jaccard_class0, jaccard_class1, jaccard_class2)),
+    class_names = list(c("class0", "class1", "class2")),
+    
+    # Handle NA safely
+    valid_idx = list(which(!is.na(jacc_vec))),
+    
+    worst_class = if (length(valid_idx) == 0) {
+      NA_character_
+    } else {
+      class_names[valid_idx[which.min(jacc_vec[valid_idx])]]
+    },
+    
+    best_class = if (length(valid_idx) == 0) {
+      NA_character_
+    } else {
+      class_names[valid_idx[which.max(jacc_vec[valid_idx])]]
+    },
+    
+    min_jacc = if (length(valid_idx) == 0) NA else min(jacc_vec, na.rm = TRUE),
+    max_jacc = if (length(valid_idx) == 0) NA else max(jacc_vec, na.rm = TRUE),
+    
+    disagreement_gap = max_jacc - min_jacc
+  ) %>%
+  ungroup()
+
+# Plot 1: Which class most often drives disagreement
+# Shows which class is weakest most often
+plot_worst_class <- ggplot(pairwise_diag, aes(worst_class)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Class Most Frequently Driving Disagreement",
+       x = "Class",
+       y = "Number of Raster Pairs")
+
+ggsave(file.path(results_dir, "worst_class_counts.png"),
+       plot_worst_class, width = 7, height = 5, dpi = 300)
+
+# Plot 2: Strength of disagreement (distribution)
+# Near 0 = classes behave similarly
+# Large values = one class is much worse
+plot_gap <- ggplot(pairwise_diag, aes(disagreement_gap)) +
+  geom_histogram(bins = 30, fill = "tomato", alpha = 0.8) +
+  theme_minimal() +
+  labs(title = "Distribution of Disagreement Strength",
+       x = "Jaccard Difference (best - worst)",
+       y = "Count")
+
+ggsave(file.path(results_dir, "disagreement_gap_hist.png"),
+       plot_gap, width = 7, height = 5, dpi = 300)
+
+# Plot 3: Worst class colored by magnitude
+# Shows not just frequency, but severity
+# Identifies which class causes strongest disagreement
+plot_worst_vs_gap <- ggplot(pairwise_diag,
+                            aes(worst_class, disagreement_gap, fill = worst_class)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Strength of Disagreement by Class",
+       x = "Worst Class",
+       y = "Disagreement Gap")
+
+ggsave(file.path(results_dir, "worst_class_vs_gap.png"),
+       plot_worst_vs_gap, width = 8, height = 6, dpi = 300)
+
+# Plot 4: Focus on strong disagreements only
+plot_strong <- pairwise_diag %>%
+  filter(min_jacc < 0.3) %>%
+  ggplot(aes(worst_class)) +
+  geom_bar(fill = "darkred") +
+  theme_minimal() +
+  labs(title = "Class Driving Strong Disagreement (Jaccard < 0.3)")
+
+ggsave(file.path(results_dir, "worst_class_strong_only.png"),
+       plot_strong, width = 7, height = 5, dpi = 300)
+
+# Plot 5: Which class is most variable overall?
+# Shows which class is most consistent (tight spread) vs most variable (wide spread)
+pairwise_long_format <- pairwise_clean %>%
+  pivot_longer(
+    cols = starts_with("jaccard_class"),
+    names_to = "class",
+    values_to = "jaccard"
+  )
+
+plot_variability <- ggplot(pairwise_long_format, aes(class, jaccard, fill = class)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Distribution of Jaccard Similarity by Class",
+       x = "Class",
+       y = "Jaccard Similarity")
+
+ggsave(file.path(results_dir, "jaccard_by_class_boxplot.png"),
+       plot_variability, width = 8, height = 6, dpi = 300)
+
+# Plot 6: Link disagreement to MCC
+# Shows whether class-specific disagreement explains overall disagreement
+plot_gap_mcc <- ggplot(pairwise_diag,
+                       aes(disagreement_gap, mcc_multi, color = worst_class)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "Disagreement Strength vs MCC")
+
+ggsave(file.path(results_dir, "gap_vs_mcc.png"),
+       plot_gap_mcc, width = 8, height = 6, dpi = 300)
+
+#---------- Disagreement drivers by class -----------#
+# Which raster datasets consistently produce low agreement for each class?
+
+# Reshape to long format
+pairwise_long_class <- pairwise_clean %>%
+  pivot_longer(
+    cols = starts_with("jaccard_class"),
+    names_to = "class",
+    values_to = "jaccard"
+  )
+
+# Identify low-agreement pairs
+threshold <- 0.3
+
+low_agreement <- pairwise_long_class %>%
+  filter(jaccard < threshold)
+
+# Count datasets contributing to disagreement
+dataset_disagreement <- low_agreement %>%
+  select(raster_i, raster_j, class) %>%
+  pivot_longer(cols = c(raster_i, raster_j),
+               values_to = "dataset") %>%
+  group_by(dataset, class) %>%
+  summarise(n = n(), .groups = "drop")
+
+# Plot
+plot_dataset_disagreement <- ggplot(dataset_disagreement,
+                                    aes(x = dataset, y = n, fill = class)) +
+  geom_col(position = "dodge") +
+  theme_minimal() +
+  labs(title = "Datasets Driving Disagreement by Class",
+       x = "Dataset",
+       y = "Number of Low-Agreement Pairs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(results_dir, "datasets_driving_disagreement.png"),
+       plot_dataset_disagreement,
+       width = 10, height = 6, dpi = 300)
+
+# Normalize by number of comparisons
+
+# Total number of comparisons per dataset
+total_pairs <- pairwise_long_class %>%
+  pivot_longer(cols = c(raster_i, raster_j),
+               values_to = "dataset") %>%
+  count(dataset, name = "total_pairs")
+
+# Number of low-agreement cases per dataset
+dataset_disagreement <- dataset_disagreement %>%
+  rename(low_pairs = n) %>%
+  left_join(total_pairs, by = "dataset") %>%
+  mutate(prop = low_pairs / total_pairs)
+
+# Plot
+plot_dataset_disagreement <- ggplot(dataset_disagreement,
+                                    aes(x = dataset, y = prop, fill = class)) +
+  geom_col(position = "dodge") +
+  theme_minimal() +
+  labs(title = "Datasets Driving Disagreement by Class (Normalized)",
+       x = "Dataset",
+       y = "Proportion of Low-Agreement Pairs") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(results_dir, "datasets_driving_disagreement_norm.png"),
+       plot_dataset_disagreement,
+       width = 10, height = 6, dpi = 300)
+
+#------------- Map spatial disagreement hotspots -----------#
+# Stack rasters
+r_stack <- rast(rfiles_local)
+
+# Compute disagreement per pixel
+
+# Class-specific disagreement
+
+# Variance based disagreement
+# Variance = disagreement intensity
+
+class_disagreement <- function(target_class) {
+  
+  binary <- r_stack == target_class
+  
+  app(binary, fun = function(x) {
+    if (all(is.na(x))) return(NA)
+    
+    # variance of binary vector
+    v <- var(x, na.rm = TRUE)
+    
+    return(v/0.25) # normalize to 0-1 where 0=full agreement, 1=max disagreement
+  })
+}
+
+# Easier to interpret: mean-based disagreement
+class_disagreement <- function(target_class) {
+  
+  binary <- r_stack == target_class
+  
+  app(binary, fun = function(x) {
+    if (all(is.na(x))) return(NA)
+    
+    p <- mean(x, na.rm = TRUE)
+    
+    # Disagreement highest at p = 0.5
+    return(1 - abs(p - 0.5) * 2)
+  })
+}
+
+# Compute maps
+class0_map <- class_disagreement(0)
+class1_map <- class_disagreement(1)
+class2_map <- class_disagreement(2)
+
+# Save rasters 
+writeRaster(class0_map,
+            file.path(local_dir, "disagreement_class0.tif"),
+            overwrite = TRUE)
+
+writeRaster(class1_map,
+            file.path(local_dir, "disagreement_class1.tif"),
+            overwrite = TRUE)
+
+writeRaster(class2_map,
+            file.path(local_dir, "disagreement_class2.tif"),
+            overwrite = TRUE)
+
+# Quick plot
+plot(class1_map, main = "Spatial Disagreement (Class 1)")
+
+

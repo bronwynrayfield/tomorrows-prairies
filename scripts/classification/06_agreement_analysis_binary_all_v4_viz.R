@@ -25,10 +25,13 @@ library(ggraph)
 results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_binary_pairwise")
 
 # Results file
-results_file <- file.path(results_dir, "pairwise_binary_spatial_agreement_1Jun2026.csv")
+results_file <- file.path(results_dir, "pairwise_binary_spatial_agreement_01Jun2026.csv")
 
 # Load results file
 pairwise_long <- read_csv(results_file, show_col_types = FALSE)
+
+# Range of values for MCC
+range(pairwise_long$mcc, na.rm = TRUE)
 
 # Inspect pairs with no overlapping valid data (provincial datasets)
 pairwise_long %>% filter(!is.finite(d_jaccard) | !is.finite(kappa))
@@ -111,11 +114,15 @@ to_matrix <- function(df, value_col) {
 mat_jaccard  <- to_matrix(pairwise_long, "d_jaccard")
 mat_sorensen <- to_matrix(pairwise_long, "d_sorensen")
 mat_kappa    <- to_matrix(pairwise_long, "kappa")
+mat_f1       <- to_matrix(pairwise_long, "f1")
+mat_mcc      <- to_matrix(pairwise_long, "mcc")
 
 # Make cells with value = 1 NA (no valid overlap)
 mat_jaccard[mat_jaccard == 1]   <- NA
 mat_sorensen[mat_sorensen == 1] <- NA
 mat_kappa[mat_kappa == 1]       <- NA
+mat_f1[mat_f1 == 1]             <- NA
+mat_mcc[mat_mcc == 1]           <- NA
 
 ## ---- Heatmaps ---- ##
 pheatmap(mat_jaccard,
@@ -136,9 +143,32 @@ pheatmap(mat_kappa,
          na_col = "black",
          filename = file.path(results_dir, "heatmap_kappa.png"))
 
+pheatmap(mat_f1,
+         main = "F1 Score (Macro)",
+         color = colorRampPalette(c("white", "orange", "red"))(50),
+         na_col = "black",
+         filename = file.path(results_dir, "heatmap_f1.png"))
+
+#pheatmap(mat_mcc,
+#         main = "Matthews Correlation Coefficient (MCC)",
+#         color = colorRampPalette(c("blue","white","red"))(50),
+#         breaks = seq(-1, 1, length.out = 51),
+#         na_col = "black",
+#         filename = file.path(results_dir, "heatmap_mcc.png"))
+
+pheatmap(mat_mcc,
+         main = "Matthews Correlation Coefficient (MCC)",
+         color = colorRampPalette(c("blue","white","red"))(50),
+         breaks = seq(-1, 1, length.out = 51),
+         na_col = "black",
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         filename = file.path(results_dir, "heatmap_mcc.png"))
+
+
 ## ---- Long format for ggplot ---- ##
 pairwise_plot <- pairwise_clean %>%
-  pivot_longer(cols = c(d_jaccard, d_sorensen, kappa),
+  pivot_longer(cols = c(d_jaccard, d_sorensen, kappa, f1, mcc),
                names_to = "metric",
                values_to = "value")
 
@@ -157,6 +187,51 @@ ggsave(filename = file.path(results_dir, "distribution_metrics.png"),
        dpi = 300)
 
 ## ---- Scatter relationships ---- ##
+# Does overlap translate into real agreement?
+scatt.fm <- ggplot(pairwise_clean, aes(f1, mcc, color = N)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "F1 vs MCC")
+
+ggsave(file.path(results_dir, "scatter_f1_vs_mcc_N.png"),
+       scatt.fm, width = 8, height = 6, dpi = 300)
+
+# Direct comparison of overlap (Jaccard) and balanced agreement (MCC)
+scatt.jm <- ggplot(pairwise_clean, aes(1 - d_jaccard, mcc, color = N)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "Jaccard Similarity vs MCC")
+
+ggsave(file.path(results_dir, "scatter_jaccard_vs_mcc_N.png"),
+       scatt.jm, width = 8, height = 6, dpi = 300)
+
+# How distorted is Kappa relative to a better metric?
+scatt.km <- ggplot(pairwise_clean, aes(kappa, mcc, color = N)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "Kappa vs MCC")
+
+ggsave(file.path(results_dir, "scatter_kappa_vs_mcc_N.png"),
+       scatt.km, width = 8, height = 6, dpi = 300)
+
+# Consistency check - should be almost perfectly correlated
+scatt.fj <- ggplot(pairwise_clean, aes(1 - d_jaccard, f1)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "F1 vs Jaccard Similarity")
+
+ggsave(file.path(results_dir, "scatter_f1_vs_jaccard.png"),
+       scatt.fj, width = 8, height = 6, dpi = 300)
+
+# Does agreement depend on how much area overlaps?
+scatt.mn <- ggplot(pairwise_clean, aes(N, mcc)) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "MCC vs Overlap (N)")
+
+ggsave(file.path(results_dir, "scatter_mcc_vs_N.png"),
+       scatt.mn, width = 8, height = 6, dpi = 300)
+
 # As Jaccard dissimilarity increases, Kappa should decrease 
 # Strong negative relationship means metrics are consistent, both capture the same structure of agreement
 # Kappa is frequently near zero even when Jaccard varies widely - some raster pairs have little better-than-random agreement,
@@ -207,6 +282,7 @@ cor(pairwise_clean$d_jaccard, pairwise_clean$kappa)
 
 ## ---- Clustering dendrogram ---- ##
 # Rebuild matrices but don't replace 1 with NA
+mat_jaccard  <- to_matrix(pairwise_long, "d_jaccard")
 dist_mat <- as.dist(mat_jaccard)
 hc <- hclust(dist_mat)
 
@@ -233,9 +309,64 @@ plot(hc, main = "Raster Clustering (Jaccard)")
 
 dev.off()
 
+## ---- MCC clustering (valid pairs only) ---- ##
+# Raster clustering should be based on balanced, global similarity measure
+# MCC is best:
+#     Uses full confusion matrix
+#     Robust to class imbalance
+#     Not overly influenced by dominant classes
+#     Handles multi-class structure correctly
+#     Produces true correlation-like structure
+
+# Remove HFI
+mat_mcc_nohfi <- mat_mcc[rownames(mat_mcc) != "hfi",
+                         colnames(mat_mcc) != "hfi"]
+# Remove invalid MCC values
+mat_mcc_nohfi[!is.finite(mat_mcc_nohfi)] <- NA
+
+# Keep only rasters with full pairwise comparisons
+keep <- complete.cases(mat_mcc_nohfi)
+mat_mcc_clean <- mat_mcc_nohfi[keep, keep]
+
+# Convert to distance
+dist_mat <- as.dist(1 - mat_mcc_clean)
+
+hc <- hclust(dist_mat)
+
+png(file.path(results_dir, "dendrogram_mcc_validpairsonly.png"),
+    width = 1200, height = 1000, res = 150)
+
+plot(hc, main = "Raster Clustering (MCC, valid pairs only)")
+
+dev.off()
+
+# Keep all datasets - NAs become maximum observed distance
+keep <- rowSums(is.finite(mat_mcc)) > 1
+mat_mcc_clean <- mat_mcc[keep, keep]
+
+# Convert similarity → distance
+dist_mat <- as.matrix(1 - mat_mcc_clean)
+
+# Replace NA distances with max distance
+dist_mat[!is.finite(dist_mat)] <- max(dist_mat, na.rm = TRUE)
+
+# Convert back to dist
+dist_mat <- as.dist(dist_mat)
+dist_mat
+
+# Cluster
+hc <- hclust(dist_mat)
+
+png(file.path(results_dir, "dendrogram_mcc_allpairs.png"),
+    width = 1200, height = 1000, res = 150)
+
+plot(hc, main = "Raster Clustering (MCC, NAs as max distance)")
+
+dev.off()
+
 ## ---- Network visualization (threshold) ---- ##
 # Define similarity threshold (adjust!)
-threshold <- 0.75
+threshold <- 0.6
 
 # Edges (aka lines) will only be retained where Kappa is above threshold
 # Lines in plot mean high agreement beyond chance
@@ -254,7 +385,7 @@ net.plot <- ggraph(g, layout = "fr") +
   ggtitle(paste("Raster Similarity Network (Kappa >", threshold, ")"))
 
 # Save as PNG
-ggsave(filename = file.path(results_dir, "network_kappa_threshold_075.png"),
+ggsave(filename = file.path(results_dir, "network_kappa_threshold_060.png"),
        plot = net.plot,
        width = 8,
        height = 6,
