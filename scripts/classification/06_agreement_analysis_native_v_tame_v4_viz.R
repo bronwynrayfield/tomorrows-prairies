@@ -203,7 +203,7 @@ plot(hc, main = "Raster Clustering (MCC)")
 dev.off()
 
 ## ---- Network visualization ---- ##
-threshold <- 0.55
+threshold <- 0.5
 
 edges <- pairwise_clean %>%
   filter(mcc_multi > threshold)
@@ -217,7 +217,7 @@ ggraph(g, layout = "fr") +
   theme_void() +
   ggtitle(paste("Network (MCC >", threshold, ")"))
 
-ggsave(file.path(results_dir, "network_mcc_055.png"),
+ggsave(file.path(results_dir, "network_mcc_050.png"),
        width = 8, height = 6, dpi = 300)
 
 # For Kappa
