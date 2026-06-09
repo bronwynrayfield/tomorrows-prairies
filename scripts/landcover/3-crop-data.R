@@ -37,7 +37,7 @@
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "0-functions-general.R"))
+source(file.path("scripts/landcover/functions", "functions-general.R"))
 
 #--- Load files ----
 # Study area
@@ -93,6 +93,12 @@ clay_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, clay_filen
 sand_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, sand_filename, "proj-naaea"))
 silt_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, silt_filename, "proj-naaea"))
 ph_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, ph_filename, "proj-naaea"))
+
+# Soil Moisture
+psssm_mean_reproj <- rast(tagged_path("./processeddatasets", psssm_filepath, psssm_mean_filename, "proj-naaea"))
+psssm_sd_reproj <- rast(tagged_path("./processeddatasets", psssm_filepath, psssm_sd_filename, "proj-naaea"))
+tsm_planting_reproj <- rast(tagged_path("./processeddatasets", tsm_filepath, tsm_planting_filename, "proj-naaea"))
+tsm_growing_reproj <- rast(tagged_path("./processeddatasets", tsm_filepath, tsm_growing_filename, "proj-naaea"))
 
 # Topography
 dem_reproj <- rast(tagged_path("./processeddatasets", dem_filepath, dem_filename, "proj-naaea"))
@@ -156,6 +162,12 @@ sand <- mask(crop(sand_reproj, me_r), me_r)
 silt <- mask(crop(silt_reproj, me_r), me_r)
 ph <- mask(crop(ph_reproj, me_r), me_r)
 
+# Soil Moisture
+psssm_mean <- mask(crop(psssm_mean_reproj, me_r), me_r)
+psssm_sd <- mask(crop(psssm_sd_reproj, me_r), me_r)
+tsm_planting <- mask(crop(tsm_planting_reproj, me_r), me_r)
+tsm_growing <- mask(crop(tsm_growing_reproj, me_r), me_r)
+
 # Topography
 dem <- mask(crop(dem_reproj, me_r), me_r)
 slope  <- terrain(dem, "slope",  unit="degrees")
@@ -204,6 +216,10 @@ write_rast_tagged(ph, "./processeddatasets", soil_filepath, ph_filename, "modell
 write_rast_tagged(dem, "./processeddatasets", dem_filepath, dem_filename, "modelling-extent")
 write_rast_tagged(slope, "./processeddatasets", dem_filepath, slope_filename, "modelling-extent")
 write_rast_tagged(aspect, "./processeddatasets", dem_filepath, aspect_filename, "modelling-extent")
+write_rast_tagged(psssm_mean, "./processeddatasets", psssm_filepath, psssm_mean_filename, "modelling-extent")
+write_rast_tagged(psssm_sd, "./processeddatasets", psssm_filepath, psssm_sd_filename, "modelling-extent")
+write_rast_tagged(tsm_planting, "./processeddatasets", tsm_filepath, tsm_planting_filename, "modelling-extent")
+write_rast_tagged(tsm_growing, "./processeddatasets", tsm_filepath, tsm_growing_filename, "modelling-extent")
 
 
 #st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
