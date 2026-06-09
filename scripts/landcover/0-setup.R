@@ -10,7 +10,6 @@ library(ranger)
 #library(pROC)
 
 
-#
 # check available space on different mount points
 system("df -h")
 
@@ -18,6 +17,10 @@ system("df -h")
 terraOptions(memfrac = 0.8,
              tempdir = "D:/terra-temp",
              progress = 1)
+
+# --- Functions ----
+source(file.path("scripts/landcover/functions", "functions-general.R"))
+source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 #--- Parameters ---
 # Resolution of rasters in m
@@ -73,6 +76,12 @@ sand_filename <- "sand.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_2022123
 silt_filename <- "silt.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250523_clip.tif"
 ph_filename <- "ph.h2o_iso.10390.2021.index_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250204_clip.tif"
 
+# Soil Moisture
+psssm_mean_filename <- "psssm_mean_2011_2020.tif"
+psssm_sd_filename <- "psssm_sd_2011_2020.tif"
+tsm_planting_filename <- "tsm_planting_2020.tif"
+tsm_growing_filename <- "tsm_growing_2020.tif"
+
 # Topography
 dem_filename <- "MRDEM Digital Terrain Model (COG).tif" 
 slope_filename <- "slope.tif"
@@ -110,6 +119,10 @@ pa_filepath <- "management/Canadian Protected and Conserved Areas Database/Prote
 
 # Soil
 soil_filepath <- "soil"
+
+# Soil Moisture
+psssm_filepath <- "soil/psssm"
+tsm_filepath <- "soil/tsm"
 
 # Topography
 dem_filepath <- "topography/NRCan_MRDEM_30m"
