@@ -81,6 +81,7 @@ psssm_mean_filename <- "psssm_mean_2011_2020.tif"
 psssm_sd_filename <- "psssm_sd_2011_2020.tif"
 tsm_planting_filename <- "tsm_planting_2020.tif"
 tsm_growing_filename <- "tsm_growing_2020.tif"
+dss_drainage_filename <- "dss_drainage_wtmean.tif"
 
 # Topography
 dem_filename <- "MRDEM Digital Terrain Model (COG).tif" 
@@ -123,6 +124,7 @@ soil_filepath <- "soil"
 # Soil Moisture
 psssm_filepath <- "soil/psssm"
 tsm_filepath <- "soil/tsm"
+dss_filepath <- "soil/detailed-soil-survey"
 
 # Topography
 dem_filepath <- "topography/NRCan_MRDEM_30m"
