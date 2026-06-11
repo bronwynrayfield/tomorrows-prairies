@@ -1,7 +1,4 @@
 # =============================================================================
-# 1-4-prep-data-tsm-summary.R
-# =============================================================================
-#
 # Purpose:
 #   Downloads AAFC Total Soil Moisture (TSM) GeoTIFFs and computes two
 #   covariate layers for use in cropland modelling: the 2020 growing-season
