@@ -11,28 +11,41 @@
 #   - Modelling extent raster template (me_r)
 #
 # Outputs (all in processeddatasets/dss_filepath/):
-#   - dss_drainage_wtmean.tif   INT1U 1-7
-#   - dss_slope_wtmean.tif      FLT4S percent
-#   - dss_watertbl_dom.tif      INT1U 0-4
-#   - dss_kp0_wtmean.tif        INT2S percent vol, layer 1
-#   - dss_kp10_wtmean.tif       INT2S percent vol, layer 1
-#   - dss_kp33_wtmean.tif       INT2S percent vol, layer 1
-#   - dss_kp1500_wtmean.tif     INT2S percent vol, layer 1
-#   - dss_udepth_wtmean.tif     INT2S cm, layer 1
-#   - dss_ldepth_wtmean.tif     INT2S cm, layer 1
+#   - dss_drainage_modelling-extent.tif   INT1U 1-7
+#   - dss_slope_modelling-extent.tif      FLT4S percent
+#   - dss_watertbl_modelling-extent.tif   INT1U 0-4
+#   - dss_kp0_modelling-extent.tif        INT2S percent vol, layer 1
+#   - dss_kp33_modelling-extent.tif       INT2S percent vol, layer 1
+#   - dss_kp1500_modelling-extent.tif     INT2S percent vol, layer 1
+#   - dss_ldepth_modelling-extent.tif     INT2S cm, layer 1 (A horizon thickness)
+#   - dss_ldepth_max_modelling-extent.tif INT2S cm, all layers (total soil depth)
 #
 # Notes:
-#   - DRAINAGE ordinal: VR=1, R=2, W=3, MW=4, I=5, P=6, VP=7
-#   - WATERTBL ordinal: NO=0, YU=1, YN=2, YG=3, YB=4
+#   - DRAINAGE ordinal:
+#       VR = 1  Very rapidly drained
+#       R  = 2  Rapidly drained
+#       W  = 3  Well drained
+#       MW = 4  Moderately well drained
+#       I  = 5  Imperfectly drained
+#       P  = 6  Poorly drained
+#       VP = 7  Very poorly drained
+#   - WATERTBL ordinal:
+#       NO = 0  Never present
+#       YU = 1  Present during unspecified period
+#       YN = 2  Present during non-growing season
+#       YG = 3  Present during growing season
+#       YB = 4  Always present
 #   - SLOPE_P: -9 treated as NA
-#   - SLT variables (KP*, UDEPTH, LDEPTH): layer 1 only;
-#     -9 sentinel values treated as NA
-#   - All CMP-level variables: percent-weighted mean per polygon
-#     across components, weighted by PERCENT
-#   - WATERTBL: dominant component (highest PERCENT) per polygon
+#   - KP10 excluded: no valid layer 1 values for SK in source data
+#   - UDEPTH excluded: layer 1 UDEPTH is always 0 by definition;
+#     redundant with LDEPTH at all other layers
+#   - All variables: percent-weighted mean across CMP components
+#     per polygon, weighted by PERCENT; -9 sentinel values -> NA
+#   - SLT variables (KP*, LDEPTH layer 1): surface horizon only
 #   - Provinces rasterized individually then mosaicked
 #
-# Dependencies: terra, sf, dplyr, foreign
+# Dependencies:
+#   - 0-setup.R (parameters, file paths, functions)
 # ============================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
@@ -175,18 +188,16 @@ load_province <- function(prov, field) {
 # --- Rasterize --------------------------------------------------------
 
 vars <- list(
-#  list(field = "drain_wtmean",  file = "dss_drainage_wtmean.tif",  dt = "INT1U"),
-#  list(field = "slope_wtmean",  file = "dss_slope_wtmean.tif",     dt = "FLT4S"),
-#  list(field = "watertbl_wtmean",  file = "dss_watertbl_wtmean.tif",     dt = "INT1U"),
-#  list(field = "kp0_wtmean",    file = "dss_kp0_wtmean.tif",       dt = "INT2S"),
-##  list(field = "kp10_wtmean",   file = "dss_kp10_wtmean.tif",      dt = "INT2S"),
-#  list(field = "kp33_wtmean",   file = "dss_kp33_wtmean.tif",      dt = "INT2S"),
-#  list(field = "kp1500_wtmean", file = "dss_kp1500_wtmean.tif",    dt = "INT2S"),
-#  list(field = "udepth_lyr1_wtmean", file = "dss_udepth_wtmean.tif",    dt = "INT2S"),
-#  list(field = "ldepth_lyr1_wtmean", file = "dss_ldepth_wtmean.tif",    dt = "INT2S"),
-  list(field = "ldepth_max", file = "dss_ldepth_max.tif", dt = "INT2S")
+  list(field = "drain_wtmean",  file = dss_drainage_filename,  dt = "INT1U"),
+  list(field = "slope_wtmean",  file = dss_slope_filename,     dt = "FLT4S"),
+  list(field = "watertbl_wtmean",  file = dss_watertbl_filename,     dt = "INT1U"),
+  list(field = "kp0_wtmean",    file = dss_kp0_filename,       dt = "INT2S"),
+  list(field = "kp33_wtmean",   file = dss_kp33_filename,      dt = "INT2S"),
+  list(field = "kp1500_wtmean", file = dss_kp1500_filename,    dt = "INT2S"),
+  list(field = "udepth_lyr1_wtmean", file = dss_udepth_filename,    dt = "INT2S"),
+  list(field = "ldepth_lyr1_wtmean", file = dss_ldepth_filename,    dt = "INT2S"),
+  list(field = "ldepth_max", file = dss_ldepth_max_filename, dt = "INT2S")
 )
-
 
 for (v in vars) {
   message(v$field)
@@ -200,9 +211,11 @@ for (v in vars) {
   r <- do.call(mosaic, c(tiles, fun = "first"))
   r <- mask(r, me_r)
   
-  writeRaster(
+  write_rast_tagged(
     r,
-    file.path(out_dir, v$file),
+    root      = "./processeddatasets", 
+    rel_dir   = dss_filepath, 
+    filename  = v$file,
     datatype  = v$dt,
     overwrite = TRUE,
     gdal      = c("COMPRESS=DEFLATE", "PREDICTOR=2")

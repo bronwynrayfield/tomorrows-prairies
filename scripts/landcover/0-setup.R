@@ -81,14 +81,21 @@ psssm_mean_filename <- "psssm_mean_2011_2020.tif"
 psssm_sd_filename <- "psssm_sd_2011_2020.tif"
 tsm_planting_filename <- "tsm_planting_2020.tif"
 tsm_growing_filename <- "tsm_growing_2020.tif"
-dss_drainage_filename <- "dss_drainage_wtmean.tif"
+dss_drainage_filename <- "dss_drainage.tif"
+dss_slope_filename <- "dss_slope.tif"
+dss_watertbl_filename <- "dss_watertbl.tif"
+dss_kp0_filename <- "dss_kp0.tif"
+dss_kp33_filename <- "dss_kp33.tif"
+dss_kp1500_filename <- "dss_kp1500.tif"
+dss_ldepth_filename <- "dss_ldepth.tif"
+dss_ldepth_max_filename <- "dss_ldepth_max.tif"
 
 # Topography
 dem_filename <- "MRDEM Digital Terrain Model (COG).tif" 
 slope_filename <- "slope.tif"
 aspect_filename <- "aspect.tif"
 
-#--- File paths ----
+#--- Directories ----
 # partial path in either the existing or processed data directories
 
 sa_filepath <- "./processeddatasets/studyarea"
