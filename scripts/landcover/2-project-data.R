@@ -42,7 +42,7 @@
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "0-functions-general.R"))
+source(file.path("scripts/landcover/functions", "functions-general.R"))
 
 #--- Load files ----
 
@@ -102,6 +102,12 @@ clay_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath)
 sand_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), sand_filename))
 silt_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), silt_filename))
 ph_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), ph_filename))
+# Soil Moisture
+psssm_mean_raw <- rast(file.path("./existingdatasets", psssm_filepath, psssm_mean_filename))
+psssm_sd_raw <- rast(file.path("./existingdatasets", psssm_filepath, psssm_sd_filename))
+tsm_planting_raw <- rast(file.path("./existingdatasets", tsm_filepath, tsm_planting_filename))
+tsm_growing_raw <- rast(file.path("./existingdatasets", tsm_filepath, tsm_growing_filename))
+
 # Topography
 dem_raw <- rast(file.path("./existingdatasets", capitalize_first(dem_filepath), dem_filename))
 
@@ -136,7 +142,6 @@ table(st_geometry_type(pa_valid))
 sum(!st_is_valid(pa_valid))
 
 #--- Reproject to match study area shapefile CRS ----
-
 crop_suit_reproj <- project(crop_suit_raw, me_r, method = "bilinear")
 lulc2020_prairies_reproj <- project(lulc2020_prairies_raw, me_r, method = "near")
 lulc2015_prairies_reproj <- project(lulc2015_prairies_raw, me_r, method = "near")
@@ -176,13 +181,16 @@ sand_reproj <- project(sand_raw, me_r, method = "bilinear")
 silt_reproj <- project(silt_raw, me_r, method = "bilinear")
 ph_reproj <- project(ph_real, me_r, method = "bilinear")
 dem_reproj <- project(dem_raw, me_r, method = "bilinear")
+psssm_mean_reproj <- project(psssm_mean_raw, me_r, method = "bilinear")
+psssm_sd_reproj <- project(psssm_sd_raw, me_r, method = "bilinear")
+tsm_planting_reproj <- project(tsm_planting_raw, me_r, method = "bilinear")
+tsm_growing_reproj <- project(tsm_growing_raw, me_r, method = "bilinear")
 
 # #roads_reproj <- st_transform(roads_raw, st_crs(sa))
 pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
 
 
-# #--- Write to disk ----
-
+#--- Write to disk ----
 write_rast_tagged(crop_suit_reproj, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "proj-naaea")
 write_sf_tagged(census_reproj, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "proj-naaea")
 write_sf_tagged(ecozones_reproj, "./processeddatasets", ecozones_filepath, ecozones_filename, "proj-naaea")
@@ -214,5 +222,8 @@ write_rast_tagged(sand_reproj, "./processeddatasets", soil_filepath, sand_filena
 write_rast_tagged(silt_reproj, "./processeddatasets", soil_filepath, silt_filename, "proj-naaea", datatype="FLT4S")
 write_rast_tagged(ph_reproj, "./processeddatasets", soil_filepath, ph_filename, "proj-naaea", datatype="FLT4S")
 write_rast_tagged(dem_reproj, "./processeddatasets", dem_filepath, dem_filename, "proj-naaea")
-
+write_rast_tagged(psssm_mean_reproj, "./processeddatasets", psssm_filepath, psssm_mean_filename, "proj-naaea")
+write_rast_tagged(psssm_sd_reproj, "./processeddatasets", psssm_filepath, psssm_sd_filename, "proj-naaea")
+write_rast_tagged(tsm_planting_reproj, "./processeddatasets", tsm_filepath, tsm_planting_filename, "proj-naaea")
+write_rast_tagged(tsm_growing_reproj, "./processeddatasets", tsm_filepath, tsm_growing_filename, "proj-naaea")
 #st_write(roads_reproj, file.path("./processeddatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)

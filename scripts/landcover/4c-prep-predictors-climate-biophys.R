@@ -43,7 +43,7 @@ source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 # ---- Resolution setting ----
 # Change to 30 for final run
-target_res <- 30
+target_res <- 300
 agg_fact   <- target_res / 30
 
 # ---- Window sizes ----
@@ -98,8 +98,15 @@ pa_provpasture_bin <- rast(tagged_path("./processeddatasets", pa_filepath, pa_fi
 crop_suit <- rast(tagged_path("./processeddatasets", crop_suit_2019_filepath,
                               crop_suit_2019_filename, "modelling-extent"))
 
+# Roads
+roads <- rast(tagged_path("./processeddatasets", road_filepath,
+                              road_filename, "modelling-extent"))
+roads <- rast("./processeddatasets/landcover/Roads - Poley et al 2021/roads_modelling-extent.tif")
+roads <- resample(roads, me_r, method = "bilinear")
+
 # ---- Resample to target resolution (skip if target_res == 30) ----
 if (agg_fact > 1) {
+  sa_r <- aggregate(sa_r, fact = agg_fact, fun = "modal")
   me_r <- aggregate(me_r, fact = agg_fact, fun = "modal")
   
   # AAFC binary layers — average only, no thresholding
@@ -146,6 +153,15 @@ freq(is.na(crop_suit_filled))
 
 # Save
 write_rast_tagged(crop_suit_filled, outdir, crop_suit_2019_filename, paste0(target_res, "m"), "filled")
+
+# Distance to roads at 30m
+# ---- Distance to cropland edge ----
+roads_for_dist <- ifel(roads == 1, 1, NA)
+dist_to_road  <- distance(roads_for_dist)
+dist_to_road  <- mask(dist_to_road, me_r)
+
+# Save
+writeRaster(dist_to_road, "./processeddatasets/predictors/30m/dist_to_road_30m.tif")
 
 # ---- Moving window focal statistics ----
 # Define layers and names for focal loop
