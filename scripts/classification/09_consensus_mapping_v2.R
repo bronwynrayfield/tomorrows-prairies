@@ -11,6 +11,7 @@
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER
 
 # NEED TO ADD ECOREGION-LEVEL ACCURACY FALLBACK FOR ECODISTRICTS W/O ACCURACY DATA
+# (or will this be needed once we have crop ins data?)
 
 ## ---- Setup ---- ##
 # Temp dirs
