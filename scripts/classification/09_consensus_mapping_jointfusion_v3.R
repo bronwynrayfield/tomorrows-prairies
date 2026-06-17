@@ -269,9 +269,9 @@ sa <- rast("classification_study_area_aligned.tif")
 #bin_stack   <- rast("binary_stack_masked.tif")
 #nt_stack    <- rast("tri_class_stack_masked.tif")
 
-recall_bin_stack    <- rast("recall_bin.tif")
-recall_tame_stack   <- rast("recall_tame.tif")
-recall_native_stack <- rast("recall_native.tif")
+mcc_bin_stack    <- rast("mcc_bin.tif")
+mcc_tame_stack   <- rast("mcc_tame.tif")
+mcc_native_stack <- rast("mcc_native.tif")
 
 penalty_bin_stack <- rast("penalty_bin.tif")
 penalty_nt_stack  <- rast("penalty_nt.tif")
@@ -309,9 +309,9 @@ process_tile <- function(i) {
   
   nt  <- crop(nt_stack, tile)
   
-  rbin <- crop(recall_bin_stack, tile)
-  rt   <- crop(recall_tame_stack, tile)
-  rn   <- crop(recall_native_stack, tile)
+  rbin <- crop(mcc_bin_stack, tile)
+  rt   <- crop(mcc_tame_stack, tile)
+  rn   <- crop(mcc_native_stack, tile)
   
   pbin <- crop(penalty_bin_stack, tile)
   pnt  <- crop(penalty_nt_stack, tile)
