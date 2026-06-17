@@ -32,64 +32,44 @@
 
 ## ---- Setup ---- ##
 # Temp dirs
-#tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
+tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 #dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
-
-scratch_dir <- "/mnt/tmp"
-
-terra_dir <- file.path(scratch_dir, "terra")
-data_dir  <- file.path(scratch_dir, "data")
-tile_dir  <- file.path(scratch_dir, "tiles")
-log_dir_local <- "/mnt/tmp/logs"
-
-dir.create(terra_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(data_dir,  recursive = TRUE, showWarnings = FALSE)
-dir.create(tile_dir,  recursive = TRUE, showWarnings = FALSE)
-dir.create(log_dir_local, showWarnings = FALSE, recursive = TRUE)
-
-terraOptions(
-  tempdir = scratch_dir,
-  memfrac = 0.8,
-  progress = 1
-)
 
 # Load packages
 library(terra)
 library(future.apply)
 library(readr)
-library(dplyr)
+library(tidyverse)
 library(aws.s3)
 
 # Set terra options
-#terraOptions(
-#  tempdir = file.path(tmp_root, "terra"),
-#  memfrac = 0.6, # could go down to 0.4
-#  progress = 1
-#)
+terraOptions(
+  tempdir = file.path(tmp_root, "terra"),
+  memfrac = 0.6, # could go down to 0.4
+  progress = 1
+)
 
-## ---- Use limited parallel workers ---- ##
-n_cores <- min(4, parallel::detectCores(logical = FALSE) - 1)
-
-plan(multisession, workers = n_cores)
-
-log_msg("Using parallel workers: ", n_cores)
+## ---- Parallel (light use only) ---- ##
+n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
+future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
 meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/consensus_map"
 log_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
+local_dir    <- file.path(tmp_root, "data")
 
 ## ---- Message log ---- ##
 log_file <- file.path(log_dir, paste0(
-  "consensus_map_log_",
+  "spatial_agreement_log_",
   format(Sys.time(), "%Y%m%d_%H%M%S"),
   ".log"
 ))
 
-# Ensure local temp file first 
+# Ensure local temp file first (upload to S3 at end)
 log_file_local <- file.path(
-  log_dir_local,
-  paste0("consensus_map_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log")
+  Sys.getenv("HOME"),
+  paste0("spatial_agreement_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log")
 )
 
 log_msg <- function(..., level = "INFO") {
@@ -103,7 +83,7 @@ log_msg <- function(..., level = "INFO") {
   cat(msg, "\n", file = log_file_local, append = TRUE)
 }
 
-log_msg("Starting data fusion analysis")
+log_msg("Starting spatial agreement analysis")
 log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Load metadata ---- ##

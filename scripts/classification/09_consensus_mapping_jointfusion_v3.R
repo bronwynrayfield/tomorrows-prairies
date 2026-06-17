@@ -44,26 +44,8 @@
 
 ## ---- Setup ---- ##
 # Temp dirs
-#tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
+tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 #dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
-
-scratch_dir <- "/mnt/tmp"
-
-terra_dir <- file.path(scratch_dir, "terra")
-data_dir  <- file.path(scratch_dir, "data")
-tile_dir  <- file.path(scratch_dir, "tiles")
-log_dir_local <- "/mnt/tmp/logs"
-
-dir.create(terra_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(data_dir,  recursive = TRUE, showWarnings = FALSE)
-dir.create(tile_dir,  recursive = TRUE, showWarnings = FALSE)
-dir.create(log_dir_local, showWarnings = FALSE, recursive = TRUE)
-
-terraOptions(
-  tempdir = scratch_dir,
-  memfrac = 0.8,
-  progress = 1
-)
 
 # Load packages
 library(terra)
@@ -73,18 +55,15 @@ library(dplyr)
 library(aws.s3)
 
 # Set terra options
-#terraOptions(
-#  tempdir = file.path(tmp_root, "terra"),
-#  memfrac = 0.6, # could go down to 0.4
-#  progress = 1
-#)
+terraOptions(
+  tempdir = file.path(tmp_root, "terra"),
+  memfrac = 0.6, # could go down to 0.4
+  progress = 1
+)
 
-## ---- Use limited parallel workers ---- ##
-n_cores <- min(4, parallel::detectCores(logical = FALSE) - 1)
-
-plan(multisession, workers = n_cores)
-
-log_msg("Using parallel workers: ", n_cores)
+## ---- Parallel (light use only) ---- ##
+n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
+future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
 meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
