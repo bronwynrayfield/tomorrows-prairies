@@ -33,7 +33,6 @@ sa_raster_filename <- "modelling_study_area_aligned_cnvc_Jan2026.tif"
 me_filename <- "modelling_extent_aligned_cnvc_Jan2026.shp"
 me_raster_filename <- "modelling_extent_aligned_cnvc_Jan2026.tif"
 
-# File names
 # Boundaries
 pilot_filename <- "pilot_area_aligned_cnvc_Jan2026.shp"
 vegzones_filename <- "vegetation_zones_of_canada_2020_sa_nobuffer.shp"
@@ -95,6 +94,24 @@ dem_filename <- "MRDEM Digital Terrain Model (COG).tif"
 slope_filename <- "slope.tif"
 aspect_filename <- "aspect.tif"
 
+# Climate
+hist_period <- "1991-2020"
+fut_period <- "2021-2050"
+ssp <- "ssp245"
+
+gddgrow_5_hist_filename <- paste("gddgrow_5", ssp, hist_period, "p50.tif", sep="_") 
+gddgrow_5_fut_filename <- paste("gddgrow_5", ssp, fut_period, "p50.tif", sep="_") 
+hddheat_18_hist_filename <- paste("hddheat_18", ssp, hist_period, "p50.tif", sep="_") 
+hddheat_18_fut_filename <- paste("hddheat_18", ssp, fut_period, "p50.tif", sep="_") 
+prtot_hist_filename <- paste("prtot", ssp, hist_period, "p50.tif", sep="_") 
+prtot_fut_filename <- paste("prtot", ssp, fut_period, "p50.tif", sep="_") 
+tn_mean_hist_filename <- paste("tn_mean", ssp, hist_period, "p50.tif", sep="_") 
+tn_mean_fut_filename <- paste("tn_mean", ssp, fut_period, "p50.tif", sep="_") 
+tx_mean_hist_filename <- paste("tx_mean", ssp, hist_period, "p50.tif", sep="_") 
+tx_mean_fut_filename <- paste("tx_mean", ssp, fut_period, "p50.tif", sep="_") 
+nr_cdd_hist_filename <- paste("nr_cdd", ssp, hist_period, "p50.tif", sep="_") 
+nr_cdd_fut_filename <- paste("nr_cdd", ssp, fut_period, "p50.tif", sep="_") 
+
 #--- Directories ----
 # partial path in either the existing or processed data directories
 
@@ -135,6 +152,9 @@ dss_filepath <- "soil/detailed-soil-survey"
 
 # Topography
 dem_filepath <- "topography/NRCan_MRDEM_30m"
+
+# Climate
+climate_filepath <- "climate/CanDCS-M6/geotiff"
 
 #--- Scale ----
 oc_scale <- 10

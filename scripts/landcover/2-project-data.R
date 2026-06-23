@@ -111,6 +111,20 @@ tsm_growing_raw <- rast(file.path("./existingdatasets", tsm_filepath, tsm_growin
 # Topography
 dem_raw <- rast(file.path("./existingdatasets", capitalize_first(dem_filepath), dem_filename))
 
+# Climate
+gddgrow_5_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), gddgrow_5_hist_filename))
+gddgrow_5_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), gddgrow_5_fut_filename))
+hddheat_18_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), hddheat_18_hist_filename))
+hddheat_18_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), hddheat_18_fut_filename))
+prtot_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), prtot_hist_filename))
+prtot_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), prtot_fut_filename))
+tn_mean_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), tn_mean_hist_filename))
+tn_mean_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), tn_mean_fut_filename))
+tx_mean_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), tx_mean_hist_filename))
+tx_mean_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), tx_mean_fut_filename))
+nr_cdd_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), nr_cdd_hist_filename))
+nr_cdd_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), nr_cdd_fut_filename))
+
 #--- Unscale to real units and apply NAs ----
 oc_raw[oc_raw == oc_nodata] <- NA
 oc_real <- oc_raw / oc_scale
@@ -185,7 +199,18 @@ psssm_mean_reproj <- project(psssm_mean_raw, me_r, method = "bilinear")
 psssm_sd_reproj <- project(psssm_sd_raw, me_r, method = "bilinear")
 tsm_planting_reproj <- project(tsm_planting_raw, me_r, method = "bilinear")
 tsm_growing_reproj <- project(tsm_growing_raw, me_r, method = "bilinear")
-
+gddgrow_5_hist_reproj <- project(gddgrow_5_hist_raw, me_r, method = "bilinear")
+gddgrow_5_fut_reproj <- project(gddgrow_5_fut_raw, me_r, method = "bilinear")
+hddheat_18_hist_reproj <- project(hddheat_18_hist_raw, me_r, method = "bilinear")
+hddheat_18_fut_reproj <- project(hddheat_18_fut_raw, me_r, method = "bilinear")
+prtot_hist_reproj <- project(prtot_hist_raw, me_r, method = "bilinear")
+prtot_fut_reproj <- project(prtot_fut_raw, me_r, method = "bilinear")
+tn_mean_hist_reproj <- project(tn_mean_hist_raw, me_r, method = "bilinear")
+tn_mean_fut_reproj <- project(tn_mean_fut_raw, me_r, method = "bilinear")
+tx_mean_hist_reproj <- project(tx_mean_hist_raw, me_r, method = "bilinear")
+tx_mean_fut_reproj <- project(tx_mean_fut_raw, me_r, method = "bilinear")
+nr_cdd_hist_reproj <- project(nr_cdd_hist_raw, me_r, method = "bilinear")
+nr_cdd_fut_reproj <- project(nr_cdd_fut_raw, me_r, method = "bilinear")
 # #roads_reproj <- st_transform(roads_raw, st_crs(sa))
 pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
 
@@ -227,3 +252,15 @@ write_rast_tagged(psssm_sd_reproj, "./processeddatasets", psssm_filepath, psssm_
 write_rast_tagged(tsm_planting_reproj, "./processeddatasets", tsm_filepath, tsm_planting_filename, "proj-naaea")
 write_rast_tagged(tsm_growing_reproj, "./processeddatasets", tsm_filepath, tsm_growing_filename, "proj-naaea")
 #st_write(roads_reproj, file.path("./processeddatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
+write_rast_tagged(gddgrow_5_hist_reproj, "./processeddatasets", climate_filepath, gddgrow_5_hist_filename, "proj-naaea")
+write_rast_tagged(gddgrow_5_fut_reproj, "./processeddatasets", climate_filepath, gddgrow_5_fut_filename, "proj-naaea")
+write_rast_tagged(hddheat_18_hist_reproj, "./processeddatasets", climate_filepath, hddheat_18_hist_filename, "proj-naaea")
+write_rast_tagged(hddheat_18_fut_reproj, "./processeddatasets", climate_filepath, hddheat_18_fut_filename, "proj-naaea")
+write_rast_tagged(prtot_hist_reproj, "./processeddatasets", climate_filepath, prtot_hist_filename, "proj-naaea")
+write_rast_tagged(prtot_fut_reproj, "./processeddatasets", climate_filepath, prtot_fut_filename, "proj-naaea")
+write_rast_tagged(tn_mean_hist_reproj, "./processeddatasets", climate_filepath, tn_mean_hist_filename, "proj-naaea")
+write_rast_tagged(tn_mean_fut_reproj, "./processeddatasets", climate_filepath, tn_mean_fut_filename, "proj-naaea")
+write_rast_tagged(tx_mean_hist_reproj, "./processeddatasets", climate_filepath, tx_mean_hist_filename, "proj-naaea")
+write_rast_tagged(tx_mean_fut_reproj, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "proj-naaea")
+write_rast_tagged(nr_cdd_hist_reproj, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea")
+write_rast_tagged(nr_cdd_fut_reproj, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea")

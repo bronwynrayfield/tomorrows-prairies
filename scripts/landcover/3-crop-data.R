@@ -41,7 +41,6 @@ source(file.path("scripts/landcover/functions", "functions-general.R"))
 
 #--- Load files ----
 # Study area
-pilot <- st_read(file.path("./processeddatasets", pilot_filepath, pilot_filename))
 sa <- st_read(file.path(sa_filepath, sa_filename))
 me <- st_read(file.path(sa_filepath, me_filename))
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
@@ -102,6 +101,20 @@ tsm_growing_reproj <- rast(tagged_path("./processeddatasets", tsm_filepath, tsm_
 
 # Topography
 dem_reproj <- rast(tagged_path("./processeddatasets", dem_filepath, dem_filename, "proj-naaea"))
+
+# Climate
+gddgrow_5_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, gddgrow_5_hist_filename, "proj-naaea"))
+gddgrow_5_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, gddgrow_5_fut_filename, "proj-naaea"))
+hddheat_18_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, hddheat_18_hist_filename, "proj-naaea"))
+hddheat_18_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, hddheat_18_fut_filename, "proj-naaea"))
+prtot_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, prtot_hist_filename, "proj-naaea"))
+prtot_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, prtot_fut_filename, "proj-naaea"))
+tn_mean_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, tn_mean_hist_filename, "proj-naaea"))
+tn_mean_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, tn_mean_fut_filename, "proj-naaea"))
+tx_mean_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, tx_mean_hist_filename, "proj-naaea"))
+tx_mean_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, tx_mean_fut_filename, "proj-naaea"))
+nr_cdd_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea"))
+nr_cdd_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea"))
 
 #--- Crop and mask to pilot area ----
 # LULC - AAFC LUTS
@@ -174,6 +187,19 @@ slope  <- terrain(dem, "slope",  unit="degrees")
 aspect <- terrain(dem, "aspect", unit="degrees")
 aspect[slope < 0.5] <- NA
 
+# Climate
+gddgrow_5_hist <- mask(crop(gddgrow_5_hist_reproj, me_r), me_r)
+gddgrow_5_fut <- mask(crop(gddgrow_5_fut_reproj, me_r), me_r)
+hddheat_18_hist <- mask(crop(hddheat_18_hist_reproj, me_r), me_r)
+hddheat_18_fut <- mask(crop(hddheat_18_fut_reproj, me_r), me_r)
+prtot_hist <- mask(crop(prtot_hist_reproj, me_r), me_r)
+prtot_fut <- mask(crop(prtot_fut_reproj, me_r), me_r)
+tn_mean_hist <- mask(crop(tn_mean_hist_reproj, me_r), me_r)
+tn_mean_fut <- mask(crop(tn_mean_fut_reproj, me_r), me_r)
+tx_mean_hist <- mask(crop(tx_mean_hist_reproj, me_r), me_r)
+tx_mean_fut <- mask(crop(tx_mean_fut_reproj, me_r), me_r)
+nr_cdd_hist <- mask(crop(nr_cdd_hist_reproj, me_r), me_r)
+nr_cdd_fut <- mask(crop(nr_cdd_fut_reproj, me_r), me_r)
 
 #--- Write to disk ----
 # Pilot area
@@ -220,6 +246,18 @@ write_rast_tagged(psssm_mean, "./processeddatasets", psssm_filepath, psssm_mean_
 write_rast_tagged(psssm_sd, "./processeddatasets", psssm_filepath, psssm_sd_filename, "modelling-extent")
 write_rast_tagged(tsm_planting, "./processeddatasets", tsm_filepath, tsm_planting_filename, "modelling-extent")
 write_rast_tagged(tsm_growing, "./processeddatasets", tsm_filepath, tsm_growing_filename, "modelling-extent")
+write_rast_tagged(gddgrow_5_hist, "./processeddatasets", climate_filepath, gddgrow_5_hist_filename, "modelling-extent")
+write_rast_tagged(gddgrow_5_fut, "./processeddatasets", climate_filepath, gddgrow_5_fut_filename, "modelling-extent")
+write_rast_tagged(hddheat_18_hist, "./processeddatasets", climate_filepath, hddheat_18_hist_filename, "modelling-extent")
+write_rast_tagged(hddheat_18_fut, "./processeddatasets", climate_filepath, hddheat_18_fut_filename, "modelling-extent")
+write_rast_tagged(prtot_hist, "./processeddatasets", climate_filepath, prtot_hist_filename, "modelling-extent")
+write_rast_tagged(prtot_fut, "./processeddatasets", climate_filepath, prtot_fut_filename, "modelling-extent")
+write_rast_tagged(tn_mean_hist, "./processeddatasets", climate_filepath, tn_mean_hist_filename, "modelling-extent")
+write_rast_tagged(tn_mean_fut, "./processeddatasets", climate_filepath, tn_mean_fut_filename, "modelling-extent")
+write_rast_tagged(tx_mean_hist, "./processeddatasets", climate_filepath, tx_mean_hist_filename, "modelling-extent")
+write_rast_tagged(tx_mean_fut, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "modelling-extent")
+write_rast_tagged(nr_cdd_hist, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "modelling-extent")
+write_rast_tagged(nr_cdd_fut, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "modelling-extent")
 
 
 #st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
