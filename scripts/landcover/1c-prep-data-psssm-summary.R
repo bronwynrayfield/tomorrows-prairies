@@ -3,13 +3,13 @@
 # =============================================================================
 #
 # Purpose:
-#   Downloads AAFC Percent Saturated Surface Soil Moisture (PSSM) anomaly
+#   Downloads AAFC Percent Saturated Surface Soil Moisture (PSSSM) anomaly
 #   GeoTIFFs and computes two covariate layers for use in cropland modelling:
 #   the interannual mean and standard deviation of growing-season soil moisture
 #   anomaly over 2011–2020.
 #
 # Inputs:
-#   - AAFC PSSM monthly anomaly GeoTIFFs downloaded from Canada's Open Data
+#   - AAFC PSSSM monthly anomaly GeoTIFFs downloaded from Canada's Open Data
 #     portal (0.25 degree resolution, WGS84):
 #       https://agriculture.canada.ca/atlas/data_donnees/psssm/
 #       data_donnees/tif/anomaly/{year}/monthly/
@@ -17,9 +17,9 @@
 #     Years: 2011–2020, Months: April (4) – August (8)
 #
 # Outputs:
-#   - pssm_mean_2011_2020.tif : pixel-wise mean of annual growing-season
+#   - psssm_mean_2011_2020.tif : pixel-wise mean of annual growing-season
 #       PSSM anomaly across 2011–2020
-#   - pssm_sd_2011_2020.tif   : pixel-wise SD of annual growing-season
+#   - psssm_sd_2011_2020.tif   : pixel-wise SD of annual growing-season
 #       PSSM anomaly across 2011–2020 (interannual variability)
 #   - Downloaded raw GeoTIFFs in soil/pssm/
 #
