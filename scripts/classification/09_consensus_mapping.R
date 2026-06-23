@@ -5,7 +5,7 @@
 
 ##----------------------- Alison Long - February 2026 -------------------------
 
-# step 8: use data fusion techniques to create a consensus grassland map 
+# step 9: use data fusion techniques to create a consensus grassland map 
 #         to serve as baseline for modelling
 
 # NEED TO ADD ECOREGION-LEVEL ACCURACY FALLBACK FOR ECODISTRICTS W/O ACCURACY DATA

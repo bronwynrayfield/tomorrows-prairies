@@ -27,7 +27,6 @@
 ##       TAME:   any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
 ##
 ## Exclusions:
-##   - LC_Cl_N == "SHRUB"
 ##   - Source used for training: exclude if Source_norm matches either atomic raster code or grouped alias
 ##
 ## Outputs:
@@ -525,7 +524,145 @@ readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_
 readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_atomic2.csv"))
 
 # ----------------------------
-# 13) Plots: Overall accuracy (GROUPED and ATOMIC)
+# 13) Create rasters of accuracy by ecodistrict
+# ----------------------------
+
+summary_by_ecodistrict <- summarize_block(
+  eval_data,
+  key_cols = c("raster", "Ecods_ID"))
+
+summary_by_ecodistrict %>%
+  group_by(raster) %>%
+  summarise(min_n = min(N_evaluated),
+            mean_n = mean(N_evaluated),
+            max_n = max(N_evaluated))
+
+# global MCC fallback
+global_mcc <- summary_by_raster_grouped %>%
+  select(raster, MCC_global = MCC)
+
+# clean + stabilize
+weights_ecodist_mcc <- summary_by_ecodistrict %>%
+  select(raster, Ecods_ID, MCC, N_evaluated) %>%
+  
+  # remove unreliable small samples
+  mutate(
+    MCC = ifelse(N_evaluated < 30, NA, MCC)
+  ) %>%
+  
+  # join global fallback
+  left_join(global_mcc, by = "raster") %>%
+  
+  # shrink local MCC toward global MCC
+  # Otherwise, small ecodistricts will have noisy weights
+  mutate(
+    MCC_final = case_when(
+      is.na(MCC) ~ MCC_global,
+      TRUE ~ 0.7 * MCC + 0.3 * MCC_global
+    )
+  ) %>%
+  
+  # scale MCC from [-1,1] to [0,1] so values are usable
+  mutate(
+    MCC_final = (MCC_final + 1) / 2
+  ) %>%
+  
+  # clamp to [0,1] just in case
+  mutate(
+    MCC_final = pmin(pmax(MCC_final, 0), 1)
+  ) %>%
+
+  select(raster, Ecods_ID, MCC_final)
+
+# Validate ecodistrict coverage
+weights_ecodist_mcc %>%
+  group_by(raster) %>%
+  summarise(n_ecods = n_distinct(Ecods_ID))
+
+# Build raster stack
+library(terra)
+
+# Inputs
+eco_vect <- vect("ecodistricts.gpkg")
+eco_vect$Ecods_ID <- as.character(eco_vect$Ecods_ID)
+
+weights_ecodist_mcc$Ecods_ID <- as.character(weights_ecodist_mcc$Ecods_ID)
+
+template <- rast("path_to_one_of_binary_rasters.tif")  # ensures perfect alignment
+
+weights_ecodist_mcc <- weights_ecodist_mcc %>%
+  mutate(raster = tolower(raster))
+
+raster_names <- unique(weights_ecodist_mcc$raster)
+
+# output container
+mcc_rasters <- vector("list", length(raster_names))
+names(mcc_rasters) <- raster_names
+
+# Loop
+for (r_name in raster_names) {
+  
+  # extract weights for this raster
+  w_df <- weights_ecodist_mcc %>%
+    filter(raster == r_name)
+  
+  # Check for empty weights
+  if (nrow(w_df) == 0) {
+    message("WARNING: No weights found for ", r_name)
+  }
+  
+  # join to polygons
+  eco_joined <- merge(
+    eco_vect,
+    w_df,
+    by = "Ecods_ID",
+    all.x = TRUE
+  )
+  
+  # fallback value (global MCC)
+  fallback_val <- global_mcc$MCC_global[
+    global_mcc$raster == r_name
+  ]
+  
+  # Scale fallback like MCC
+  fallback_val <- (fallback_val + 1) / 2
+  
+  eco_joined$MCC_final[is.na(eco_joined$MCC_final)] <- fallback_val
+  
+  # rasterize
+  r_mcc <- rasterize(
+    eco_joined,
+    template,
+    field = "MCC_final",
+    touches = TRUE
+  )
+  
+  names(r_mcc) <- r_name
+  
+  mcc_rasters[[r_name]] <- r_mcc
+}
+
+# Stack
+mcc_stack <- rast(mcc_rasters)
+
+# enforce exact layer order match with bin_stack
+#mcc_stack <- mcc_stack[[names(bin_stack)]]
+
+# Save stack
+mcc_file <- file.path(out_dir, "mcc_weight_stack_bin.tif")
+
+writeRaster(
+  mcc_stack,
+  filename = mcc_file,
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "FLT4S",
+    gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")
+  )
+)
+
+# ----------------------------
+# 14) Plots: Overall accuracy (GROUPED and ATOMIC)
 # ----------------------------
 # GROUPED (legacy) plot
 p_grouped <- ggplot(summary_by_raster_grouped,
