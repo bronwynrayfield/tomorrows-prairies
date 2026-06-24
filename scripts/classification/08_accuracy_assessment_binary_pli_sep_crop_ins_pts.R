@@ -1,6 +1,6 @@
 
 ####################################################################################
-##         PRELIMINARY ACCURACY ASSESSMENT: BINARY (NATIVE AND TAME POINTS)       ##
+##           PRELIMINARY ACCURACY ASSESSMENT: BINARY (GRASS VS NON-GRASS)         ##
 ####################################################################################
 
 ##----------------------- Alison Long - June 2026 -------------------------
@@ -25,6 +25,7 @@
 ##   - class-based time rule using allowed years for that raster:
 ##       NATIVE: any( allowed_year <= Yer_Cll ); matched_year = max(allowed_year ≤ Yer_Cll)
 ##       TAME:   any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
+##       OTHER:  any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
 ##
 ## Exclusions:
 ##   - Source used for training: exclude if Source_norm matches either atomic raster code or grouped alias
@@ -55,10 +56,11 @@ library(scales)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
+#points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
 
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/ci_derived"
+out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived"
 
 # ----------------------------
 # 3) Configuration
@@ -71,7 +73,7 @@ raster_cols <- c(
   "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
   "cnvc","lcc","pudl",
   pli_variants,            # four atomic PLI rasters
-  "lcr","gpw","plvi","hfi","gcc","dw","esri","mgi","pglc")
+  "lcr","gpw","plvi","gcc","dw","esri","mgi","pglc")
 
 # Grouping helper: collapse pli_* -> "pli"; all others remain themselves
 raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
@@ -96,18 +98,14 @@ unique(points$LC_Class_N)
 #unique(points$Source)
 #table(points$Source, useNA = "ifany")
 
-# Remove Plowprint
-points <- points %>%
-  select(-plow_reproj_algn_intact_masked)
-
 # Rename columns
 points <- points %>%
   rename(
-    Pt_ID    = Point_ID,
+    Pt_ID_O    = Point_ID,
     Sorc_ID  = Source_ID,
     Yer_Cll  = Year_Colle,
     LC_Cl_N  = LC_Class_N,
-    Ecods_ID = ecodist,
+    Ecds_ID = ecodist,
     Provinc  = PROV,
     Ecrgn_n  = ecoreg,
     aci      = aafc_aci_merged_reproj_algn_binary_noshrub,
@@ -136,6 +134,20 @@ points <- points %>%
     mgi      = mb_mgi_reproj_algn_binary_noshrub,
     pglc     = pglc_reproj_algn_binary)
 
+str(points)
+
+# Remove Plowprint and HFI
+points <- points %>%
+  select(-plow) %>%
+  select(-hfi)
+
+# Create column for training data exclusion
+points <- points %>%
+  mutate(
+    Training = case_when(
+      Sorc_ID == "ACI_field_2024" ~ "aci" # if using 2024 ACI data
+      TRUE ~ ""))    # keep unmatched cases empty
+    
 # Create column with numerical class for ground-truthed cover type
 points <- points %>%
   mutate(
@@ -147,7 +159,17 @@ points <- points %>%
 unique(points$LC_grass)
 table(points$LC_grass, useNA = "ifany")
 
-required_cols <- c("Pt_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
+# Check for NAs in Pt_ID
+points %>%
+  summarise(n_na = sum(is.na(Pt_ID_O)))
+
+# Create new Pt_ID column with no NAs
+points <- points %>%
+  mutate(Pt_ID = row_number()) %>%
+  relocate(Pt_ID)
+
+# Define rquired columns
+required_cols <- c("Pt_ID", "Ecds_ID", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -307,12 +329,6 @@ long <- points_norm %>%
     allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
   )
 
-# Create a canonical evaluation key
-#long <- long %>%
-#  mutate(
-#    raster_eval = raster_group   # <-- canonical evaluation identity
-#  )
-
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
 # ----------------------------
@@ -321,7 +337,7 @@ long <- points_norm %>%
 #   - TAME: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
 #   - OTHER: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
 compute_matched_year <- function(yrs, yer, class_label) {
-  yrs <- as.integer(yrs)
+  yrs <- as.integer(unlist(yrs))
   if (length(yrs) == 0L || is.na(yer) || is.na(class_label)) return(NA_integer_)
   if (class_label == "NATIVE") {
     ok <- yrs[yrs <= yer]
@@ -339,26 +355,15 @@ compute_matched_year <- function(yrs, yer, class_label) {
 # Apply full filtering:
 #   - require LC_grass, Yer_Cll, LC_Cl_N
 #   - require pred present and allowed_years matching via matched_year
+#   - Exclude training sources (updated filtering)
 eval_data <- long %>%
   filter(!is.na(LC_grass), !is.na(Yer_Cll), !is.na(LC_Cl_N)) %>%
   filter(!is.na(pred)) %>%
   rowwise() %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
-  filter(!is.na(matched_year)) #%>%
-  #filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
-  #filter(is.na(Source_norm) | Source_norm != raster_eval) # filter using canonical evaluation identity
-
-# Check filtering
-#table(eval_data$Source_norm, eval_data$raster, useNA = "ifany")
-
-#eval_data %>%
-#  filter(!is.na(Source_norm)) %>%
-#  distinct(Source_norm, raster)
-
-#eval_data %>%
-#  count(raster_eval) %>%
-#  arrange(n)
+  filter(!is.na(matched_year)) %>%
+  filter(is.na(Training) | (Training != raster & Training != raster_group)) # updated
 
 # Add column for confusion matrix quadrants
 eval_data <- eval_data %>%
@@ -369,8 +374,11 @@ eval_data <- eval_data %>%
     LC_grass == 1 & pred == 0 ~ "fn"
   ))
 
-# Export
-readr::write_csv(eval_data, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropins_3Jun2026.csv"))
+# Collapse lists to strings and export
+eval_data_out <- eval_data %>%
+  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
+
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_18Jun2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -398,7 +406,7 @@ compute_metrics <- function(tp, tn, fp, fn) {
   f1 <- ifelse(is.na(prec) | is.na(rec) | (prec + rec) == 0,
                NA_real_, 2 * prec * rec / (prec + rec))
   
-  bal <- mean(c(rec, spec), na.rm = TRUE)
+  bal <- if (is.na(rec) || is.na(spec)) NA_real_ else mean(c(rec, spec)) # require recall and specificity
   
   # Cohen's Kappa
   pe <- safe_div(
@@ -514,22 +522,84 @@ per_year_summary_grouped <- summarize_block(
 # 12) Save outputs (CSV)
 # ----------------------------
 # GROUPED keep legacy filenames
-readr::write_csv(summary_by_raster_grouped, file.path(out_dir, "raster_accuracy_summary2.csv"))
-readr::write_csv(confusion_counts_grouped,  file.path(out_dir, "raster_confusion_matrices2.csv"))
-readr::write_csv(per_year_summary_grouped,  file.path(out_dir, "raster_per_year_accuracy2.csv"))
+readr::write_csv(summary_by_raster_grouped, file.path(out_dir, "raster_accuracy_summary.csv"))
+readr::write_csv(confusion_counts_grouped,  file.path(out_dir, "raster_confusion_matrices.csv"))
+readr::write_csv(per_year_summary_grouped,  file.path(out_dir, "raster_per_year_accuracy.csv"))
 
 # ATOMIC with _atomic suffix
-readr::write_csv(summary_by_raster_atomic, file.path(out_dir, "raster_accuracy_summary_atomic2.csv"))
-readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_matrices_atomic2.csv"))
-readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_atomic2.csv"))
+readr::write_csv(summary_by_raster_atomic, file.path(out_dir, "raster_accuracy_summary_atomic.csv"))
+readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_matrices_atomic.csv"))
+readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_atomic.csv"))
 
 # ----------------------------
-# 13) Create rasters of accuracy by ecodistrict
+# 13) Accuracy by Ecodistrict
+# ----------------------------
+
+# Ensure ecodistrict column exists
+if (!"Ecds_ID" %in% names(eval_data)) {
+  stop("Ecds_ID column not found in eval_data.")
+}
+
+# ---- ATOMIC: raster × ecodistrict ----
+accuracy_by_ecodistrict_atomic <- summarize_block(
+  eval_data,
+  key_cols = c("raster", "Ecds_ID")
+) %>%
+  arrange(raster, Ecds_ID)
+
+# ---- GROUPED: collapse pli_* -> pli ----
+accuracy_by_ecodistrict_grouped <- eval_data %>%
+  mutate(raster = raster_group) %>%
+  group_by(raster, Ecds_ID) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics) %>%
+  arrange(raster, Ecds_ID)
+
+# ---- OPTIONAL: include matched raster year (atomic finer breakdown) ----
+accuracy_by_ecodistrict_year_atomic <- summarize_block(
+  eval_data,
+  key_cols = c("raster", "matched_year", "Ecds_ID")
+) %>%
+  rename(raster_year = matched_year) %>%
+  arrange(raster, raster_year, Ecds_ID)
+
+#------ Save CSVs -----
+
+# GROUPED
+readr::write_csv(
+  accuracy_by_ecodistrict_grouped,
+  file.path(out_dir, "accuracy_by_ecodistrict_grouped.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_by_ecodistrict_atomic,
+  file.path(out_dir, "accuracy_by_ecodistrict_atomic.csv")
+)
+
+# ATOMIC + YEAR (detailed output)
+readr::write_csv(
+  accuracy_by_ecodistrict_year_atomic,
+  file.path(out_dir, "accuracy_by_ecodistrict_year_atomic.csv")
+)
+
+# ----------------------------
+# 14) Create rasters of accuracy by ecodistrict
 # ----------------------------
 
 summary_by_ecodistrict <- summarize_block(
   eval_data,
-  key_cols = c("raster", "Ecods_ID"))
+  key_cols = c("raster", "Ecds_ID"))
 
 summary_by_ecodistrict %>%
   group_by(raster) %>%
@@ -543,7 +613,7 @@ global_mcc <- summary_by_raster_grouped %>%
 
 # clean + stabilize
 weights_ecodist_mcc <- summary_by_ecodistrict %>%
-  select(raster, Ecods_ID, MCC, N_evaluated) %>%
+  select(raster, Ecds_ID, MCC, N_evaluated) %>%
   
   # remove unreliable small samples
   mutate(
@@ -572,23 +642,23 @@ weights_ecodist_mcc <- summary_by_ecodistrict %>%
     MCC_final = pmin(pmax(MCC_final, 0), 1)
   ) %>%
 
-  select(raster, Ecods_ID, MCC_final)
+  select(raster, Ecds_ID, MCC_final)
 
 # Validate ecodistrict coverage
 weights_ecodist_mcc %>%
   group_by(raster) %>%
-  summarise(n_ecods = n_distinct(Ecods_ID))
+  summarise(n_Ecds = n_distinct(Ecds_ID))
 
 # Build raster stack
 library(terra)
 
 # Inputs
-eco_vect <- vect("ecodistricts.gpkg")
-eco_vect$Ecods_ID <- as.character(eco_vect$Ecods_ID)
+eco_vect <- vect("R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean.shp")
+eco_vect$Ecds_ID <- as.character(eco_vect$ECODISTRIC)
 
-weights_ecodist_mcc$Ecods_ID <- as.character(weights_ecodist_mcc$Ecods_ID)
+weights_ecodist_mcc$Ecds_ID <- as.character(weights_ecodist_mcc$Ecds_ID)
 
-template <- rast("path_to_one_of_binary_rasters.tif")  # ensures perfect alignment
+template <- rast("R:/CanadianGrasslands/WG_Classification/processed/aafc_aci/aligned/aafc_aci_merged_reproj_algn_binary_noshrub.tif")  # ensures perfect alignment
 
 weights_ecodist_mcc <- weights_ecodist_mcc %>%
   mutate(raster = tolower(raster))
@@ -615,7 +685,7 @@ for (r_name in raster_names) {
   eco_joined <- merge(
     eco_vect,
     w_df,
-    by = "Ecods_ID",
+    by = "Ecds_ID",
     all.x = TRUE
   )
   
@@ -662,7 +732,138 @@ writeRaster(
 )
 
 # ----------------------------
-# 14) Plots: Overall accuracy (GROUPED and ATOMIC)
+# 15) Plots: Map by ecodistrict
+# ----------------------------
+
+# ---- Match CRS to template raster ----
+ecodistricts <- terra::project(eco_vect, template)
+
+# ---- Convert to sf for ggplot ----
+ecodistricts_sf <- sf::st_as_sf(ecodistricts)
+
+# ---- Ensure join key is character ----
+ecodistricts_sf <- ecodistricts_sf %>%
+  mutate(Ecds_ID = as.character(Ecds_ID))
+
+accuracy_by_ecodistrict_grouped <- accuracy_by_ecodistrict_grouped %>%
+  mutate(Ecds_ID = as.character(Ecds_ID))
+
+# ----------------------------
+# Join spatial + accuracy data
+# ----------------------------
+map_data_grouped <- ecodistricts_sf %>%
+  left_join(accuracy_by_ecodistrict_grouped, by = "Ecds_ID")
+
+# ----------------------------
+# Metrics to map
+# ----------------------------
+metrics_to_map <- c(
+  "Overall_Accuracy",
+  "Balanced_Accuracy",
+  "Kappa",
+  "N_evaluated"
+)
+
+# ----------------------------
+# Function to make maps
+# ----------------------------
+make_map <- function(data, raster_name, metric_name) {
+  
+  df <- data %>%
+    filter(raster == raster_name)
+  
+  # Define fill scale 
+  if (metric_name == "N_evaluated") {
+    fill_scale <- scale_fill_viridis_c(
+      na.value = "grey90",
+      option = "C",
+      name = "N evaluated"
+    )
+  } else {
+    fill_scale <- scale_fill_viridis_c(
+      na.value = "grey90",
+      option = "C",
+      labels = scales::percent_format(accuracy = 1),
+      name = metric_name
+    )
+  }
+  
+  # Build plot
+  p <- ggplot(df) +
+    geom_sf(aes(fill = .data[[metric_name]]), color = NA) +
+    fill_scale +
+    ggtitle(paste0("Raster: ", raster_name, " | ", metric_name)) +
+    theme_minimal()
+  
+  return(p)
+}
+
+# ----------------------------
+# Generate and save maps
+# ----------------------------
+unique_rasters <- sort(unique(map_data_grouped$raster))
+
+for (r in unique_rasters) {
+  
+  for (m in metrics_to_map) {
+    
+    p <- make_map(map_data_grouped, r, m)
+    
+    outfile <- file.path(
+      out_dir,
+      paste0("map_", r, "_", m, ".png")
+    )
+    
+    ggsave(
+      filename = outfile,
+      plot = p,
+      width = 8,
+      height = 6,
+      dpi = 300
+    )
+  }
+}
+
+# ------ Mean N_evaluated per ecodistrict (across rasters)------
+
+# ---- Compute mean N across rasters ----
+mean_N_by_ecodistrict <- accuracy_by_ecodistrict_atomic %>%
+  group_by(Ecds_ID) %>%
+  summarise(
+    mean_N_evaluated = mean(N_evaluated, na.rm = TRUE),
+    n_rasters = sum(!is.na(N_evaluated)),
+    .groups = "drop"
+  )
+
+# ---- Join to spatial data ----
+mean_N_by_ecodistrict <- mean_N_by_ecodistrict %>%
+  mutate(Ecds_ID = as.character(Ecds_ID))
+
+mean_N_map <- ecodistricts_sf %>%
+  left_join(mean_N_by_ecodistrict, by = "Ecds_ID")
+
+# --- Plot map ------------
+p_mean_N <- ggplot(mean_N_map) +
+  geom_sf(aes(fill = mean_N_evaluated), color = NA) +
+  scale_fill_viridis_c(
+    option = "C",
+    na.value = "grey90",
+    name = "Mean N evaluated"
+  ) +
+  ggtitle("Mean Sample Size (N_evaluated) Across Rasters by Ecodistrict") +
+  theme_minimal()
+
+# ---- Save ----
+ggsave(
+  filename = file.path(out_dir, "map_mean_N_evaluated_ecodistrict.png"),
+  plot = p_mean_N,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# ----------------------------
+# 16) Plots: Overall accuracy (GROUPED and ATOMIC)
 # ----------------------------
 # GROUPED (legacy) plot
 p_grouped <- ggplot(summary_by_raster_grouped,
@@ -701,7 +902,7 @@ ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_binary_cropins.png"),
        p_atomic, width = 7, height = 5, dpi = 200)
 
 # ----------------------------
-# 14) Console previews
+# 17) Console previews
 # ----------------------------
 cat("\n=== Summary by Raster (GROUPED) ===\n")
 print(summary_by_raster_grouped, n = Inf)

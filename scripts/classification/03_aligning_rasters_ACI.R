@@ -30,7 +30,8 @@ proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
 out_grass_dir <- "./outputs/grass"
 
 # ACI tiles directory
-aci_tile_root <- file.path(raw_grass_data_dir, "Cropland/AAFC Annual Crop Inventory 2024/v2")
+#aci_tile_root <- file.path(raw_grass_data_dir, "Cropland/AAFC_Annual_Crop_Inventory_2024/v2")
+aci_tile_root <- file.path(raw_grass_data_dir, "Cropland/AAFC_Annual_Crop_Inventory_2025")
 aci_merged_dir <- file.path(proc_grass_data_dir, "aafc_aci/merged")
 aci_cropped_dir <- file.path(proc_grass_data_dir, "aafc_aci/cropped")
 aci_aligned_dir <- file.path(proc_grass_data_dir, "aafc_aci/aligned")
@@ -47,11 +48,11 @@ sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 #cnvc_file <- file.path(raw_grass_data_dir, "ns_cnvc/NatureServe_CNVC_COMPRESSED_20251023.tif")
 
 # aci rasters
-aci_bc_file <- file.path(aci_tile_root, "aci_2024_bc_v2/aci_2024_bc_v2.tif")
-aci_ab_file <- file.path(aci_tile_root, "aci_2024_ab_v2/aci_2024_ab_v2.tif")
-aci_sk_file <- file.path(aci_tile_root, "aci_2024_sk_v2/aci_2024_sk_v2.tif")
-aci_mb_file <- file.path(aci_tile_root, "aci_2024_mb_v2/aci_2024_mb_v2.tif")
-aci_on_file <- file.path(aci_tile_root, "aci_2024_on_v2/aci_2024_on_v2.tif")
+aci_bc_file <- file.path(aci_tile_root, "aci_2025_bc_v1/aci_2025_bc_v1.tif")
+aci_ab_file <- file.path(aci_tile_root, "aci_2025_ab_v1/aci_2025_ab_v1.tif")
+aci_sk_file <- file.path(aci_tile_root, "aci_2025_sk_v1/aci_2025_sk_v1.tif")
+aci_mb_file <- file.path(aci_tile_root, "aci_2025_mb_v1/aci_2025_mb_v1.tif")
+aci_on_file <- file.path(aci_tile_root, "aci_2025_on_v1/aci_2025_on_v1.tif")
 
 ##### use study area file as snap raster #####
 
@@ -115,14 +116,8 @@ writeRaster(merged_aci_no0s, aci_merge_out_path, datatype = "INT1U",
 # Mark as categorical (factor)
 merged_aci_no0s <- as.factor(merged_aci_no0s)
 
-# Add category labels
-#levels(aci_reclass) <- data.frame(
-#  value = c(1, 2, 3),
-#  label = c("Tame", "Native", "Mixed")
-#)
-
 # reproject before resampling
-aci_merged_reproj <- project(merged_aci_no0s, crs(sa)) # or should be project(aci_reclass, sa) ??
+aci_merged_reproj <- project(merged_aci_no0s, sa)
 aci_merged_reproj
 
 freq_table2 <- freq(aci_merged_reproj) 
@@ -133,17 +128,17 @@ aci_merged_reproj_algn <- resample(aci_merged_reproj, sa, method = "near")
 plot(aci_merged_reproj_algn)
 aci_merged_reproj_algn
 
-#class       : SpatRaster 
-#dimensions  : 86539, 130223, 1  (nrow, ncol, nlyr)
+#class       : SpatRaster
+#size        : 86539, 130223, 1  (nrow, ncol, nlyr)
 #resolution  : 30, 30  (x, y)
 #extent      : -2321003, 1585687, 270327.4, 2866497  (xmin, xmax, ymin, ymax)
-#coord. ref. : North_America_Albers_Equal_Area_Conic 
-#source      : spat_26ec7a9f114f_9964.tif 
-#color table : 1 
-#varname     : class_study_area_aligned_cnvc_Dec2025 
-#categories  : aci_2024_bc_v2 
-#name        : aci_2024_bc_v2 
-#min value   :             20 
+#coord. ref. : North_America_Albers_Equal_Area_Conic (ESRI:102008)
+#source      : spat_b64849645cad_46664_VuY9VpSXXzR4qRb.tif
+#color table : 1
+#varname     : class_study_area_aligned_cnvc_Dec2025
+#categories  : aci_2025_bc_v1
+#name        : aci_2025_bc_v1
+#min value   :             20
 #max value   :            230 
 
 # Get values and counts
@@ -151,21 +146,8 @@ freq_table3 <- freq(aci_merged_reproj_algn)
 print(freq_table3) 
 
 # Save the raster as 8-bit unsigned integer
-aci_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn.tif")
+aci_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn.tif")
 writeRaster(aci_merged_reproj_algn, aci_out_path, datatype = "INT1U", 
-            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
-            NAflag = 255,
-            overwrite = TRUE)
-
-# Trim NA-only rows/columns
-aci_merged_reproj_algn_trim <- trim(aci_merged_reproj_algn)
-
-# visualize the trimmed raster
-plot(aci_merged_reproj_algn_trim)
-
-# Save the raster as 8-bit unsigned integer
-aci_trim_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_trim.tif")
-writeRaster(aci_merged_reproj_algn_trim, aci_trim_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
@@ -252,30 +234,30 @@ aci_algn_binary <- classify(aci_merged_reproj_algn,
 
 aci_algn_binary
 
-#class       : SpatRaster 
-#dimensions  : 86539, 130223, 1  (nrow, ncol, nlyr)
+#class       : SpatRaster
+#size        : 86539, 130223, 1  (nrow, ncol, nlyr)
 #resolution  : 30, 30  (x, y)
 #extent      : -2321003, 1585687, 270327.4, 2866497  (xmin, xmax, ymin, ymax)
-#coord. ref. : North_America_Albers_Equal_Area_Conic 
-#source      : spat_26ec385479fe_9964.tif 
-#varname     : class_study_area_aligned_cnvc_Dec2025 
-#name        : aci_2024_bc_v2 
-#min value   :              0 
-#max value   :              1 
+#coord. ref. : North_America_Albers_Equal_Area_Conic (ESRI:102008)
+#source      : spat_b6486f0d2eb_46664_6Uxy02myoMrg5LO.tif
+#varname     : class_study_area_aligned_cnvc_Dec2025
+#name        : aci_2025_bc_v1
+#min value   :              0
+#max value   :              1
 
 # Save the raster as 8-bit unsigned integer
-aci_binary_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_binary_noshrub.tif")
+aci_binary_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_binary_noshrub.tif")
 writeRaster(aci_algn_binary, aci_binary_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
 # load ACI raster
-aci <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn.tif")
-aci_algn <- rast(aci)
+#aci <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn.tif")
+#aci_algn <- rast(aci)
 
 # reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native)
-aci_algn_nattam <- classify(aci_algn, 
+aci_algn_nattam <- classify(aci_merged_reproj_algn, 
                             rcl = matrix(c(
                               10, 0, # cloud
                               20, 0, # water
@@ -357,14 +339,14 @@ plot(aci_algn_nattam)
 aci_algn_nattam
 
 # Save the raster as 8-bit unsigned integer
-aci_nattam_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_natvtam_noshrub.tif")
+aci_nattam_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_natvtam_noshrub.tif")
 writeRaster(aci_algn_nattam, aci_nattam_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
 # reclassify to isolate classes
-aci_algn_grass <- classify(aci_algn, 
+aci_algn_grass <- classify(aci_merged_reproj_algn, 
                             rcl = matrix(c(
                               10, 0, # cloud
                               20, 0, # water
@@ -446,14 +428,14 @@ plot(aci_algn_grass)
 aci_algn_grass
 
 # Save the raster as 8-bit unsigned integer
-aci_grass_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_grass.tif")
+aci_grass_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_grass.tif")
 writeRaster(aci_algn_grass, aci_grass_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
 # reclassify to isolate classes
-aci_algn_past <- classify(aci_algn, 
+aci_algn_past <- classify(aci_merged_reproj_algn, 
                            rcl = matrix(c(
                              10, 0, # cloud
                              20, 0, # water
@@ -535,14 +517,14 @@ plot(aci_algn_past)
 aci_algn_past
 
 # Save the raster as 8-bit unsigned integer
-aci_past_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_pastureforage.tif")
+aci_past_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_pastureforage.tif")
 writeRaster(aci_algn_past, aci_past_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
 
 # reclassify to isolate classes
-aci_algn_shrub <- classify(aci_algn, 
+aci_algn_shrub <- classify(aci_merged_reproj_algn, 
                            rcl = matrix(c(
                              10, 0, # cloud
                              20, 0, # water
@@ -624,7 +606,7 @@ plot(aci_algn_shrub)
 aci_algn_shrub
 
 # Save the raster as 8-bit unsigned integer
-aci_shrub_out_path <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_shrub.tif")
+aci_shrub_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_shrub.tif")
 writeRaster(aci_algn_shrub, aci_shrub_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,

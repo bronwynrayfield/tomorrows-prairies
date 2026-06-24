@@ -10,6 +10,8 @@
 
 ## v2 is updated with the version of the script from the "check training" file
 
+## CURRENTLY NO MCC?
+
 ## NEED TO REMOVE MORE TRAINING DATA FOR HFI AND ACI??
 
 ## Goal:
@@ -29,7 +31,6 @@
 ##       TAME:   any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
 ##
 ## Exclusions:
-##   - LC_Cl_N == "SHRUB"
 ##   - Source used for training: exclude if Source_norm matches either atomic raster code or grouped alias
 ##
 ## Outputs:
@@ -58,10 +59,10 @@ library(scales)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/for_training_data_check/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Apr2026_clean_EL_pts_excld.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/check_training/EL_pts_excld"
+out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary"
 
 # ----------------------------
 # 3) Configuration
@@ -74,7 +75,7 @@ raster_cols <- c(
   "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
   "cnvc","lcc","pudl",
   pli_variants,            # four atomic PLI rasters
-  "lcr","gpw","plow","plvi","hfi","gcc","dw","esri","mgi")
+  "lcr","gpw","plow","plvi","hfi","gcc","dw","esri","mgi", "pglc")
 
 # Grouping helper: collapse pli_* -> "pli"; all others remain themselves
 raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
@@ -234,27 +235,23 @@ long <- points_norm %>%
     allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
   )
 
-# Create a canonical evaluation key
-long <- long %>%
-  mutate(
-    raster_eval = raster_group   # <-- canonical evaluation identity
-  )
-
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
 # ----------------------------
 # Compute a per-record matched_year for per-year reporting:
 #   - NATIVE: latest allowed_year <= Yer_Cll (if any; else NA -> exclude)
 #   - TAME: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
-
+#   - OTHER: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
 compute_matched_year <- function(yrs, yer, class_label) {
-  yrs <- as.integer(yrs)
+  yrs <- as.integer(unlist(yrs))
   if (length(yrs) == 0L || is.na(yer) || is.na(class_label)) return(NA_integer_)
   if (class_label == "NATIVE") {
     ok <- yrs[yrs <= yer]
     if (length(ok) == 0L) return(NA_integer_)
     return(max(ok))
   } else if (class_label == "TAME") {
+    if (yer %in% yrs) return(yer) else return(NA_integer_)
+  } else if (class_label == "OTHER") {
     if (yer %in% yrs) return(yer) else return(NA_integer_)
   } else {
     return(NA_integer_)
@@ -263,19 +260,17 @@ compute_matched_year <- function(yrs, yer, class_label) {
 
 # Apply full filtering:
 #   - require LC_grass, Yer_Cll, LC_Cl_N
-#   - exclude SHRUB
 #   - require pred present and allowed_years matching via matched_year
 #   - exclude training sources that match atomic raster or grouped alias
 eval_data <- long %>%
   filter(!is.na(LC_grass), !is.na(Yer_Cll), !is.na(LC_Cl_N)) %>%
-  filter(LC_Cl_N != "SHRUB") %>%
+  #filter(LC_Cl_N != "SHRUB") %>%
   filter(!is.na(pred)) %>%
   rowwise() %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
-  #filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
-  filter(is.na(Source_norm) | Source_norm != raster_eval) # filter using canonical evaluation identity
+  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
 
 # Check filtering
 table(eval_data$Source_norm, eval_data$raster, useNA = "ifany")
@@ -285,8 +280,12 @@ eval_data %>%
   distinct(Source_norm, raster)
 
 eval_data %>%
-  count(raster_eval) %>%
+  count(raster_group) %>%
   arrange(n)
+
+# Collapse lists to strings and export
+eval_data_out <- eval_data %>%
+  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -346,7 +345,7 @@ summary_by_raster_atomic <- summarize_block(
 
 # GROUPED: collapse pli_* -> "pli"; combine counts across all matched_year within group
 summary_by_raster_grouped <- eval_data %>%
-  mutate(raster = raster_eval) %>%
+  mutate(raster = raster_group) %>%
   group_by(raster) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -386,7 +385,7 @@ per_year_summary_atomic <- summarize_block(
 
 # GROUPED: per grouped raster × Yer_Cll (mix of multiple matched years inside)
 per_year_summary_grouped <- summarize_block(
-  eval_data %>% mutate(raster = raster_eval),
+  eval_data %>% mutate(raster = raster_group),
   key_cols = c("raster", "Yer_Cll")
 ) %>%
   mutate(raster_year = NA_integer_) %>%

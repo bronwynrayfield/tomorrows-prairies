@@ -214,7 +214,7 @@ log_msg("Building MCC weight stack (binary)")
 
 # Load accuracy (MCC)
 acc_bin <- aws.s3::s3read_using(read_csv, object = acc_bin_file, show_col_types = FALSE) %>%
-  mutate(raster_name = tolower(trimws(raster_name)))
+  mutate(raster_name = tolower(trimws(raster)))
 
 stopifnot(all(c("raster_name","ecodistrict_id","MCC") %in% names(acc_bin)))
 

@@ -8,6 +8,8 @@
 # step 6: assess accuracy of datasets mapping grasslands by comparing them
 #         to ground-truthed point data for 2015 to present
 
+## CURRENTLY NO MCC
+
 ## Goal:
 ##   Assess the accuracy of multiple grassland rasters vs. ground-truth points
 ##   using time-aligned rules that depend on class (NATIVE or TAME).
@@ -26,7 +28,6 @@
 ##       TAME:   any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
 ##
 ## Exclusions:
-##   - LC_Cl_N == "SHRUB"
 ##   - Source used for training: exclude if Source_norm matches either atomic raster code or grouped alias
 ##
 ## Outputs:
@@ -223,15 +224,17 @@ long <- points_norm %>%
 # Compute a per-record matched_year for per-year reporting:
 #   - NATIVE: latest allowed_year <= Yer_Cll (if any; else NA -> exclude)
 #   - TAME: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
-
+#   - OTHER: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
 compute_matched_year <- function(yrs, yer, class_label) {
-  yrs <- as.integer(yrs)
+  yrs <- as.integer(unlist(yrs))
   if (length(yrs) == 0L || is.na(yer) || is.na(class_label)) return(NA_integer_)
   if (class_label == "NATIVE") {
     ok <- yrs[yrs <= yer]
     if (length(ok) == 0L) return(NA_integer_)
     return(max(ok))
   } else if (class_label == "TAME") {
+    if (yer %in% yrs) return(yer) else return(NA_integer_)
+  } else if (class_label == "OTHER") {
     if (yer %in% yrs) return(yer) else return(NA_integer_)
   } else {
     return(NA_integer_)
@@ -240,18 +243,21 @@ compute_matched_year <- function(yrs, yer, class_label) {
 
 # Apply full filtering:
 #   - require LC_grass, Yer_Cll, LC_Cl_N
-#   - exclude SHRUB
 #   - require pred present and allowed_years matching via matched_year
 #   - exclude training sources that match atomic raster or grouped alias
 eval_data <- long %>%
   filter(!is.na(LC_grass), !is.na(Yer_Cll), !is.na(LC_Cl_N)) %>%
-  filter(LC_Cl_N != "SHRUB") %>%
+  #filter(LC_Cl_N != "SHRUB") %>%
   filter(!is.na(pred)) %>%
   rowwise() %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
   filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
+
+# Collapse lists to strings and export
+eval_data_out <- eval_data %>%
+  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
 # ----------------------------
 # 8) Metrics helpers

@@ -3,7 +3,7 @@
 ##              PRELIMINARY ACCURACY ASSESSMENT: NATIVE AND TAME CLASSES             ##
 #######################################################################################
 
-##----------------------- Alison Long - April 2026 -------------------------
+##----------------------- Alison Long - June 2026 -------------------------
 
 # step 8 (multiclass): assess accuracy of datasets mapping grasslands
 # against ground-truthed point data (2015 to present), with 3 classes:
@@ -14,7 +14,7 @@
 #      crop, shrub, wetland) points to tame vs non-tame (native, not grass) raster values
 #
 # Key changes from binary version:
-#   - Uses LC_class3 (0/1/2) instead of LC_grass (0/1)
+#   - Uses LC_class3 (0/1/2) instead of LC_class3 (0/1)
 #   - Rasters expected as 0/1/2
 #   - Time-aligned rules:
 #         native (2): latest allowed_year <= Yer_Cll
@@ -46,10 +46,10 @@ library(mltools)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_29Apr2026_clean_withnongrass.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_23Jun2026_clean_withnongrass.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame"
+out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/compiled_derived"
 #dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 # ----------------------------
@@ -62,7 +62,7 @@ pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 raster_cols <- c("aci","ngi","cgr","eccc",
                  "cnvc","pudl",
                  pli_variants,            # four atomic PLI rasters
-                 "gpw","plvi","hfi","mgi")
+                 "gpw","plvi","mgi","pglc")
 
 # Grouping helper: collapse pli_* -> "pli"; all others remain themselves
 raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
@@ -73,19 +73,80 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 #points <- readxl::read_excel(points_excel_path)
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 16))
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 19))
 )
 
 names(points)
 str(points)
-unique(points$Source)
-table(points$Source, useNA = "ifany")
+unique(points$Training)
+table(points$Training, useNA = "ifany")
+unique(points$LC_class3)
+table(points$LC_class3, useNA = "ifany")
 
-required_cols <- c("LC_class3", "Yer_Cll")
+# Remove HFI
+points <- points %>%
+  select(-hfi)
+
+# Add point ID column
+points <- points %>%
+  mutate(Pt_ID = row_number()) %>%
+  relocate(Pt_ID)
+
+# Define required columns
+required_cols <- c("Pt_ID", "LC_class3", "Training","Sorc_ID", "Ecds_ID","Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
 }
+
+#Check LC types present
+table(points$LC_Cl_N, useNA = "ifany")
+
+# Rename all non-grass points as OTHER
+points <- points %>%
+  mutate(
+    LC_Cl_N = if_else(
+      LC_Cl_N %in% c("ANNUAL CROPLAND", "WOODY", "WETLAND", "OPEN WATER"),
+      "OTHER",
+      LC_Cl_N))
+
+# Rename all MIXED points as TAME
+points <- points %>%
+  mutate(
+    LC_Cl_N = if_else(
+      LC_Cl_N == "MIXED",
+      "TAME",
+      LC_Cl_N))
+
+#Check LC types present
+table(points$LC_Cl_N, useNA = "ifany")
+
+# How many OTHER points for each year?
+pts.oth <- points %>%
+  filter(LC_Cl_N == "OTHER")
+
+pts.oth %>%
+  group_by(Yer_Cll) %>%
+  summarise(total_count = n(), .groups = "drop")
+
+# How many TAME points for each year?
+pts.tam <- points %>%
+  filter(LC_Cl_N == "TAME")
+
+pts.tam %>%
+  group_by(Yer_Cll) %>%
+  summarise(total_count = n(), .groups = "drop")
+
+# How many NATIVE points for each year?
+pts.nat <- points %>%
+  filter(LC_Cl_N == "NATIVE")
+
+pts.nat %>%
+  group_by(Yer_Cll) %>%
+  summarise(total_count = n(), .groups = "drop")
+
+#Check LC types present
+table(points$LC_class3, useNA = "ifany")
 
 # Identify which raster columns actually exist in the points file
 present_rasters <- intersect(raster_cols, names(points))
@@ -170,7 +231,7 @@ points_norm <- points %>%
 #   - raster_group (pli_* -> pli)
 #   - allowed_years (list of integers from metadata)
 long <- points_norm %>%
-  select(all_of(required_cols), LC_Cl_N, Source, all_of(present_rasters)) %>%
+  select(all_of(required_cols), all_of(present_rasters)) %>%
   pivot_longer(
     cols = all_of(present_rasters),
     names_to = "raster",
@@ -183,12 +244,10 @@ long <- points_norm %>%
   )
 
 # Collapse lists to strings and export
-long$allowed_years <- sapply(
-  long$allowed_years,
-  function(x) paste(x, collapse = ";")
-)
+long_out <- long %>%
+  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(long, file.path(out_dir, "long_29Apr2026_withnongrass.csv"))
+write.csv(long_out, file.path(out_dir, "long_prefiltering_26Jun2026_natvtam_withnongrass_compiled.csv"))
 
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
@@ -197,24 +256,40 @@ write.csv(long, file.path(out_dir, "long_29Apr2026_withnongrass.csv"))
 #   Native grass (lc3 == 2L): accept any year ≤ reference year (choose most recent such year)
 #   Tame grass (lc3 == 1L): accept only if year matches exactly
 #   Non-grass (lc3 == 0L): can configure rule to be like native or tame rule 
-compute_matched_year_class3 <- function(yrs, yer, lc3, notgrass_rule = c("exact","lte")) {
-  notgrass_rule <- match.arg(notgrass_rule)
-  yrs <- as.integer(yrs)
+#compute_matched_year_class3 <- function(yrs, yer, lc3, notgrass_rule = c("exact","lte")) {
+#  notgrass_rule <- match.arg(notgrass_rule)
+#  yrs <- as.integer(yrs)
+#  if (length(yrs) == 0L || is.na(yer) || is.na(lc3)) return(NA_integer_)
+#  if (lc3 == 2L) {                # native
+#    ok <- yrs[yrs <= yer]
+#    if (length(ok) == 0L) return(NA_integer_)
+#    return(max(ok))
+#  } else if (lc3 == 1L) {         # tame
+#    if (yer %in% yrs) return(yer) else return(NA_integer_)
+#  } else if (lc3 == 0L) {         # not grass
+#    if (notgrass_rule == "exact") {
+#      if (yer %in% yrs) return(yer) else return(NA_integer_)
+#    } else {"lte"
+#      ok <- yrs[yrs <= yer]
+#      if (length(ok) == 0L) return(NA_integer_)
+#      return(max(ok))
+#    }
+#  } else {
+#    return(NA_integer_)
+#  }
+#}
+
+compute_matched_year_class3 <- function(yrs, yer, lc3) {
+  yrs <- as.integer(unlist(yrs))
   if (length(yrs) == 0L || is.na(yer) || is.na(lc3)) return(NA_integer_)
-  if (lc3 == 2L) {                # native
+  if (lc3 == 2L) { # native
     ok <- yrs[yrs <= yer]
     if (length(ok) == 0L) return(NA_integer_)
     return(max(ok))
-  } else if (lc3 == 1L) {         # tame
+  } else if (lc3 == 1L) { # tame
     if (yer %in% yrs) return(yer) else return(NA_integer_)
-  } else if (lc3 == 0L) {         # not grass
-    if (notgrass_rule == "exact") {
-      if (yer %in% yrs) return(yer) else return(NA_integer_)
-    } else { # "lte"
-      ok <- yrs[yrs <= yer]
-      if (length(ok) == 0L) return(NA_integer_)
-      return(max(ok))
-    }
+  } else if (lc3 == 0L) { # nongrass
+    if (yer %in% yrs) return(yer) else return(NA_integer_)
   } else {
     return(NA_integer_)
   }
@@ -225,104 +300,87 @@ compute_matched_year_class3 <- function(yrs, yer, lc3, notgrass_rule = c("exact"
 #   - DO NOT filter out LC_class3 == 0
 #   - DO NOT exclude LC_Cl_N == "SHRUB"
 #   - require allowed_years matching via matched_year
-#   - DO NOT exclude training sources
+#   - Exclude training sources (updated filtering)
 eval_data <- long %>%
   filter(
     !is.na(LC_class3),
     LC_class3 %in% c(0L, 1L, 2L),  # keep all 3 classes
-    !is.na(Yer_Cll)
-  ) %>%
+    !is.na(Yer_Cll)) %>%
   filter(!is.na(pred)) %>%
   rowwise() %>%
-  mutate(
-    matched_year = compute_matched_year_class3(
-      allowed_years,
-      Yer_Cll,
-      LC_class3
-    )
-  ) %>%
+  mutate(matched_year = compute_matched_year_class3(allowed_years, Yer_Cll, LC_class3)) %>%
   ungroup() %>%
-  filter(!is.na(matched_year))
+  filter(!is.na(matched_year)) %>%
+  filter(is.na(Training) | (Training != raster & Training != raster_group)) # updated
 
 # Collapse lists to strings and export
-eval_data$allowed_years <- sapply(
-  eval_data$allowed_years,
-  function(x) paste(x, collapse = ";")
-)
+eval_data_out <- eval_data %>%
+  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data, file.path(out_dir, "eval_data_29Apr2026_withnongrass.csv"))
+write.csv(eval_data_out, file.path(out_dir, "eval_data_updatedtraindatfilt_23Jun2026_natvtam_withnongrass_compiled.csv"))
 
 # Isolate datasets that need to be handled differently
 #   Datasets with training data need to be filtered separately
 #   so that data is not lost
 
 # ACI
-eval_data_aci <- eval_data %>%
-  filter(raster_group == "aci")
-
-# HFI
-eval_data_hfi <- eval_data %>%
-  filter(raster_group == "hfi")
+#eval_data_aci <- eval_data %>%
+#  filter(raster_group == "aci")
 
 # NGI
-eval_data_ngi <- eval_data %>%
-  filter(raster_group == "ngi")
+#eval_data_ngi <- eval_data %>%
+#  filter(raster_group == "ngi")
 
 # PLI
-eval_data_pli <- eval_data %>%
-  filter(raster_group == "pli")
+#eval_data_pli <- eval_data %>%
+#  filter(raster_group == "pli")
 
 # Filter out training data
 #   Remove points used to train the model
 
 # ACI
-eval_data_aci_filt <- eval_data_aci %>%
-  filter(is.na(Source) | Source != "aci")
+#eval_data_aci_filt <- eval_data_aci %>%
+#  filter(is.na(Source) | Source != "aci")
 
 # HFI
-eval_data_hfi_filt <- eval_data_hfi %>%
-  filter(is.na(Source) | Source != "hfi")
+#eval_data_hfi_filt <- eval_data_hfi %>%
+#  filter(is.na(Source) | Source != "hfi")
 
 # NGI
-eval_data_ngi_filt <- eval_data_ngi %>%
-  filter(is.na(Source) | Source != "ngi")
+#eval_data_ngi_filt <- eval_data_ngi %>%
+#  filter(is.na(Source) | Source != "ngi")
 
 # PLI
-eval_data_pli_filt <- eval_data_pli %>%
-  filter(is.na(Source) | Source != "pli")
+#eval_data_pli_filt <- eval_data_pli %>%
+#  filter(is.na(Source) | Source != "pli")
 
 # Filter ACI, HFI, NGI, and PLI out of eval_data
-eval_data_reg <- eval_data %>%
-  filter(!(raster_group %in% c("aci", "pli", "ngi", "hfi")))
+#eval_data_reg <- eval_data %>%
+#  filter(!(raster_group %in% c("aci", "pli", "ngi", "hfi")))
 
 # Combine back together
-eval_data_combined <- bind_rows(
-  eval_data_reg,
-  eval_data_aci_filt,
-  eval_data_hfi_filt,
-  eval_data_ngi_filt,
-  eval_data_pli_filt
-)
+#eval_data_combined <- bind_rows(
+#  eval_data_reg,
+#  eval_data_aci_filt,
+#  eval_data_hfi_filt,
+#  eval_data_ngi_filt,
+#  eval_data_pli_filt)
 
 # Check number of rows - 60,049 total
-sapply(
-  list(
-    table1 = eval_data_reg,
-    table2 = eval_data_aci_filt,
-    table3 = eval_data_hfi_filt,
-    table4 = eval_data_ngi_filt,
-    table5 = eval_data_pli_filt
-  ),
-  nrow
-)
+#sapply(
+#  list(
+#    table1 = eval_data_reg,
+#    table2 = eval_data_aci_filt,
+#    table3 = eval_data_hfi_filt,
+#    table4 = eval_data_ngi_filt,
+#    table5 = eval_data_pli_filt),
+#  nrow)
 
 # Collapse lists to strings and export
-eval_data_combined$allowed_years <- sapply(
-  eval_data_combined$allowed_years,
-  function(x) paste(x, collapse = ";")
-)
+#eval_data_combined_out <- eval_data_combined %>%
+#  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_combined, file.path(out_dir, "eval_data_29Apr2026_withnongrass_good.csv"))
+#write.csv(eval_data_combined_out, file.path(out_dir, "eval_data_29Apr2026_withnongrass_good.csv"))
 
 # ----------------------------
 # 8) Multiclass metrics helpers
@@ -509,12 +567,12 @@ confusion_block_multiclass <- function(df, key_cols) {
 # Create output tables
 # ----------------------------
 metrics_by_dataset <- summarize_block_multiclass(
-  eval_data_combined,
+  eval_data,
   key_cols = "raster_group"
 )
 
 confusions_by_dataset <- confusion_block_multiclass(
-  eval_data_combined,
+  eval_data,
   key_cols = "raster_group"
 )
 
@@ -523,7 +581,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_29Apr2026.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_23Jun2026.xlsx")
 
 write_xlsx(
   list(
