@@ -36,7 +36,7 @@ terraOptions(
 )
 
 ## ---- Parallel (light use only) ---- ##
-n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
+#n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
 future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
@@ -72,7 +72,7 @@ log_msg <- function(..., level = "INFO") {
 }
 
 log_msg("Starting spatial agreement analysis")
-log_msg("Parallel workers detected: ", n_cores)
+#log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -159,7 +159,9 @@ ras_names <- names(r_stack)
 ## ---- Initialize district-level count arrays ---- ##
 
 # Get unique district IDs (could also delay until first block)
-district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
+#district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
+freq_table <- freq(ecodist_rast)
+district_vals <- as.integer(freq_table$value)
 
 # initialize empty set
 #district_vals <- integer(0)
@@ -290,7 +292,11 @@ for (i in 1:total_blocks) {
     rows <- split_idx[[d]]
     
     d_id <- district_index[as.character(d)]
-    if (is.na(d_id)) next
+    if (is.na(d_id)) {
+      warning("Unknown district encountered: ", d)
+      next
+    }
+    
     d_id <- as.integer(d_id)
     
     M_d <- M_int[rows, , drop = FALSE]
@@ -340,6 +346,11 @@ for (d in seq_len(n_districts)) {
   for (i in 1:(n_rasters - 1)) {
     for (j in (i + 1):n_rasters) {
       
+      if (i == 1) {
+        message("Sample districts:", paste(head(districts, 10), collapse = ","))
+        message("First district_vals:", paste(head(district_vals, 10), collapse = ","))
+      }
+      
       tp <- n11[i,j,d]
       fp <- n10[i,j,d]
       fn <- n01[i,j,d]
@@ -379,7 +390,7 @@ for (d in seq_len(n_districts)) {
       }
       
       results[[length(results) + 1]] <- tibble(
-        district = d_name,
+        district = as.character(d_name),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
         d_jaccard = d_j,
@@ -451,9 +462,8 @@ for (i in 1:(n_rasters - 1)) {
 }
 
 pairwise_long <- bind_rows(
-  bind_rows(global_results),
-  bind_rows(results)
-)
+  bind_rows(global_results) %>% mutate(district = as.character(district)),
+  bind_rows(results) %>% mutate(district = as.character(district)))
 
 log_msg("Done computing metrics")
 
