@@ -70,7 +70,7 @@ pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 
 # Expected raster columns 
 raster_cols <- c(
-  "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
+  "aci2024","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
   "cnvc","lcc","pudl",
   pli_variants,            # four atomic PLI rasters
   "lcr","gpw","plvi","gcc","dw","esri","mgi","pglc")
@@ -108,7 +108,7 @@ points <- points %>%
     Ecds_ID = ecodist,
     Provinc  = PROV,
     Ecrgn_n  = ecoreg,
-    aci      = aafc_aci_merged_reproj_algn_binary_noshrub,
+    aci2024  = aafc_aci_merged_reproj_algn_binary_noshrub,
     luts10   = luts10_reproj_algn_binary_masked,
     luts30   = luts30_reproj_algn_binary_masked,
     cec      = nalcms_reproj_algn_binary_noshrub_masked,
@@ -132,7 +132,8 @@ points <- points %>%
     dw       = dw_reproj_algn_masked_binary,
     esri     = esri_reproj_algn_masked_binary,
     mgi      = mb_mgi_reproj_algn_binary_noshrub,
-    pglc     = pglc_reproj_algn_binary)
+    pglc     = pglc_reproj_algn_binary,
+    plow     = plow_reproj_algn_intact_masked)
 
 str(points)
 
@@ -145,7 +146,7 @@ points <- points %>%
 points <- points %>%
   mutate(
     Training = case_when(
-      Sorc_ID == "ACI_field_2024" ~ "aci" # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2024" ~ "aci2024", # if using 2024 ACI data
       TRUE ~ ""))    # keep unmatched cases empty
     
 # Create column with numerical class for ground-truthed cover type
@@ -168,8 +169,12 @@ points <- points %>%
   mutate(Pt_ID = row_number()) %>%
   relocate(Pt_ID)
 
+# Drop rows where ecodistrict ID is 0
+points <- points %>%
+  filter(Ecds_ID != 0)
+
 # Define rquired columns
-required_cols <- c("Pt_ID", "Ecds_ID", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
+required_cols <- c("Pt_ID", "Ecds_ID", "Ecrgn_n", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -378,7 +383,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_18Jun2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_26Jun2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -594,7 +599,74 @@ readr::write_csv(
 )
 
 # ----------------------------
-# 14) Create rasters of accuracy by ecodistrict
+# 14) Create ecoregion-level fallbacks for ecodistricts with small N
+# ----------------------------
+
+#---- Define threshold ----
+min_n <- 20
+
+#---- Compute ecoregion-level metrics ----
+accuracy_by_ecoregion <- eval_data %>%
+  group_by(raster, Ecrgn_n) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics)
+
+#---- Join ecodistrict and ecoregion results ----
+
+# Get mapping (one row per ecodistrict)
+ecodist_to_ecoreg <- eval_data %>%
+  distinct(Ecds_ID, Ecrgn_n)
+
+accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
+  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+
+# Join
+fallback_joined <- accuracy_by_ecodistrict_atomic2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  )
+
+#---- Apply fallback logic ----
+# Replace metrics when N_evaluated is too small
+accuracy_with_fallback <- fallback_joined %>%
+  mutate(
+    use_fallback = N_evaluated_ecoD < min_n,
+    
+    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
+    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
+    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
+    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
+    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
+    
+    # recompute metrics from chosen counts (important!)
+    metrics = pmap(
+      list(TP, TN, FP, FN),
+      ~ compute_metrics(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  tidyr::unnest_wider(metrics) %>%
+  select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
+
+#---- Keep provenance flags ----
+accuracy_with_fallback <- accuracy_with_fallback %>%
+  mutate(
+    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
+  )
+
+# ----------------------------
+# 15) Create rasters of accuracy by ecodistrict
 # ----------------------------
 
 summary_by_ecodistrict <- summarize_block(
@@ -732,7 +804,7 @@ writeRaster(
 )
 
 # ----------------------------
-# 15) Plots: Map by ecodistrict
+# 16) Plots: Map by ecodistrict
 # ----------------------------
 
 # ---- Match CRS to template raster ----
@@ -863,7 +935,7 @@ ggsave(
 )
 
 # ----------------------------
-# 16) Plots: Overall accuracy (GROUPED and ATOMIC)
+# 17) Plots: Overall accuracy (GROUPED and ATOMIC)
 # ----------------------------
 # GROUPED (legacy) plot
 p_grouped <- ggplot(summary_by_raster_grouped,
@@ -902,7 +974,7 @@ ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_binary_cropins.png"),
        p_atomic, width = 7, height = 5, dpi = 200)
 
 # ----------------------------
-# 17) Console previews
+# 18) Console previews
 # ----------------------------
 cat("\n=== Summary by Raster (GROUPED) ===\n")
 print(summary_by_raster_grouped, n = Inf)

@@ -36,7 +36,7 @@ terraOptions(
 Sys.setenv(GDAL_CACHEMAX = 4096)
 
 ## ---- Parallel (light use only) ---- ##
-n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
+#n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
 future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
@@ -48,8 +48,8 @@ local_dir    <- file.path(tmp_root, "data")
 
 meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
-acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/???.csv"
-acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/???.csv"
+acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_grouped_combinedCIandCM_23Jun2026.csv"
+acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_grouped_lenient_23Jun2026.csv"
 
 ## ---- Message log ---- ##
 log_file <- file.path(log_dir, paste0(
@@ -216,7 +216,7 @@ log_msg("Building MCC weight stack (binary)")
 acc_bin <- aws.s3::s3read_using(read_csv, object = acc_bin_file, show_col_types = FALSE) %>%
   mutate(raster_name = tolower(trimws(raster)))
 
-stopifnot(all(c("raster_name","ecodistrict_id","MCC") %in% names(acc_bin)))
+stopifnot(all(c("raster_name","Ecds_ID","MCC") %in% names(acc_bin)))
 
 # Convert MCC → weight [0,1]
 mcc_to_weight <- function(x) {
@@ -229,7 +229,7 @@ acc_bin <- acc_bin %>%
   mutate(weight = mcc_to_weight(MCC))
 
 acc_bin_wide <- acc_bin %>%
-  select(ecodistrict_id, raster_name, weight) %>%
+  select(Ecds_ID, raster_name, weight) %>%
   pivot_wider(names_from = raster_name, values_from = weight)
 
 # check for missing columns or naming mismatch
@@ -238,14 +238,14 @@ if (length(missing) > 0) {
   stop("Missing MCC values for: ", paste(missing, collapse=", "))
 }
 
-# Load rasterized ecodistricts (already raster)
+# Load rasterized ecodistricts 
 ecodist_r <- rast(ecodist_file)
 
 # check ecodistrict raster values vs IDs
 print(head(freq(ecodist_r)))
 
 ids_r <- unique(freq(ecodist_r)[,1])
-ids_tbl <- unique(acc_bin$ecodistrict_id)
+ids_tbl <- unique(acc_bin$Ecds_ID)
 
 missing_ids <- setdiff(ids_r, ids_tbl)
 
@@ -261,7 +261,7 @@ weight_files <- lapply(names(bin_stack), function(nm) {
   
   lookup_bin <- acc_bin %>%
     filter(raster_name == nm) %>%
-    select(ecodistrict_id, weight) %>%
+    select(Ecds_ID, weight) %>%
     as.matrix()
   
   if (nrow(lookup_bin) == 0) {
@@ -367,10 +367,18 @@ prob_A_minN <- ifel(
 log_msg("Running tri-class fusion")
 
 acc_nt <- aws.s3::s3read_using(read_csv, object = acc_nt_file, show_col_types = FALSE) %>%
-  mutate(raster_name = tolower(trimws(raster_name)))
+  mutate(raster_name = tolower(trimws(raster)))
+
+acc_nt <- acc_nt %>%
+  mutate(
+    MCC_1v2 = MCC_Multiclass
+    #MCC_1v2 = (MCC_OvR_1 + MCC_OvR_2) / 2, # use multiclass for now, fix later
+    F1_1_2x2 = F1_1,
+    F1_2_2x2 = F1_2
+  )
 
 # Required columns
-req <- c("raster_name","ecodistrict_id","MCC_1v2","F1_2_2x2","F1_1_2x2")
+req <- c("raster_name","Ecds_ID","MCC_1v2","F1_2_2x2","F1_1_2x2")
 stopifnot(all(req %in% names(acc_nt)))
 
 # Build weights
@@ -382,11 +390,11 @@ acc_nt <- acc_nt %>%
 
 # Pivot
 acc_native <- acc_nt %>%
-  select(ecodistrict_id, raster_name, W_native) %>%
+  select(Ecds_ID, raster_name, W_native) %>%
   pivot_wider(names_from=raster_name, values_from=W_native)
 
 acc_tame <- acc_nt %>%
-  select(ecodistrict_id, raster_name, W_tame) %>%
+  select(Ecds_ID, raster_name, W_tame) %>%
   pivot_wider(names_from=raster_name, values_from=W_tame)
 
 # Rasterize weights (fast categorical lookup)
@@ -395,7 +403,7 @@ native_files <- lapply(names(nt_stack), function(nm) {
   
   lookup_native <- acc_nt %>%
     filter(raster_name == nm) %>%
-    select(ecodistrict_id, W_native) %>%
+    select(Ecds_ID, W_native) %>%
     as.matrix()
   
   if (nrow(lookup_native) == 0) {
@@ -413,7 +421,7 @@ tame_files <- lapply(names(nt_stack), function(nm) {
   
   lookup_tame <- acc_nt %>%
     filter(raster_name == nm) %>%
-    select(ecodistrict_id, W_tame) %>%
+    select(Ecds_ID, W_tame) %>%
     as.matrix()
   
   if (nrow(lookup_tame) == 0) {

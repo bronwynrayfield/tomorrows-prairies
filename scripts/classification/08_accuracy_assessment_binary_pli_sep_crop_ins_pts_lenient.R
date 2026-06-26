@@ -74,7 +74,7 @@ pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 
 # Expected raster columns 
 raster_cols <- c(
-  "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
+  "aci2024","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc", #"aci2025",
   "cnvc","lcc","pudl",
   pli_variants,            # four atomic PLI rasters
   "lcr","gpw","plvi","gcc","dw","esri","mgi","pglc")
@@ -112,7 +112,8 @@ points <- points %>%
     Ecds_ID = ecodist,
     Provinc  = PROV,
     Ecrgn_n  = ecoreg,
-    aci      = aafc_aci_merged_reproj_algn_binary_noshrub,
+    aci2024  = aafc_aci_merged_reproj_algn_binary_noshrub,
+    #aci2025  = aafc_aci_2025_merged_reproj_algn_binary_noshrub,
     luts10   = luts10_reproj_algn_binary_masked,
     luts30   = luts30_reproj_algn_binary_masked,
     cec      = nalcms_reproj_algn_binary_noshrub_masked,
@@ -150,7 +151,8 @@ points <- points %>%
 points <- points %>%
   mutate(
     Training = case_when(
-      Sorc_ID == "ACI_field_2024" ~ "aci" # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2024" ~ "aci2024", # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2025" ~ "aci2025",
       TRUE ~ ""))    # keep unmatched cases empty
 
 # Create column with numerical class for ground-truthed cover type
@@ -173,8 +175,12 @@ points <- points %>%
   mutate(Pt_ID = row_number()) %>%
   relocate(Pt_ID)
 
+# Drop rows where ecodistrict ID is 0
+points <- points %>%
+  filter(Ecds_ID != 0)
+
 # Define required columns
-required_cols <- c("Pt_ID", "Ecds_ID", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
+required_cols <- c("Pt_ID", "Ecds_ID", "Ecrgn_n", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -377,7 +383,6 @@ eval_data <- long %>%
   filter(!is.na(matched_year)) %>%
   filter(is.na(Training) | (Training != raster & Training != raster_group)) # updated
 
-
 # Add column for confusion matrix quadrants
 eval_data <- eval_data %>%
   mutate(quad = case_when(
@@ -391,7 +396,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_23Jun2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_26Jun2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers

@@ -92,6 +92,10 @@ points <- points %>%
   mutate(Pt_ID = row_number()) %>%
   relocate(Pt_ID)
 
+# Drop rows where ecodistrict ID is 0
+points <- points %>%
+  filter(Ecds_ID != 0)
+
 # Define required columns
 required_cols <- c("Pt_ID", "LC_class3", "Training","Sorc_ID", "Ecds_ID","Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
