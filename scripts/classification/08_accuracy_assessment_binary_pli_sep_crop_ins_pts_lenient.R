@@ -62,6 +62,7 @@ library(scales)
 # ----------------------------
 #points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
 points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass.xlsx"
+points2_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_native_v_tame_aci25.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived"
@@ -101,6 +102,11 @@ str(points)
 unique(points$LC_Class_N)
 #unique(points$Source)
 #table(points$Source, useNA = "ifany")
+
+points2 <- readxl::read_excel(
+  points2_excel_path,
+  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 2))
+)
 
 # Rename columns
 points <- points %>%

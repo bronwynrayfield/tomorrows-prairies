@@ -46,10 +46,10 @@ log_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies
 terra_dir    <- file.path(tmp_root, "terra")
 local_dir    <- file.path(tmp_root, "data")
 
-meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
+meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_nohfi.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
-acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_grouped_combinedCIandCM_23Jun2026.csv"
-acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_grouped_lenient_23Jun2026.csv"
+acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_atomic_combinedCIandCM_23Jun2026.csv"
+acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_atomic_lenient_23Jun2026.csv"
 
 ## ---- Message log ---- ##
 log_file <- file.path(log_dir, paste0(
@@ -76,7 +76,7 @@ log_msg <- function(..., level = "INFO") {
 }
 
 log_msg("Starting spatial agreement analysis")
-log_msg("Parallel workers detected: ", n_cores)
+#log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -114,6 +114,9 @@ log_msg("Tri-class rasters: ", nrow(nt_meta))
 ## ---- Download rasters locally ---- ##
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
+
+#unlink(local_dir, recursive = TRUE, force = TRUE)
+#dir.create(local_dir, recursive = TRUE)
 
 download_files <- function(files_named) {
   sapply(names(files_named), function(nm) {
@@ -174,7 +177,10 @@ log_msg("Rasters confirmed aligned — skipping resampling")
 log_msg("Building optimized raster stacks")
 
 # Grass vs nongrass
-bin_stack_file <- "/mnt/tmp/bin_stack.tif"
+stack_dir <- file.path(tmp_root, "stacks")
+dir.create(stack_dir, recursive = TRUE, showWarnings = FALSE)
+
+bin_stack_file <- file.path(stack_dir, "bin_stack.tif")
 
 if (!file.exists(bin_stack_file)) {
   writeRaster(
@@ -192,7 +198,7 @@ bin_stack <- rast(bin_stack_file)
 names(bin_stack) <- names(bin_local)
 
 # Native vs tame vs nongrass
-nt_stack_file <- "/mnt/tmp/nt_stack.tif"
+nt_stack_file <- file.path(stack_dir, "nt_stack.tif")
 
 if (!file.exists(nt_stack_file)) {
   writeRaster(
@@ -216,6 +222,10 @@ log_msg("Building MCC weight stack (binary)")
 acc_bin <- aws.s3::s3read_using(read_csv, object = acc_bin_file, show_col_types = FALSE) %>%
   mutate(raster_name = tolower(trimws(raster)))
 
+# Add suffix to match stack
+acc_bin <- acc_bin %>%
+  mutate(raster_name = paste0(raster_name, "_bin"))
+
 stopifnot(all(c("raster_name","Ecds_ID","MCC") %in% names(acc_bin)))
 
 # Convert MCC → weight [0,1]
@@ -227,10 +237,6 @@ mcc_to_weight <- function(x) {
 
 acc_bin <- acc_bin %>%
   mutate(weight = mcc_to_weight(MCC))
-
-acc_bin_wide <- acc_bin %>%
-  select(Ecds_ID, raster_name, weight) %>%
-  pivot_wider(names_from = raster_name, values_from = weight)
 
 # check for missing columns or naming mismatch
 missing <- setdiff(names(bin_stack), acc_bin$raster_name)
@@ -244,7 +250,7 @@ ecodist_r <- rast(ecodist_file)
 # check ecodistrict raster values vs IDs
 print(head(freq(ecodist_r)))
 
-ids_r <- unique(freq(ecodist_r)[,1])
+ids_r <- unique(freq(ecodist_r)[,"value"])
 ids_tbl <- unique(acc_bin$Ecds_ID)
 
 missing_ids <- setdiff(ids_r, ids_tbl)
@@ -371,7 +377,7 @@ acc_nt <- aws.s3::s3read_using(read_csv, object = acc_nt_file, show_col_types = 
 
 acc_nt <- acc_nt %>%
   mutate(
-    MCC_1v2 = MCC_Multiclass
+    MCC_1v2 = MCC_Multiclass,
     #MCC_1v2 = (MCC_OvR_1 + MCC_OvR_2) / 2, # use multiclass for now, fix later
     F1_1_2x2 = F1_1,
     F1_2_2x2 = F1_2
@@ -387,15 +393,6 @@ acc_nt <- acc_nt %>%
     W_native = pmax((MCC_1v2 + 1)/2 * F1_2_2x2, 0),
     W_tame   = pmax((MCC_1v2 + 1)/2 * F1_1_2x2, 0)
   )
-
-# Pivot
-acc_native <- acc_nt %>%
-  select(Ecds_ID, raster_name, W_native) %>%
-  pivot_wider(names_from=raster_name, values_from=W_native)
-
-acc_tame <- acc_nt %>%
-  select(Ecds_ID, raster_name, W_tame) %>%
-  pivot_wider(names_from=raster_name, values_from=W_tame)
 
 # Rasterize weights (fast categorical lookup)
 native_files <- lapply(names(nt_stack), function(nm) {
