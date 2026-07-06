@@ -16,6 +16,8 @@
 #   Adding time decay weights to MCC weights - prioritize recent data
 #   Adding temporal variability layer
 
+# Temporal versions of script need to have PLI atomic (not grouped)
+
 # Temporally-informed outputs:
 #   prob_grass: current best estimate (recent data prioritized)
 #   temporal_sd: low unstable this pixel is across time
@@ -58,17 +60,17 @@ terra_dir    <- file.path(tmp_root, "terra")
 local_dir    <- file.path(tmp_root, "data")
 stack_dir    <- file.path(tmp_root, "stacks")
 
-meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
-ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
-pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot.tif"
-acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_grouped_combinedCIandCM_23Jun2026.csv"
-acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_grouped_lenient_23Jun2026.csv"
+meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_nohfi.csv"
+ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
+pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
+acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_atomic_combinedCIandCM_23Jun2026.csv"
+acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_atomic_lenient_23Jun2026.csv"
 
 ## ---- Message log ---- ##
 run_ts <- format(Sys.time(), "%Y%m%d_%H%M%S")
 
-log_file <- file.path(log_dir, paste0("spatial_agreement_log_", run_ts, ".log"))
-log_file_local <- file.path(tmp_root, paste0("spatial_agreement_", run_ts, ".log"))
+log_file <- file.path(log_dir, paste0("consensus_mapping_log_", run_ts, ".log"))
+log_file_local <- file.path(tmp_root, paste0("consensus_mapping_", run_ts, ".log"))
 
 log_msg <- function(..., level = "INFO") {
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
@@ -86,7 +88,7 @@ on.exit({
   }
 }, add = TRUE)
 
-log_msg("Starting spatial agreement analysis")
+log_msg("Starting consensus mapping analysis")
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -128,7 +130,14 @@ log_msg("Tri-class rasters: ", nrow(nt_meta))
 ## ---- Load pilot area ---- ##
 log_msg("Loading pilot area")
 
-pilot <- vect(pilot_file)
+pilot_local <- file.path(local_dir, "pilot_area.tif")
+
+aws.s3::save_object(
+  object = pilot_file,
+  file = pilot_local
+)
+
+pilot <- rast(pilot_local)
 
 log_msg("Pilot area loaded")
 
@@ -308,6 +317,10 @@ acc_bin <- acc_bin %>%
     by = c("raster_name" = "raster_id")
   )
 
+# For now, assign pli_bin to year 2022
+#acc_bin <- acc_bin %>%
+#  mutate(year = if_else(raster_name == "pli_bin", 2022L, year))
+
 if (any(is.na(acc_bin$year))) {
   stop("Missing year info for some rasters in acc_bin")
 }
@@ -379,7 +392,7 @@ weight_files <- lapply(names(bin_stack), function(nm) {
   out
 })
 
-weight_stack <- rast(weight_files)
+weight_stack <- rast(unlist(weight_files))
 names(weight_stack) <- names(bin_stack)
 
 stopifnot(identical(names(weight_stack), names(bin_stack)))
@@ -427,7 +440,7 @@ log_msg("Computing temporal variability")
 # Weighted mean (already computed as prob_A)
 mu <- prob_A
 
-# Weighted variance function
+# Weighted disagreement across sources (not just temporal)
 temporal_var_bin <- app(
   c(bin_stack, weight_present, mu),
   fun = function(x) {
@@ -514,7 +527,14 @@ if (has_nt) {
   log_msg("Running tri-class fusion")
   
   acc_nt <- aws.s3::s3read_using(read_csv, object = acc_nt_file, show_col_types = FALSE) %>%
-    mutate(raster_name = tolower(trimws(raster)))
+    mutate(raster_name = paste0(tolower(trimws(raster)), "_nt"))
+  
+  acc_nt <- acc_nt %>%
+    left_join(
+      meta %>%
+        select(raster_id, year),
+      by = c("raster_name" = "raster_id")
+    )
   
   if (any(is.na(acc_nt$year))) {
     stop("Missing year info for some rasters in acc_nt")
@@ -566,8 +586,14 @@ if (has_nt) {
     out
   })
   
-  metric_native_stack <- rast(native_files)
-  metric_tame_stack <- rast(tame_files)
+  metric_native_stack <- rast(unlist(native_files))
+  metric_tame_stack   <- rast(unlist(tame_files))
+  
+  stopifnot(nlyr(metric_native_stack) == nlyr(nt_stack))
+  stopifnot(nlyr(metric_tame_stack) == nlyr(nt_stack))
+  
+  names(metric_native_stack) <- names(nt_stack)
+  names(metric_tame_stack)   <- names(nt_stack)
   
   stopifnot(identical(names(metric_native_stack), names(nt_stack)))
   stopifnot(identical(names(metric_tame_stack), names(nt_stack)))
@@ -605,6 +631,8 @@ if (has_nt) {
 
 # Compute temporal variability
 log_msg("Computing temporal variability (tri-class)")
+
+tri_present <- !is.na(nt_stack)
 
 # Total weights (native + tame)
 metric_total_stack <- metric_native_stack + metric_tame_stack
@@ -672,8 +700,8 @@ log_msg("Combining binary + tri-class outputs")
 # Probabilities
 p_grass <- prob_A
 
-p_native <- p_grass * share_native
-p_tame   <- p_grass * share_tame
+p_native <- p_grass * share_native # assumes "is it grass" evidence (bin_stack) and "is it native vs tame" evidence (nt_stack) are independent and always consistent -
+p_tame   <- p_grass * share_tame   # potential disagreement is not surfaced/resolved - produces NA or silently-inconsistent output
 p_not    <- 1 - p_grass
 
 # Hard classification with tiebreak rule
@@ -713,7 +741,7 @@ uncertainty_total <- (
 
 writeRaster(
   uncertainty_total,
-  file.path(terra_dir,"uncertainty_total_combined.tif"),
+  file.path(terra_dir,"uncertainty_total_combined.tif"), # need to export!
   overwrite=TRUE
 )
 
