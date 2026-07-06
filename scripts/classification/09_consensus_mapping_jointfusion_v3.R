@@ -49,7 +49,6 @@ tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 
 # Load packages
 library(terra)
-library(future.apply)
 library(readr)
 library(dplyr)
 library(aws.s3)
@@ -61,14 +60,12 @@ terraOptions(
   progress = 1
 )
 
-## ---- Parallel (light use only) ---- ##
-n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
-future::plan(sequential)  # Avoids disk contention
-
 ## ---- Settings ---- ##
 meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/consensus_map"
 log_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
+local_dir  <- file.path(tmp_root, "rasters")
+dir.create(local_dir, recursive = TRUE, showWarnings = FALSE)
 
 ## ---- Message log ---- ##
 log_file <- file.path(log_dir, paste0(
@@ -78,6 +75,9 @@ log_file <- file.path(log_dir, paste0(
 ))
 
 # Ensure local temp file first 
+log_dir_local <- file.path(tmp_root, "logs")
+dir.create(log_dir_local, recursive = TRUE, showWarnings = FALSE)
+
 log_file_local <- file.path(
   log_dir_local,
   paste0("consensus_map_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log")
@@ -95,7 +95,6 @@ log_msg <- function(..., level = "INFO") {
 }
 
 log_msg("Starting data fusion analysis")
-log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -213,20 +212,19 @@ names(bin_stack) <- names(bin_local)
 # Native vs tame vs nongrass
 nt_stack_file <- "/mnt/tmp/nt_stack.tif"
 
-if (!file.exists(nt_stack_file)) {
+if (length(nt_local) > 0) {
+  if (!file.exists(nt_stack_file)) {
   writeRaster(
     rast(nt_local),
     nt_stack_file,
     overwrite = TRUE,
-    wopt = list(
-      datatype="INT1U",
-      gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
-    )
-  )
-}
+    wopt = list(datatype="INT1U",
+      gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")))
+  }
 
 nt_stack <- rast(nt_stack_file)
 names(nt_stack) <- names(nt_local)
+}
 
 # =========================
 # GLOBAL OPTIONS
@@ -255,14 +253,14 @@ mcc_native_stack <- rast("mcc_native.tif")
 penalty_bin_stack <- rast("penalty_bin.tif")
 penalty_nt_stack  <- rast("penalty_nt.tif")
 
-out_dir <- "tiles_out"
-dir.create(out_dir, showWarnings = FALSE)
+#out_dir <- "tiles_out"
+#dir.create(out_dir, showWarnings = FALSE)
 
 # =========================
 # TILE GRID
 # =========================
 # ~2000–5000 tiles is ideal, 500-1500 for single node
-tiles <- makeTiles(sa, n = 2000, overlap = 0)
+tiles <- makeTiles(sa, n = 1000, overlap = 0)
 
 # Save tiles for reproducibility
 writeVector(vect(tiles), "tile_index.gpkg", overwrite=TRUE)
@@ -270,11 +268,14 @@ writeVector(vect(tiles), "tile_index.gpkg", overwrite=TRUE)
 # =========================
 # PROCESS FUNCTION
 # =========================
+tile_dir <- "/mnt/tmp/tiles"
+dir.create(tile_dir, showWarnings=FALSE)
+
 process_tile <- function(i) {
   
   tile <- tiles[[i]]
   
-  out_file <- file.path(out_dir, sprintf("tile_%05d.tif", i))
+  out_file <- file.path(tile_dir, sprintf("tile_%05d.tif", i))
   if (file.exists(out_file)) return(out_file)
   
   # crop all rasters
@@ -300,7 +301,7 @@ process_tile <- function(i) {
   nt_w_tame   <- rt * pnt
   nt_w_native <- rn * pnt
   
-  NEG_HALF <- 0.5
+  #NEG_HALF <- 0.5
   
   # ----------------------
   # EVIDENCE COMPUTATION
@@ -311,15 +312,15 @@ process_tile <- function(i) {
   # ----------------------
   
   # binary weights
-  bin_w_eff <- rbin * pbin
-  bin_w_sum <- sum(bin_w_eff, na.rm=TRUE)
+  #bin_w_eff <- rbin * pbin
+  bin_w_sum <- app(bin_w_eff, sum, na.rm=TRUE)
   bin_w_norm <- ifel(bin_w_sum > 0, bin_w_eff / bin_w_sum, 0)
   
   # tri-class weights
-  nt_w_tame   <- rt * pnt
-  nt_w_native <- rn * pnt
+  #nt_w_tame   <- rt * pnt
+  #nt_w_native <- rn * pnt
   
-  nt_w_sum <- sum(nt_w_tame + nt_w_native, na.rm=TRUE)
+  nt_w_sum <- app(nt_w_tame + nt_w_native, sum, na.rm=TRUE)
   nt_w_tame_norm   <- ifel(nt_w_sum > 0, nt_w_tame / nt_w_sum, 0)
   nt_w_native_norm <- ifel(nt_w_sum > 0, nt_w_native / nt_w_sum, 0)
   
@@ -327,17 +328,18 @@ process_tile <- function(i) {
   # EVIDENCE (POSITIVE ONLY)
   # ----------------------
   
+  nt_max <- app(c(nt_w_tame_norm, nt_w_native_norm), max, na.rm=TRUE)
   E_not <-
-    sum(bin_w_norm * (b == 0), na.rm=TRUE) +
-    sum(pmax(nt_w_tame_norm, nt_w_native_norm) * (nt == 0), na.rm=TRUE)
+    app(bin_w_norm * (b == 0), sum, na.rm=TRUE) +
+    app(nt_max * (nt == 0), sum, na.rm=TRUE)
   
   E_tame <-
-    sum(bin_w_norm * (b == 1), na.rm=TRUE) * 0.5 +
-    sum(nt_w_tame_norm * (nt == 1), na.rm=TRUE)
+    app(bin_w_norm * (b == 1), sum, na.rm=TRUE) * 0.5 +
+    app(nt_w_tame_norm * (nt == 1), sum, na.rm=TRUE)
   
   E_native <-
-    sum(bin_w_norm * (b == 1), na.rm=TRUE) * 0.5 +
-    sum(nt_w_native_norm * (nt == 2), na.rm=TRUE)
+    app(bin_w_norm * (b == 1), sum, na.rm=TRUE) * 0.5 +
+    app(nt_w_native_norm * (nt == 2), sum, na.rm=TRUE)
   
   # ----------------------
   # SOFTMAX NORMALIZATION
@@ -348,8 +350,9 @@ process_tile <- function(i) {
   E_stack <- c(E_not, E_tame, E_native)
   
   # stabilize before exp
-  E_max <- max(E_stack)
+  E_max <- app(E_stack, max)
   expE <- exp(E_stack - E_max)
+
   
   # can add temperature parameter (tau) to control sharpness:
   # 1   = sharper classification
@@ -358,28 +361,41 @@ process_tile <- function(i) {
   #tau <- 2
   #expE <- exp((E_stack - E_max) / tau)
   
-  S <- sum(expE)
+  S <- app(expE, sum)
   
-  p_not    <- expE[1] / S
-  p_tame   <- expE[2] / S
-  p_native <- expE[3] / S
-
-# =========================
-# RUN PARALLEL TILES
-# =========================
-results <- future_lapply(seq_along(tiles), process_tile)
-
-print("All tiles completed.")
+  p_not    <- expE[[1]] / S
+  p_tame   <- expE[[2]] / S
+  p_native <- expE[[3]] / S
+  
+  # stack outputs
+  out <- c(p_not, p_tame, p_native)
+  
+  entropy <- -(
+    p_not * log(p_not + eps) +
+      p_tame * log(p_tame + eps) +
+      p_native * log(p_native + eps)
+  )
+  
+  out <- c(out, entropy)
+  names(out) <- c("p_not", "p_tame", "p_native", "entropy")
+  
+  writeRaster(out, out_file, overwrite=TRUE)
+  
+  return(out_file)
+}
 
 # =========================
 # MOSAIC AND EXPORT
 # =========================
+results <- lapply(seq_along(tiles), process_tile)
+
+print("All tiles completed.")
 
 # Get tile outputs
 files <- Filter(Negate(is.null), results)
 
 if (length(files) == 0) {
-  files <- list.files("tiles_out", full.names=TRUE, pattern="\\.tif$")
+  files <- list.files("/mnt/tmp/tiles", full.names=TRUE, pattern="\\.tif$")
 }
 
 # Ensure files exist
@@ -397,21 +413,242 @@ stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 4, logical(1))))
 
 # Mosaic all tiles together
 mosaic_out <- mosaic(rast(files), fun="mean")
+# or can try
+#mosaic_out <- do.call(mosaic, c(lapply(files, rast), list(fun="mean")))
+
+# Set names
+names(mosaic_out) <- c("p_not", "p_tame", "p_native", "entropy")
+
+#------ Derived layers ------#
+# Probability stack
+prob_stack <- mosaic_out[[c("p_not", "p_tame", "p_native")]]
+entropy <- mosaic_out[["entropy"]]
+
+# Confidence = max probability
+confidence <- app(prob_stack, max)
+names(confidence) <- "confidence"
+
+# Check probabilities sum to ~1
+check <- app(prob_stack, sum)
+stats <- global(check, c("min", "max", "mean"), na.rm=TRUE)
+print(stats)
+log_msg(capture.output(stats))
 
 #rast_list <- lapply(files, rast)
 #mosaic_out <- do.call(mosaic, c(rast_list, list(
 #  fun="mean"
 #)))
 
-# Assign layer names
-names(mosaic_out) <- c("p_not", "p_tame", "p_native", "entropy")
+#------ Hard classification ------#
+hard_class <- which.max(prob_stack)
 
-# Export raster to TIF
-out_file <- "/mnt/tmp/joint_prob_full.tif"
+# hard classification (1=not, 2=tame, 3=native)
+# mask low-confidence or high-uncertainty pixels
+# max_prob: require >0.6 confidence (fairly strict) - avoid overconfident misclassification
+# entropy: uncertainty masking - remove unreliable areas
+# max entropy for 3 classes ≈ 1.10, 0.8=moderately conservative
+# could auto-calibrate thresholds based on data distribution instead of fixed values
+hard_class <- ifel(
+  (confidence < 0.6) | (entropy > 0.8),
+  NA,
+  hard_class
+)
+
+# could add rule for how to deal with ties
+# currently slightly biased toward “non_grass” in rare tie case
+
+names(hard_class) <- "class"
+
+# Optional labeling (may not persist in GeoTIFF)
+levels(hard_class) <- data.frame(
+  value = 1:3,
+  class = c("non_grass", "tame", "native")
+)
+
+#------ High-confidence-only classification ------#
+# Conservative/strict: confidence ≥ 0.8, entropy ≤ 0.5
+# Balanced: confidence ≥ 0.75, entropy ≤ 0.6
+# Inclusive: confidence ≥ 0.7, entropy ≤ 0.7
+high_conf_class <- ifel(
+  (confidence >= 0.75) & (entropy <= 0.6),
+  hard_class,
+  NA)
+
+names(high_conf_class) <- "high_conf_class"
+
+# optional labeling
+levels(high_conf_class) <- data.frame(
+  value = 1:3,
+  class = c("non_grass", "tame", "native"))
+
+#------ Diagnostics ------#
+
+# Visualize confidence vs entropy
+# to understand whether masking rules are too strict/loose
+
+# Sample ~1e6 pixels max (adjust if needed)
+set.seed(42)
+
+vals <- spatSample(
+  c(confidence, entropy),
+  size = 1e6,
+  method = "random",
+  na.rm = TRUE,
+  as.df = TRUE
+)
+
+colnames(vals) <- c("confidence", "entropy")
+
+# Confidence vs entropy plot
+# bottom-right = high confidence, low entropy (best pixels)
+# top-left = low confidence, high entropy (worst pixels)
+# middle cloud = uncertain transitions
+# Thresholds appear as: blue line: confidence = 0.6, red line: entropy = 0.8
+library(ggplot2)
+
+ggplot(vals, aes(x = confidence, y = entropy)) +
+  stat_binhex(bins = 60) +
+  scale_fill_viridis_c(trans = "log10") +
+  geom_vline(xintercept = 0.6, color = "blue", linetype = "dashed") +
+  geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
+  labs(
+    title = "Confidence vs Entropy",
+    x = "Confidence (max probability)",
+    y = "Entropy",
+    fill = "Pixel count"
+  ) +
+  theme_minimal()
+
+# Density plot (smooth view)
+ggplot(vals, aes(x = confidence, y = entropy)) +
+  geom_density_2d_filled() +
+  geom_vline(xintercept = 0.6, color = "blue", linetype = "dashed") +
+  geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
+  labs(
+    title = "Density of Confidence vs Entropy"
+  ) +
+  theme_minimal()
+
+# Confidence distribution
+# If most points cluster around confidence > 0.7 then threshold is appropriate
+ggplot(vals, aes(x = confidence)) +
+  geom_histogram(bins = 50, fill = "steelblue") +
+  geom_vline(xintercept = 0.6, color = "red", linetype = "dashed") +
+  labs(title = "Confidence distribution") +
+  theme_minimal()
+
+# Entropy distribution
+# If most points cluster around entropy < 0.6 then threshold is appropriate
+ggplot(vals, aes(x = entropy)) +
+  geom_histogram(bins = 50, fill = "darkgreen") +
+  geom_vline(xintercept = 0.8, color = "red", linetype = "dashed") +
+  labs(title = "Entropy distribution") +
+  theme_minimal()
+
+#------ Mapping results ------#
+
+# Map of entropy
+plot(
+  entropy,
+  main = "Entropy (Uncertainty)",
+  col = rev(terrain.colors(100))
+)
+
+
+# Map of confidence
+plot(
+  confidence,
+  main = "Confidence (Max Probability)",
+  col = viridis::viridis(100)
+)
+
+# Binary "uncertain areas" map
+uncertain_mask <- ifel(
+  (confidence < 0.6) | (entropy > 0.8),
+  1,
+  0
+)
+
+names(uncertain_mask) <- "uncertain"
+
+plot(
+  uncertain_mask,
+  main = "Uncertain Areas",
+  col = c("transparent", "red"),
+  legend = FALSE
+)
+
+# Overlay uncertainty on classification
+plot(hard_class, main="Classification with Uncertainty Overlay")
+
+plot(
+  uncertain_mask,
+  col = c(NA, adjustcolor("red", alpha.f = 0.5)),
+  add = TRUE
+)
+
+# Continuous uncertainty "hotspot" map
+uncertainty_score <- (1 - confidence) + (entropy / 1.1)
+
+plot(
+  uncertainty_score,
+  main = "Uncertainty Hotspots",
+  col = hcl.colors(100, "Reds")
+)
+
+# Mask only uncertain areas
+uncertain_only <- mask(entropy, uncertain_mask, maskvalues = 0)
+
+plot(
+  uncertain_only,
+  main = "Entropy (Only Uncertain Areas)",
+  col = rev(heat.colors(100))
+)
+
+
+#------ Write outputs ------#
+
+# Combined raster 
+final_stack <- c(mosaic_out, confidence, hard_class, high_conf_class)
+
+names(final_stack) <- c(
+  "p_not", "p_tame", "p_native", "entropy",
+  "confidence",
+  "class", "high_conf_class")
+
+final_out <- "/mnt/tmp/joint_full_stack.tif"
+
+writeRaster(
+  final_stack,
+  final_out,
+  overwrite=TRUE,
+  wopt=list(
+    datatype="FLT4S",   # classification will still store fine
+    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
+  )
+)
+
+aws.s3::put_object(
+  file   = final_out,
+  object = paste0(out_dir, "/joint_full_stack.tif")
+)
+
+# upload log to S3
+aws.s3::put_object(
+  file = log_file_local,
+  object = log_file
+)
+
+# -----------------------------------
+# Optional: separate outputs
+# -----------------------------------
+
+# Probability raster
+prob_out <- "/mnt/tmp/joint_prob_full.tif"
 
 writeRaster(
   mosaic_out,
-  out_file,
+  prob_out,
   overwrite=TRUE,
   wopt=list(
     datatype="FLT4S",
@@ -420,33 +657,65 @@ writeRaster(
 )
 
 aws.s3::put_object(
-  file   = out_file,
+  file   = prob_out,
   object = paste0(out_dir, "/joint_prob_full.tif")
 )
 
-# Local
-#writeRaster(
-#  mosaic_out,
-#  "joint_prob_full.tif",
-#  overwrite=TRUE,
-#  wopt=list(
-#    datatype="FLT4S",
-#    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")))
+# Confidence raster
+conf_out <- "/mnt/tmp/joint_confidence.tif"
 
-# upload log to S3
+writeRaster(
+  confidence,
+  conf_out,
+  overwrite=TRUE,
+  wopt=list(
+    datatype="FLT4S",
+    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
+  )
+)
+
 aws.s3::put_object(
-  file = log_file_local,
-  object = log_file
+  file   = conf_out,
+  object = paste0(out_dir, "/joint_confidence.tif")
+)
+
+# Classification raster
+hard_out <- "/mnt/tmp/joint_hard_class.tif"
+
+writeRaster(
+  hard_class,
+  hard_out,
+  overwrite=TRUE,
+  wopt=list(
+    datatype="INT1U",
+    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
+  )
+)
+
+aws.s3::put_object(
+  file   = hard_out,
+  object = paste0(out_dir, "/joint_hard_class.tif")
+)
+
+# High-confidence raster
+high_conf_out <- "/mnt/tmp/joint_high_conf_class.tif"
+
+writeRaster(
+  high_conf_class,
+  high_conf_out,
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT1U",
+    gdal = c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
+  )
+)
+
+aws.s3::put_object(
+  file   = high_conf_out,
+  object = paste0(out_dir, "/joint_high_conf_class.tif")
 )
 
 #--------- Possible next steps (examples) ---------------
 
-# Hard classification
-class <- which.max(joint_prob) - 1
-
 # Thresholding - high confidence native grass
 p_native > 0.8 & entropy < 0.3
-
-# Uncertainty masking - remove unreliable areas
-entropy > 0.7 
-

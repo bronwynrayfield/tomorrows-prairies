@@ -22,7 +22,6 @@ dir.create(file.path(tmp_root, "stacks"), recursive = TRUE, showWarnings = FALSE
 
 # Load packages
 library(terra)
-#library(future.apply)
 library(readr)
 library(tidyverse)
 library(aws.s3)
@@ -39,10 +38,6 @@ Sys.setenv(GDAL_CACHEMAX = 4096)
 
 # Force a fresh run instead of silently re-using old scratch outputs
 FORCE_REBUILD <- TRUE
-
-## ---- Parallel (light use only) ---- ##
-#n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
-#future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
 
