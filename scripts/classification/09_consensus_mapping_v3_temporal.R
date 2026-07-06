@@ -56,9 +56,11 @@ out_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies
 log_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
 terra_dir    <- file.path(tmp_root, "terra")
 local_dir    <- file.path(tmp_root, "data")
+stack_dir    <- file.path(tmp_root, "stacks")
 
 meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
+pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot.tif"
 acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_grouped_combinedCIandCM_23Jun2026.csv"
 acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_grouped_lenient_23Jun2026.csv"
 
@@ -123,27 +125,78 @@ nt_files  <- setNames(nt_meta$file,  nt_meta$raster_id)
 log_msg("Binary rasters: ", nrow(bin_meta))
 log_msg("Tri-class rasters: ", nrow(nt_meta))
 
+## ---- Load pilot area ---- ##
+log_msg("Loading pilot area")
+
+pilot <- vect(pilot_file)
+
+log_msg("Pilot area loaded")
+
 ## ---- Download rasters locally ---- ##
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
 
+#download_files <- function(files_named) {
+#  if (length(files_named) == 0) return(setNames(character(0), character(0)))
+#  sapply(names(files_named), function(nm) {
+#    dest <- file.path(local_dir, paste0(nm, ".tif"))
+#    if (!file.exists(dest) || FORCE_REBUILD) {
+#      ok <- tryCatch({
+#        aws.s3::save_object(files_named[[nm]], file = dest)
+#        TRUE
+#      }, error = function(e) {
+#        log_msg("FAILED to download ", nm, " from ", files_named[[nm]], ": ",
+#                conditionMessage(e), level = "ERROR")
+#        FALSE
+#      })
+#      if (!ok) stop("Aborting: raster download failed for ", nm)
+#    }
+#    dest
+#  }, USE.NAMES = TRUE)
+#}
+
 download_files <- function(files_named) {
-  if (length(files_named) == 0) return(setNames(character(0), character(0)))
+  
+  if (length(files_named) == 0)
+    return(setNames(character(0), character(0)))
+  
   sapply(names(files_named), function(nm) {
-    dest <- file.path(local_dir, paste0(nm, ".tif"))
-    if (!file.exists(dest) || FORCE_REBUILD) {
-      ok <- tryCatch({
-        aws.s3::save_object(files_named[[nm]], file = dest)
-        TRUE
-      }, error = function(e) {
-        log_msg("FAILED to download ", nm, " from ", files_named[[nm]], ": ",
-                conditionMessage(e), level = "ERROR")
-        FALSE
-      })
-      if (!ok) stop("Aborting: raster download failed for ", nm)
+    
+    raw_file <- file.path(local_dir, paste0(nm, "_raw.tif"))
+    crop_file <- file.path(local_dir, paste0(nm, ".tif"))
+    
+    if (!file.exists(crop_file) || FORCE_REBUILD) {
+      
+      # download original
+      aws.s3::save_object(files_named[[nm]], file = raw_file)
+      
+      # crop + mask to pilot
+      r <- rast(raw_file)
+      
+      r <- crop(r, pilot)
+      r <- mask(r, pilot)
+      
+      writeRaster(
+        r,
+        crop_file,
+        overwrite = TRUE,
+        wopt = list(
+          gdal = c(
+            "COMPRESS=ZSTD",
+            "TILED=YES",
+            "BIGTIFF=YES"
+          )
+        )
+      )
+      
+      rm(r)
+      gc()
     }
-    dest
+    
+    crop_file
+    
   }, USE.NAMES = TRUE)
+  
 }
 
 bin_local <- download_files(bin_files)
@@ -281,8 +334,17 @@ if (length(missing) > 0) {
 }
 
 # Load rasterized ecodistricts 
+#ecodist_r <- rast(ecodist_file)
+#ecodist_r <- as.int(ecodist_r) 
+
+log_msg("Loading pilot-clipped ecodistrict raster")
+
 ecodist_r <- rast(ecodist_file)
-ecodist_r <- as.int(ecodist_r) 
+
+ecodist_r <- crop(ecodist_r, pilot)
+ecodist_r <- mask(ecodist_r, pilot)
+
+ecodist_r <- as.int(ecodist_r)
 
 # check ecodistrict raster values vs IDs
 ecodist_freq <- freq(ecodist_r)
@@ -723,4 +785,4 @@ if (n_failed > 0) {
   log_msg("All ", nrow(upload_summary), " output rasters uploaded successfully")
 }
 
-log_msg("Pipeline complete")
+log_msg("Analysis complete")
