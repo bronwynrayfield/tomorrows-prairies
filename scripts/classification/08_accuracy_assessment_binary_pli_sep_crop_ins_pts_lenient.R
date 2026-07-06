@@ -618,7 +618,121 @@ readr::write_csv(
 )
 
 # ----------------------------
-# 14) Create rasters of accuracy by ecodistrict
+# 14) Create ecoregion-level fallbacks for ecodistricts with small N
+# ----------------------------
+
+#---- Define threshold ----
+min_n <- 20
+
+#---- Compute ecoregion-level metrics ----
+accuracy_by_ecoregion <- eval_data %>%
+  group_by(raster, Ecrgn_n) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics)
+
+#---- Join ecodistrict and ecoregion results ----
+
+# Get mapping (one row per ecodistrict)
+ecodist_to_ecoreg <- eval_data %>%
+  distinct(Ecds_ID, Ecrgn_n)
+
+accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
+  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+
+accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
+  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+
+# Join
+fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  )
+
+fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  )
+
+#---- Apply fallback logic ----
+# Replace metrics when N_evaluated is too small
+accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
+  mutate(
+    use_fallback = N_evaluated_ecoD < min_n,
+    
+    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
+    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
+    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
+    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
+    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
+    
+    # recompute metrics from chosen counts
+    metrics = pmap(
+      list(TP, TN, FP, FN),
+      ~ compute_metrics(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  tidyr::unnest_wider(metrics) %>%
+  select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
+
+accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
+  mutate(
+    use_fallback = N_evaluated_ecoD < min_n,
+    
+    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
+    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
+    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
+    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
+    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
+    
+    # recompute metrics from chosen counts
+    metrics = pmap(
+      list(TP, TN, FP, FN),
+      ~ compute_metrics(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  tidyr::unnest_wider(metrics) %>%
+  select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
+
+#---- Keep provenance flags ----
+accuracy_with_fallback_atomic <- accuracy_with_fallback_atomic %>%
+  mutate(
+    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
+  )
+
+accuracy_with_fallback_grouped <- accuracy_with_fallback_grouped %>%
+  mutate(
+    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
+  )
+
+#---- Export ----
+
+# GROUPED
+readr::write_csv(
+  accuracy_with_fallback_grouped,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_with_fallback_atomic,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic.csv")
+)
+# ----------------------------
+# 15) Create rasters of accuracy by ecodistrict
 # ----------------------------
 
 summary_by_ecodistrict <- summarize_block(
@@ -756,7 +870,7 @@ writeRaster(
 )
 
 # ----------------------------
-# 15) Plots: Map by ecodistrict
+# 16) Plots: Map by ecodistrict
 # ----------------------------
 
 # ---- Match CRS to template raster ----
@@ -887,7 +1001,7 @@ ggsave(
 )
 
 # ----------------------------
-# 16) Plots: Overall accuracy (GROUPED and ATOMIC)
+# 17) Plots: Overall accuracy (GROUPED and ATOMIC)
 # ----------------------------
 # GROUPED (legacy) plot
 p_grouped <- ggplot(summary_by_raster_grouped,

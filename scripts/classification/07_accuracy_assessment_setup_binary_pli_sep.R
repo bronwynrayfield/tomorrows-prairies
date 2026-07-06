@@ -77,7 +77,7 @@ sap_file <- file.path(sa_dir, "modelling_study_area_aligned_cnvc_Jan2026.shp")
 gt_file <- file.path(gt_dir, "gt_points_modified_Mar2026.shp")
 
 # ecodistricts
-eco_file <- file.path(eco_dir, "ecodistricts_clean.shp")
+eco_file <- file.path(eco_dir, "ecodistricts_clean_Jun2026.shp")
 
 # grass raster files
 aci_file    <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_binary_noshrub.tif")

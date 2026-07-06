@@ -630,8 +630,18 @@ ecodist_to_ecoreg <- eval_data %>%
 accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
   left_join(ecodist_to_ecoreg, by = "Ecds_ID")
 
+accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
+  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+
 # Join
-fallback_joined <- accuracy_by_ecodistrict_atomic2 %>%
+fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  )
+
+fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   left_join(
     accuracy_by_ecoregion,
     by = c("raster", "Ecrgn_n"),
@@ -640,7 +650,7 @@ fallback_joined <- accuracy_by_ecodistrict_atomic2 %>%
 
 #---- Apply fallback logic ----
 # Replace metrics when N_evaluated is too small
-accuracy_with_fallback <- fallback_joined %>%
+accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
   mutate(
     use_fallback = N_evaluated_ecoD < min_n,
     
@@ -650,7 +660,26 @@ accuracy_with_fallback <- fallback_joined %>%
     FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
     N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
     
-    # recompute metrics from chosen counts (important!)
+    # recompute metrics from chosen counts
+    metrics = pmap(
+      list(TP, TN, FP, FN),
+      ~ compute_metrics(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  tidyr::unnest_wider(metrics) %>%
+  select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
+
+accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
+  mutate(
+    use_fallback = N_evaluated_ecoD < min_n,
+    
+    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
+    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
+    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
+    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
+    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
+    
+    # recompute metrics from chosen counts
     metrics = pmap(
       list(TP, TN, FP, FN),
       ~ compute_metrics(..1, ..2, ..3, ..4)
@@ -660,10 +689,29 @@ accuracy_with_fallback <- fallback_joined %>%
   select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
 
 #---- Keep provenance flags ----
-accuracy_with_fallback <- accuracy_with_fallback %>%
+accuracy_with_fallback_atomic <- accuracy_with_fallback_atomic %>%
   mutate(
     source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
   )
+
+accuracy_with_fallback_grouped <- accuracy_with_fallback_grouped %>%
+  mutate(
+    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
+  )
+
+#---- Export ----
+
+# GROUPED
+readr::write_csv(
+  accuracy_with_fallback_grouped,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_with_fallback_atomic,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic.csv")
+)
 
 # ----------------------------
 # 15) Create rasters of accuracy by ecodistrict

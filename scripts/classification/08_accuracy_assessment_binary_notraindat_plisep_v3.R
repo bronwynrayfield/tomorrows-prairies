@@ -112,7 +112,7 @@ points <- points %>%
 points <- points %>%
   filter(Ecds_ID != 0)
 
-required_cols <- c("Pt_ID", "LC_grass", "Training","Sorc_ID", "Ecds_ID","Yer_Cll", "LC_Cl_N")
+required_cols <- c("Pt_ID", "LC_grass", "Training","Sorc_ID", "Ecds_ID", "Ecrg_ID", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -486,7 +486,184 @@ readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_
 readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_atomic.csv"))
 
 # ----------------------------
-# 13) Plots: Overall accuracy (GROUPED and ATOMIC)
+# 13) Accuracy by Ecodistrict
+# ----------------------------
+
+# Ensure ecodistrict column exists
+if (!"Ecds_ID" %in% names(eval_data)) {
+  stop("Ecds_ID column not found in eval_data.")
+}
+
+# ---- ATOMIC: raster × ecodistrict ----
+accuracy_by_ecodistrict_atomic <- summarize_block(
+  eval_data,
+  key_cols = c("raster", "Ecds_ID")
+) %>%
+  arrange(raster, Ecds_ID)
+
+# ---- GROUPED: collapse pli_* -> pli ----
+accuracy_by_ecodistrict_grouped <- eval_data %>%
+  mutate(raster = raster_group) %>%
+  group_by(raster, Ecds_ID) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics) %>%
+  arrange(raster, Ecds_ID)
+
+# ---- OPTIONAL: include matched raster year (atomic finer breakdown) ----
+accuracy_by_ecodistrict_year_atomic <- summarize_block(
+  eval_data,
+  key_cols = c("raster", "matched_year", "Ecds_ID")
+) %>%
+  rename(raster_year = matched_year) %>%
+  arrange(raster, raster_year, Ecds_ID)
+
+#------ Save CSVs -----
+
+# GROUPED
+readr::write_csv(
+  accuracy_by_ecodistrict_grouped,
+  file.path(out_dir, "accuracy_by_ecodistrict_grouped_lenient.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_by_ecodistrict_atomic,
+  file.path(out_dir, "accuracy_by_ecodistrict_atomic_lenient.csv")
+)
+
+# ATOMIC + YEAR (detailed output)
+readr::write_csv(
+  accuracy_by_ecodistrict_year_atomic,
+  file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_lenient.csv")
+)
+
+# ----------------------------
+# 14) Create ecoregion-level fallbacks for ecodistricts with small N
+# ----------------------------
+
+#---- Define threshold ----
+min_n <- 20
+
+#---- Compute ecoregion-level metrics ----
+accuracy_by_ecoregion <- eval_data %>%
+  group_by(raster, Ecrg_ID) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics)
+
+#---- Join ecodistrict and ecoregion results ----
+
+# Get mapping (one row per ecodistrict)
+ecodist_to_ecoreg <- eval_data %>%
+  distinct(Ecds_ID, Ecrg_ID)
+
+accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
+  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+
+accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
+  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+
+# Join
+fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrg_ID"),
+    suffix = c("_ecoD", "_ecoR")
+  )
+
+fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrg_ID"),
+    suffix = c("_ecoD", "_ecoR")
+  )
+
+#---- Apply fallback logic ----
+# Replace metrics when N_evaluated is too small
+accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
+  mutate(
+    use_fallback = N_evaluated_ecoD < min_n,
+    
+    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
+    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
+    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
+    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
+    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
+    
+    # recompute metrics from chosen counts
+    metrics = pmap(
+      list(TP, TN, FP, FN),
+      ~ compute_metrics(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  tidyr::unnest_wider(metrics) %>%
+  select(raster, Ecds_ID, Ecrg_ID, use_fallback, everything())
+
+accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
+  mutate(
+    use_fallback = N_evaluated_ecoD < min_n,
+    
+    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
+    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
+    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
+    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
+    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
+    
+    # recompute metrics from chosen counts
+    metrics = pmap(
+      list(TP, TN, FP, FN),
+      ~ compute_metrics(..1, ..2, ..3, ..4)
+    )
+  ) %>%
+  tidyr::unnest_wider(metrics) %>%
+  select(raster, Ecds_ID, Ecrg_ID, use_fallback, everything())
+
+#---- Keep provenance flags ----
+accuracy_with_fallback_atomic <- accuracy_with_fallback_atomic %>%
+  mutate(
+    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
+  )
+
+accuracy_with_fallback_grouped <- accuracy_with_fallback_grouped %>%
+  mutate(
+    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
+  )
+
+#---- Export ----
+
+# GROUPED
+readr::write_csv(
+  accuracy_with_fallback_grouped,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_with_fallback_atomic,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic.csv")
+)
+
+# ----------------------------
+# 15) Plots: Overall accuracy (GROUPED and ATOMIC)
 # ----------------------------
 # GROUPED (legacy) plot
 p_grouped <- ggplot(summary_by_raster_grouped,
@@ -528,7 +705,7 @@ ggsave(file.path(out_dir, "raster_accuracy_plot_atomic.png"),
 #Removed 1 row containing missing values or values outside the scale range (`geom_col()`).
 
 # ----------------------------
-# 14) Console previews
+# 16) Console previews
 # ----------------------------
 cat("\n=== Summary by Raster (GROUPED) ===\n")
 print(summary_by_raster_grouped, n = Inf)
