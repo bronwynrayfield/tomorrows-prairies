@@ -62,7 +62,7 @@ library(scales)
 # ----------------------------
 #points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
 points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass.xlsx"
-points2_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_native_v_tame_aci25.xlsx"
+#points2_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_native_v_tame_aci25.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived"
@@ -103,10 +103,10 @@ unique(points$LC_Class_N)
 #unique(points$Source)
 #table(points$Source, useNA = "ifany")
 
-points2 <- readxl::read_excel(
-  points2_excel_path,
-  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 2))
-)
+#points2 <- readxl::read_excel(
+#  points2_excel_path,
+#  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 2))
+#)
 
 # Rename columns
 points <- points %>%
@@ -618,7 +618,7 @@ readr::write_csv(
 )
 
 # ----------------------------
-# 14) Create ecoregion-level fallbacks for ecodistricts with small N
+# 14) Create hierarchical fallbacks for ecodistricts with small N
 # ----------------------------
 
 #---- Define threshold ----
@@ -640,83 +640,142 @@ accuracy_by_ecoregion <- eval_data %>%
   ungroup() %>%
   tidyr::unnest_wider(metrics)
 
-#---- Join ecodistrict and ecoregion results ----
+#---- Compute ecoprovince-level metrics ----
+accuracy_by_ecoprovince <- eval_data %>%
+  group_by(raster, Ecoprv_n) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics)
+
+accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
+  rename(
+    TP_ecoP = TP,
+    TN_ecoP = TN,
+    FP_ecoP = FP,
+    FN_ecoP = FN,
+    N_evaluated_ecoP = N_evaluated
+  )
+
+#---- Define mapping ----
 
 # Get mapping (one row per ecodistrict)
-ecodist_to_ecoreg <- eval_data %>%
-  distinct(Ecds_ID, Ecrgn_n)
+ecodist_to_regions <- eval_data %>%
+  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
 
 accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
-  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+  left_join(ecodist_to_regions, by = "Ecds_ID")
 
 accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
-  left_join(ecodist_to_ecoreg, by = "Ecds_ID")
+  left_join(ecodist_to_regions, by = "Ecds_ID")
 
-# Join
+#------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   left_join(
     accuracy_by_ecoregion,
     by = c("raster", "Ecrgn_n"),
     suffix = c("_ecoD", "_ecoR")
+  ) %>%
+  left_join(
+    accuracy_by_ecoprovince,
+    by = c("raster", "Ecoprv_n")
+    #suffix = c("", "_ecoP")
   )
+
+# check names
+names(fallback_joined_atomic)
 
 fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   left_join(
     accuracy_by_ecoregion,
     by = c("raster", "Ecrgn_n"),
     suffix = c("_ecoD", "_ecoR")
+  ) %>%
+  left_join(
+    accuracy_by_ecoprovince,
+    by = c("raster", "Ecoprv_n")
+    #suffix = c("", "_ecoP")
   )
 
 #---- Apply fallback logic ----
 # Replace metrics when N_evaluated is too small
 accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
   mutate(
-    use_fallback = N_evaluated_ecoD < min_n,
-    
-    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
-    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
-    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
-    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
-    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
-    
+    source_level = case_when(
+      N_evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      TRUE ~ "ecoprovince"),
+    TP = case_when(
+      source_level == "ecodistrict" ~ TP_ecoD,
+      source_level == "ecoregion" ~ TP_ecoR,
+      TRUE ~ TP_ecoP),
+    TN = case_when(
+      source_level == "ecodistrict" ~ TN_ecoD,
+      source_level == "ecoregion" ~ TN_ecoR,
+      TRUE ~ TN_ecoP),
+    FP = case_when(
+      source_level == "ecodistrict" ~ FP_ecoD,
+      source_level == "ecoregion" ~ FP_ecoR,
+      TRUE ~ FP_ecoP),
+    FN = case_when(
+      source_level == "ecodistrict" ~ FN_ecoD,
+      source_level == "ecoregion" ~ FN_ecoR,
+      TRUE ~ FN_ecoP),
+    N_evaluated = case_when(
+      source_level == "ecodistrict" ~ N_evaluated_ecoD,
+      source_level == "ecoregion" ~ N_evaluated_ecoR,
+      TRUE ~ N_evaluated_ecoP),
     # recompute metrics from chosen counts
     metrics = pmap(
       list(TP, TN, FP, FN),
-      ~ compute_metrics(..1, ..2, ..3, ..4)
-    )
-  ) %>%
+      ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
-  select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
+  select(
+    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    source_level, everything())
 
 accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
   mutate(
-    use_fallback = N_evaluated_ecoD < min_n,
-    
-    TP = ifelse(use_fallback, TP_ecoR, TP_ecoD),
-    TN = ifelse(use_fallback, TN_ecoR, TN_ecoD),
-    FP = ifelse(use_fallback, FP_ecoR, FP_ecoD),
-    FN = ifelse(use_fallback, FN_ecoR, FN_ecoD),
-    N_evaluated = ifelse(use_fallback, N_evaluated_ecoR, N_evaluated_ecoD),
-    
+    source_level = case_when(
+      !is.na(N_evaluated_ecoD) & N_evaluated_ecoD >= min_n ~ "ecodistrict",
+      !is.na(N_evaluated_ecoR) & N_evaluated_ecoR >= min_n ~ "ecoregion",
+      TRUE ~ "ecoprovince"),
+    TP = case_when(
+      source_level == "ecodistrict" ~ TP_ecoD,
+      source_level == "ecoregion" ~ TP_ecoR,
+      TRUE ~ TP_ecoP),
+    TN = case_when(
+      source_level == "ecodistrict" ~ TN_ecoD,
+      source_level == "ecoregion" ~ TN_ecoR,
+      TRUE ~ TN_ecoP),
+    FP = case_when(
+      source_level == "ecodistrict" ~ FP_ecoD,
+      source_level == "ecoregion" ~ FP_ecoR,
+      TRUE ~ FP_ecoP),
+    FN = case_when(
+      source_level == "ecodistrict" ~ FN_ecoD,
+      source_level == "ecoregion" ~ FN_ecoR,
+      TRUE ~ FN_ecoP),
+    N_evaluated = case_when(
+      source_level == "ecodistrict" ~ N_evaluated_ecoD,
+      source_level == "ecoregion" ~ N_evaluated_ecoR,
+      TRUE ~ N_evaluated_ecoP),
     # recompute metrics from chosen counts
     metrics = pmap(
       list(TP, TN, FP, FN),
-      ~ compute_metrics(..1, ..2, ..3, ..4)
-    )
-  ) %>%
+      ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
-  select(raster, Ecds_ID, Ecrgn_n, use_fallback, everything())
-
-#---- Keep provenance flags ----
-accuracy_with_fallback_atomic <- accuracy_with_fallback_atomic %>%
-  mutate(
-    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
-  )
-
-accuracy_with_fallback_grouped <- accuracy_with_fallback_grouped %>%
-  mutate(
-    source_level = ifelse(use_fallback, "ecoregion", "ecodistrict")
-  )
+  select(
+    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    source_level, everything())
 
 #---- Export ----
 
@@ -731,6 +790,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic.csv")
 )
+
 # ----------------------------
 # 15) Create rasters of accuracy by ecodistrict
 # ----------------------------

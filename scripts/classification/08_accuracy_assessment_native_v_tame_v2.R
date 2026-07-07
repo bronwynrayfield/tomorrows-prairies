@@ -595,3 +595,467 @@ write_xlsx(
   path = out_xlsx
 )
 
+#####################################################################################
+#####################################################################################
+
+# ----------------------------
+# 13) Accuracy by Ecodistrict (TRICLASS)
+# ----------------------------
+
+if (!"Ecds_ID" %in% names(eval_data)) {
+  stop("Ecds_ID column not found in eval_data.")
+}
+
+# ---- ATOMIC: raster × ecodistrict ----
+accuracy_by_ecodistrict_atomic <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "Ecds_ID")
+) %>%
+  arrange(raster, Ecds_ID)
+
+# ---- GROUPED: collapse pli_* -> pli ----
+accuracy_by_ecodistrict_grouped <- eval_data %>%
+  mutate(raster = raster_group) %>%
+  summarize_block_multiclass(
+    key_cols = c("raster", "Ecds_ID")
+  ) %>%
+  arrange(raster, Ecds_ID)
+
+# ---- OPTIONAL: atomic with year ----
+accuracy_by_ecodistrict_year_atomic <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "matched_year", "Ecds_ID")
+) %>%
+  rename(raster_year = matched_year) %>%
+  arrange(raster, raster_year, Ecds_ID)
+
+# ---- Save ----
+readr::write_csv(accuracy_by_ecodistrict_grouped,
+                 file.path(out_dir, "accuracy_by_ecodistrict_grouped_lenient.csv"))
+
+readr::write_csv(accuracy_by_ecodistrict_atomic,
+                 file.path(out_dir, "accuracy_by_ecodistrict_atomic_lenient.csv"))
+
+readr::write_csv(accuracy_by_ecodistrict_year_atomic,
+                 file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_lenient.csv"))
+
+# ----------------------------
+# 14) Multiclass fallback hierarchy
+# ecodistrict -> ecoregion -> ecoprovince
+# ----------------------------
+
+min_n <- 20
+
+# ---- Ecoregion metrics ----
+accuracy_by_ecoregion <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "Ecrgn_n")
+)
+
+# ---- Ecoprovince metrics ----
+accuracy_by_ecoprovince <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "Ecoprv_n")
+) %>%
+  rename_with(
+    ~ paste0(.x, "_ecoP"),
+    -c(raster, Ecoprv_n)
+  )
+
+# ---- Mapping table ----
+ecodist_to_regions <- eval_data %>%
+  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
+
+# --------------------------------------------------
+# ATOMIC
+# --------------------------------------------------
+
+accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
+  left_join(ecodist_to_regions, by = "Ecds_ID")
+
+fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  ) %>%
+  left_join(
+    accuracy_by_ecoprovince,
+    by = c("raster", "Ecoprv_n")
+  )
+
+# Make sure suffixes are present 
+names(fallback_joined_atomic)
+
+metric_cols <- setdiff(
+  names(accuracy_by_ecodistrict_atomic),
+  c("raster", "Ecds_ID")
+)
+
+accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
+  mutate(
+    source_level = case_when(
+      N_evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      TRUE ~ "ecoprovince"
+    )
+  ) %>%
+  mutate(
+    across(
+      all_of(metric_cols),
+      ~ case_when(
+        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
+        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
+        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
+      ),
+      .names = "{.col}"
+    )
+  )
+
+# --------------------------------------------------
+# GROUPED
+# --------------------------------------------------
+
+accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
+  left_join(ecodist_to_regions, by = "Ecds_ID")
+
+fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  ) %>%
+  left_join(
+    accuracy_by_ecoprovince,
+    by = c("raster", "Ecoprv_n")
+  )
+
+# Make sure suffixes are present 
+names(fallback_joined_grouped)
+
+accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
+  mutate(
+    source_level = case_when(
+      N_evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      TRUE ~ "ecoprovince"
+    )
+  ) %>%
+  mutate(
+    across(
+      all_of(metric_cols),
+      ~ case_when(
+        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
+        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
+        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
+      ),
+      .names = "{.col}"
+    )
+  )
+
+# ----------------------------
+# Export multiclass fallback results
+# ----------------------------
+
+readr::write_csv(
+  accuracy_with_fallback_atomic,
+  file.path(
+    out_dir,
+    "accuracy_by_ecodistrict_atomic_multiclass_fallback.csv"
+  )
+)
+
+readr::write_csv(
+  accuracy_with_fallback_grouped,
+  file.path(
+    out_dir,
+    "accuracy_by_ecodistrict_grouped_multiclass_fallback.csv"
+  )
+)
+
+# ----------------------------
+# 15) Create rasters of accuracy by ecodistrict
+# ----------------------------
+
+summary_by_ecodistrict <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "Ecds_ID")
+)
+
+# ---- global MCC fallback (FIXED) ----
+global_mcc <- metrics_by_dataset %>%
+  select(raster_group, MCC_global = MCC_Multiclass) %>%
+  rename(raster = raster_group)
+
+# ---- weights ----
+weights_ecodist_mcc <- summary_by_ecodistrict %>%
+  select(raster, Ecds_ID, MCC_Multiclass, N_evaluated) %>%
+  
+  rename(
+    MCC = MCC_Multiclass,
+    N_evaluated = N_evaluated
+  ) %>%
+  
+  mutate(
+    MCC = ifelse(N_evaluated < 30, NA, MCC)
+  ) %>%
+  
+  left_join(global_mcc, by = "raster") %>%
+  
+  mutate(
+    MCC_final = case_when(
+      is.na(MCC) ~ MCC_global,
+      TRUE ~ 0.7 * MCC + 0.3 * MCC_global
+    ),
+    
+    MCC_final = (MCC_final + 1) / 2,
+    MCC_final = pmin(pmax(MCC_final, 0), 1)
+  ) %>%
+  
+  select(raster, Ecds_ID, MCC_final)
+
+library(terra)
+
+eco_vect <- vect("R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean.shp")
+eco_vect$Ecds_ID <- as.character(eco_vect$ECODISTRIC)
+
+weights_ecodist_mcc$Ecds_ID <- as.character(weights_ecodist_mcc$Ecds_ID)
+
+template <- rast("R:/CanadianGrasslands/WG_Classification/processed/aafc_aci/aligned/aafc_aci_merged_reproj_algn_binary_noshrub.tif")
+
+raster_names <- unique(weights_ecodist_mcc$raster)
+
+mcc_rasters <- vector("list", length(raster_names))
+names(mcc_rasters) <- raster_names
+
+for (r_name in raster_names) {
+  
+  w_df <- weights_ecodist_mcc %>% filter(raster == r_name)
+  
+  eco_joined <- merge(eco_vect, w_df, by = "Ecds_ID", all.x = TRUE)
+  
+  fallback_val <- global_mcc$MCC_global[global_mcc$raster == r_name]
+  fallback_val <- (fallback_val + 1) / 2
+  
+  eco_joined$MCC_final[is.na(eco_joined$MCC_final)] <- fallback_val
+  
+  r_mcc <- rasterize(
+    eco_joined,
+    template,
+    field = "MCC_final",
+    touches = TRUE
+  )
+  
+  names(r_mcc) <- r_name
+  
+  mcc_rasters[[r_name]] <- r_mcc
+}
+
+mcc_stack <- rast(mcc_rasters)
+
+writeRaster(
+  mcc_stack,
+  file.path(out_dir, "mcc_weight_stack_triclass.tif"),
+  overwrite = TRUE,
+  wopt = list(datatype = "FLT4S",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES"))
+)
+
+# ----------------------------
+# 15) Plots: Map by ecodistrict
+# ----------------------------
+
+# ---- Match CRS to template raster ----
+ecodistricts <- terra::project(eco_vect, template)
+
+# ---- Convert to sf for ggplot ----
+ecodistricts_sf <- sf::st_as_sf(ecodistricts)
+
+# ---- Ensure join key is character ----
+ecodistricts_sf <- ecodistricts_sf %>%
+  mutate(Ecds_ID = as.character(Ecds_ID))
+
+accuracy_by_ecodistrict_grouped <- accuracy_by_ecodistrict_grouped %>%
+  mutate(Ecds_ID = as.character(Ecds_ID))
+
+# ----------------------------
+# Join spatial + accuracy data
+# ----------------------------
+map_data_grouped <- ecodistricts_sf %>%
+  left_join(accuracy_by_ecodistrict_grouped, by = "Ecds_ID")
+
+# ----------------------------
+# Metrics to map
+# ----------------------------
+metrics_to_map <- c(
+  "Overall_Accuracy",
+  "Balanced_Accuracy",
+  "Kappa",
+  "MCC_Multiclass",
+  "N_evaluated"
+)
+
+# ----------------------------
+# Function to make maps
+# ----------------------------
+make_map <- function(data, raster_name, metric_name) {
+  
+  df <- data %>%
+    filter(raster == raster_name)
+  
+  # Define fill scale 
+  if (metric_name == "N_evaluated") {
+    fill_scale <- scale_fill_viridis_c(
+      na.value = "grey90",
+      option = "C",
+      name = "N evaluated"
+    )
+  } else {
+    fill_scale <- scale_fill_viridis_c(
+      na.value = "grey90",
+      option = "C",
+      labels = scales::percent_format(accuracy = 1),
+      name = metric_name
+    )
+  }
+  
+  # Build plot
+  p <- ggplot(df) +
+    geom_sf(aes(fill = .data[[metric_name]]), color = NA) +
+    fill_scale +
+    ggtitle(paste0("Raster: ", raster_name, " | ", metric_name)) +
+    theme_minimal()
+  
+  return(p)
+}
+
+# ----------------------------
+# Generate and save maps
+# ----------------------------
+unique_rasters <- sort(unique(map_data_grouped$raster))
+
+for (r in unique_rasters) {
+  
+  for (m in metrics_to_map) {
+    
+    p <- make_map(map_data_grouped, r, m)
+    
+    outfile <- file.path(
+      out_dir,
+      paste0("map_", r, "_", m, ".png")
+    )
+    
+    ggsave(
+      filename = outfile,
+      plot = p,
+      width = 8,
+      height = 6,
+      dpi = 300
+    )
+  }
+}
+
+# ------ Mean N_evaluated per ecodistrict (across rasters)------
+
+# ---- Compute mean N across rasters ----
+mean_N_by_ecodistrict <- accuracy_by_ecodistrict_atomic %>%
+  group_by(Ecds_ID) %>%
+  summarise(
+    mean_N_evaluated = mean(N_evaluated, na.rm = TRUE),
+    n_rasters = sum(!is.na(N_evaluated)),
+    .groups = "drop"
+  )
+
+# ---- Join to spatial data ----
+mean_N_by_ecodistrict <- mean_N_by_ecodistrict %>%
+  mutate(Ecds_ID = as.character(Ecds_ID))
+
+mean_N_map <- ecodistricts_sf %>%
+  left_join(mean_N_by_ecodistrict, by = "Ecds_ID")
+
+# --- Plot map ------------
+p_mean_N <- ggplot(mean_N_map) +
+  geom_sf(aes(fill = mean_N_evaluated), color = NA) +
+  scale_fill_viridis_c(
+    option = "C",
+    na.value = "grey90",
+    name = "Mean N evaluated"
+  ) +
+  ggtitle("Mean Sample Size (N_evaluated) Across Rasters by Ecodistrict") +
+  theme_minimal()
+
+# ---- Save ----
+ggsave(
+  filename = file.path(out_dir, "map_mean_N_evaluated_ecodistrict.png"),
+  plot = p_mean_N,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# ----------------------------
+# 16) Plots: Overall accuracy (GROUPED and ATOMIC)
+# ----------------------------
+
+# grouped summary 
+summary_by_raster_grouped <- metrics_by_dataset
+
+# atomic summary
+summary_by_raster_atomic <- summarize_block_multiclass(
+  eval_data,
+  key_cols = "raster"
+)
+
+# GROUPED plot
+p_grouped <- ggplot(summary_by_raster_grouped,
+                    aes(x = reorder(raster_group, Overall_Accuracy), y = Overall_Accuracy)) +
+  geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
+  labs(title = "Overall Accuracy by raster",
+       x = "Raster", y = "Overall Accuracy") +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank())
+
+ggsave(file.path(out_dir, "raster_accuracy_plot_nattam_cropsins.png"),
+       p_grouped, width = 7, height = 5, dpi = 200)
+
+# ATOMIC plot
+p_atomic <- ggplot(summary_by_raster_atomic,
+                   aes(x = reorder(raster, Overall_Accuracy), y = Overall_Accuracy)) +
+  geom_col(fill = "#2d7f5e") +
+  geom_text(aes(label = paste0("n = ", N_evaluated)),
+            hjust = 1.1,
+            color = "white",
+            size = 3.5) +
+  coord_flip() +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
+  labs(title = "Overall Accuracy by Raster",
+       x = "Raster", y = "Overall Accuracy") +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank())
+
+ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_nattam_cropins.png"),
+       p_atomic, width = 7, height = 5, dpi = 200)
+
+#################################################################
+#################################################################
+
+# Compare macro metrics
+summary_long <- summary_by_raster_grouped %>%
+  select(raster_group,
+         Overall_Accuracy,
+         Balanced_Accuracy,
+         Macro_F1,
+         MCC_Multiclass) %>%
+  pivot_longer(-raster_group, names_to = "metric", values_to = "value")
+
+ggplot(summary_long,
+       aes(x = reorder(raster_group, value), y = value, fill = metric)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme_minimal()

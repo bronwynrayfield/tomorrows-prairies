@@ -711,7 +711,141 @@ readr::write_csv(accuracy_by_ecodistrict_year_atomic,
                  file.path(out_dir, "accuracy_by_ecodistrict_year_atomic.csv"))
 
 # ----------------------------
-# 14) Create rasters of accuracy by ecodistrict
+# 14) Multiclass fallback hierarchy
+# ecodistrict -> ecoregion -> ecoprovince
+# ----------------------------
+
+min_n <- 20
+
+# ---- Ecoregion metrics ----
+accuracy_by_ecoregion <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "Ecrgn_n")
+)
+
+# ---- Ecoprovince metrics ----
+accuracy_by_ecoprovince <- summarize_block_multiclass(
+  eval_data,
+  key_cols = c("raster", "Ecoprv_n")
+) %>%
+  rename_with(
+    ~ paste0(.x, "_ecoP"),
+    -c(raster, Ecoprv_n)
+  )
+
+# ---- Mapping table ----
+ecodist_to_regions <- eval_data %>%
+  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
+
+# --------------------------------------------------
+# ATOMIC
+# --------------------------------------------------
+
+accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
+  left_join(ecodist_to_regions, by = "Ecds_ID")
+
+fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  ) %>%
+  left_join(
+    accuracy_by_ecoprovince,
+    by = c("raster", "Ecoprv_n")
+  )
+
+# Make sure suffixes are present 
+names(fallback_joined_atomic)
+
+metric_cols <- setdiff(
+  names(accuracy_by_ecodistrict_atomic),
+  c("raster", "Ecds_ID")
+)
+
+accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
+  mutate(
+    source_level = case_when(
+      N_evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      TRUE ~ "ecoprovince"
+    )
+  ) %>%
+  mutate(
+    across(
+      all_of(metric_cols),
+      ~ case_when(
+        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
+        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
+        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
+      ),
+      .names = "{.col}"
+    )
+  )
+
+# --------------------------------------------------
+# GROUPED
+# --------------------------------------------------
+
+accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
+  left_join(ecodist_to_regions, by = "Ecds_ID")
+
+fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
+  left_join(
+    accuracy_by_ecoregion,
+    by = c("raster", "Ecrgn_n"),
+    suffix = c("_ecoD", "_ecoR")
+  ) %>%
+  left_join(
+    accuracy_by_ecoprovince,
+    by = c("raster", "Ecoprv_n")
+  )
+
+# Make sure suffixes are present 
+names(fallback_joined_grouped)
+
+accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
+  mutate(
+    source_level = case_when(
+      N_evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      TRUE ~ "ecoprovince"
+    )
+  ) %>%
+  mutate(
+    across(
+      all_of(metric_cols),
+      ~ case_when(
+        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
+        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
+        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
+      ),
+      .names = "{.col}"
+    )
+  )
+
+# ----------------------------
+# Export multiclass fallback results
+# ----------------------------
+
+readr::write_csv(
+  accuracy_with_fallback_atomic,
+  file.path(
+    out_dir,
+    "accuracy_by_ecodistrict_atomic_multiclass_fallback.csv"
+  )
+)
+
+readr::write_csv(
+  accuracy_with_fallback_grouped,
+  file.path(
+    out_dir,
+    "accuracy_by_ecodistrict_grouped_multiclass_fallback.csv"
+  )
+)
+
+# ----------------------------
+# 15) Create rasters of accuracy by ecodistrict
 # ----------------------------
 
 summary_by_ecodistrict <- summarize_block_multiclass(
