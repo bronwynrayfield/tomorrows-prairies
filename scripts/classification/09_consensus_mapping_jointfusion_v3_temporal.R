@@ -50,7 +50,7 @@ tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 # Load packages
 library(terra)
 library(readr)
-library(dplyr)
+library(tidyverse)
 library(aws.s3)
 
 # Set terra options
