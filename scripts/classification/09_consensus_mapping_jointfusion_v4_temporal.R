@@ -64,16 +64,24 @@ terraOptions(
   progress = 1
 )
 
+# Force a fresh run instead of silently re-using old scratch outputs
+FORCE_REBUILD <- TRUE
+
 ## ---- Settings ---- ##
 
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/consensus_map"
 log_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
-local_dir  <- file.path(tmp_root, "rasters")
+terra_dir    <- file.path(tmp_root, "terra")
+local_dir    <- file.path(tmp_root, "data")
+stack_dir    <- file.path(tmp_root, "stacks")
 dir.create(local_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(stack_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(terra_dir, recursive = TRUE, showWarnings = FALSE)
 
 meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_nohfi.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
+sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_atomic_combinedCIandCM_23Jun2026.csv"
 acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_atomic_lenient_23Jun2026.csv"
 
@@ -166,6 +174,20 @@ pilot <- rast(pilot_local)
 
 log_msg("Pilot area loaded")
 
+## ---- Load study area ---- ##
+log_msg("Loading study area")
+
+sa_local <- file.path(local_dir, "study_area.tif")
+
+aws.s3::save_object(
+  object = sa_file,
+  file = sa_local
+)
+
+sa <- rast(sa_local)
+
+log_msg("Study area loaded")
+
 ## ---- Download rasters locally ---- ##
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
@@ -228,44 +250,6 @@ bin_local <- download_files(bin_files)
 nt_local  <- download_files(nt_files)
 
 log_msg("All rasters downloaded locally")
-
-## ---- Create temporal-weight stacks ----##
-
-bin_time <- bin_meta$time_weight
-names(bin_time) <- names(bin_local)
-
-stopifnot(
-  identical(
-    names(bin_time),
-    names(bin_stack)
-  )
-)
-
-#time_bin_stack <- rast(
-#  lapply(bin_local, function(f) {
-#    r <- rast(f)
-#    values(r) <- bin_time[which(bin_local == f)]
-#    r
-#  })
-#)
-
-nt_time <- nt_meta$time_weight
-names(nt_time) <- names(nt_local)
-
-stopifnot(
-  identical(
-    names(nt_time),
-    names(nt_stack)
-  )
-)
-
-#time_nt_stack <- rast(
-#  lapply(nt_local, function(f) {
-#    r <- rast(f)
-#    values(r) <- nt_time[which(nt_local == f)]
-#    r
-#  })
-#)
 
 ## ---- Confirm raster alignment ---- ##
 message("Checking alignment...")
@@ -335,6 +319,44 @@ nt_stack <- if (length(nt_local) > 0) {
 }
 has_nt <- !is.null(nt_stack)
 
+## ---- Create temporal-weight stacks ----##
+
+#bin_time <- bin_meta$time_weight
+#names(bin_time) <- names(bin_local)
+
+#stopifnot(
+#  identical(
+#    names(bin_time),
+#    names(bin_stack)
+#  )
+#)
+
+#time_bin_stack <- rast(
+#  lapply(bin_local, function(f) {
+#    r <- rast(f)
+#    values(r) <- bin_time[which(bin_local == f)]
+#    r
+#  })
+#)
+
+#nt_time <- nt_meta$time_weight
+#names(nt_time) <- names(nt_local)
+
+#stopifnot(
+#  identical(
+#    names(nt_time),
+#    names(nt_stack)
+#  )
+#)
+
+#time_nt_stack <- rast(
+#  lapply(nt_local, function(f) {
+#    r <- rast(f)
+#    values(r) <- nt_time[which(nt_local == f)]
+#    r
+#  })
+#)
+
 # =========================
 # GLOBAL OPTIONS
 # =========================
@@ -348,11 +370,217 @@ terraOptions(
 Sys.setenv(GDAL_CACHEMAX = 8192)
 
 # =========================
-# INPUTS
+# INTEGRATE ACCURACY DATA
 # =========================
-#sa <- rast("classification_study_area_aligned.tif")
 
-# Load rasterized ecodistricts 
+## ---- Load binary accuracy table ---- ##
+log_msg("Loading binary accuracy table")
+
+acc_bin <- aws.s3::s3read_using(
+  read_csv,
+  object = acc_bin_file,
+  show_col_types = FALSE) %>%
+  mutate(
+    raster_name = paste0(
+      tolower(trimws(raster)),
+      "_bin"))
+
+## ---- Load tri-class accuracy table ---- ##
+log_msg("Loading tri-class accuracy table")
+
+acc_nt <- aws.s3::s3read_using(
+  read_csv,
+  object = acc_nt_file,
+  show_col_types = FALSE) %>%
+  mutate(
+    raster_name = paste0(
+      tolower(trimws(raster)),
+      "_nt"))
+
+## ---- Validate binary accuracy table ---- ##
+log_msg("Binary accuracy rows loaded: ", nrow(acc_bin))
+
+req_cols <- c(
+  "raster_name",
+  "Ecds_ID",
+  "MCC"
+)
+
+if (!all(req_cols %in% names(acc_bin))) {
+  stop(
+    "Missing required columns in binary accuracy table: ",
+    paste(setdiff(req_cols, names(acc_bin)), collapse = ", ")
+  )
+}
+
+acc_bin <- acc_bin %>%
+  mutate(
+    Ecds_ID = as.integer(round(Ecds_ID))
+  )
+
+dup_check <- acc_bin %>%
+  count(raster_name, Ecds_ID) %>%
+  filter(n > 1)
+
+if (nrow(dup_check) > 0) {
+  stop(
+    "Duplicate raster/ecodistrict combinations found in acc_bin"
+  )
+}
+
+missing_bin_names <- setdiff(
+  unique(acc_bin$raster_name),
+  meta$raster_id
+)
+
+if(length(missing_bin_names) > 0)
+  stop("Raster names do not match")
+
+## ---- Validate tri-class accuracy table ---- ##
+log_msg("Tri-class accuracy rows loaded: ", nrow(acc_nt))
+
+req_cols_nt <- c(
+  "raster_name",
+  "Ecds_ID",
+  "MCC_Multiclass",
+  "F1_1",
+  "F1_2"
+)
+
+if (!all(req_cols_nt %in% names(acc_nt))) {
+  
+  stop(
+    "Missing required columns in tri-class accuracy table: ",
+    paste(
+      setdiff(req_cols_nt, names(acc_nt)),
+      collapse = ", "
+    )
+  )
+}
+
+acc_nt <- acc_nt %>%
+  mutate(
+    Ecds_ID = as.integer(round(Ecds_ID))
+  )
+
+dup_check_nt <- acc_nt %>%
+  count(raster_name, Ecds_ID) %>%
+  filter(n > 1)
+
+if (nrow(dup_check_nt) > 0) {
+  stop(
+    "Duplicate raster/ecodistrict combinations found in acc_nt"
+  )
+}
+
+missing_nt_names <- setdiff(
+  unique(acc_nt$raster_name),
+  meta$raster_id
+)
+
+if(length(missing_nt_names) > 0)
+  stop("Raster names do not match")
+
+## ---- Add temporal weighting ---- ##
+log_msg("Applying MCC + temporal weighting")
+
+mcc_to_weight <- function(x) {
+  w <- (x + 1) / 2
+  w[!is.finite(w)] <- NA
+  pmax(w, 1e-4)
+}
+
+time_decay <- function(year, target_year, lambda) {
+  exp(-lambda * abs(year - target_year))
+}
+
+acc_bin <- acc_bin %>%
+  left_join(
+    meta %>%
+      select(
+        raster_id,
+        year
+      ),
+    by = c(
+      "raster_name" = "raster_id"
+    )
+  )
+
+if (any(is.na(acc_bin$year))) {
+  stop("Missing year information in acc_bin")
+}
+
+acc_bin <- acc_bin %>%
+  mutate(
+    w_mcc  = mcc_to_weight(MCC),
+    w_time = time_decay(
+      year,
+      target_year,
+      lambda
+    ),
+    weight = w_mcc * w_time
+  )
+
+## ---- Add temporal weighting ---- ##
+log_msg("Applying tri-class metric weighting")
+
+acc_nt <- acc_nt %>%
+  left_join(
+    meta %>%
+      select(
+        raster_id,
+        year
+      ),
+    by = c(
+      "raster_name" = "raster_id"
+    )
+  )
+
+if (any(is.na(acc_nt$year))) {
+  stop("Missing year information in acc_nt")
+}
+
+acc_nt <- acc_nt %>%
+  mutate(w_mcc = mcc_to_weight(
+      MCC_Multiclass
+    ),
+    
+    w_time = time_decay(
+      year,
+      target_year,
+      lambda
+    ),
+    
+    W_tame =
+      w_mcc *
+      F1_1 *
+      w_time,
+    
+    W_native =
+      w_mcc *
+      F1_2 *
+      w_time
+    
+  )
+
+## ---- Validate tri-class raster coverage ---- ##
+
+missing_nt <- setdiff(
+  names(nt_stack),
+  acc_nt$raster_name
+)
+
+if (length(missing_nt) > 0) {
+  stop(
+    "Missing tri-class accuracy values for: ",
+    paste(
+      missing_nt,
+      collapse = ", "
+    )
+  )
+}
+
+## ---- Load ecodistrict raster ---- ##
 log_msg("Loading pilot-clipped ecodistrict raster")
 
 ecodist_r <- rast(ecodist_file)
@@ -362,65 +590,172 @@ ecodist_r <- mask(ecodist_r, pilot)
 
 ecodist_r <- as.int(ecodist_r)
 
+## ---- Validate ecodistrict coverage ---- ##
+log_msg("Validating ecodistrict coverage")
 
-#=================================================
-# Build MCC weight rasters from accuracy tables
-#=================================================
+ids_r <- unique(freq(ecodist_r)[, "value"])
 
-log_msg("Loading MCC accuracy tables")
+ids_tbl_bin <- unique(acc_bin$Ecds_ID)
+missing_ids_bin <- setdiff(ids_r, ids_tbl_bin)
 
-# Load accuracy (MCC)
-acc_bin <- aws.s3::s3read_using(read_csv, object = acc_bin_file, show_col_types = FALSE) %>%
-  mutate(raster_name = paste0(tolower(trimws(raster)), "_bin"),
-         Ecds_ID = as.integer(round(Ecds_ID)))
+ids_tbl_nt <- unique(acc_nt$Ecds_ID)
+missing_ids_nt <- setdiff(ids_r, ids_tbl_nt)
 
-acc_nt <- aws.s3::s3read_using(read_csv, object = acc_nt_file, show_col_types = FALSE) %>%
-  mutate(raster_name = paste0(tolower(trimws(raster)), "_nt"),
-         Ecds_ID = as.integer(round(Ecds_ID)))
+if (length(missing_ids_bin) > 0) {
+  stop("Ecodistrict IDs missing from binary accuracy table: ",
+    paste(
+      utils::head(missing_ids_bin),
+      collapse = ", "
+    ))}
 
-stopifnot(all(c("raster_name", "Ecds_ID", "MCC") %in% names(acc_bin)))
-stopifnot(all(c("raster_name", "Ecds_ID", "MCC") %in% names(acc_nt))))
+if (length(missing_ids_nt) > 0) {
+  stop("Ecodistrict IDs missing from triclass accuracy table: ",
+       paste(
+         utils::head(missing_ids_nt),
+         collapse = ", "
+       ))}
 
-dup_check <- acc_bin %>% count(raster_name, Ecds_ID) %>% filter(n > 1)
-if (nrow(dup_check) > 0) {
-  stop("Duplicate (raster_name, Ecds_ID) rows in accuracy table acc_bin: ",
-       paste(utils::head(paste(dup_check$raster_name, dup_check$Ecds_ID), 10), collapse = "; "))
-}
+## ---- Build MCC weight stack helper ---- ##
 
-# Join year information into accuracy table
-acc_bin <- acc_bin %>%
-  left_join(
-    meta %>% select(raster_id, year),
-    by = c("raster_name" = "raster_id")
+build_weight_stack <- function(
+    accuracy_table,
+    stack_names,
+    value_col,
+    ecodist_r,
+    out_prefix
+) {
+  
+  weight_files <- lapply(
+    stack_names,
+    function(nm) {
+      
+      log_msg(
+        "Building weight raster: ",
+        nm
+      )
+      
+      lookup <- accuracy_table %>%
+        filter(
+          raster_name == nm
+        ) %>%
+        select(
+          Ecds_ID,
+          all_of(value_col)
+        ) %>%
+        as.matrix()
+      
+      if (nrow(lookup) == 0) {
+        stop(
+          "No weights found for raster: ",
+          nm
+        )
+      }
+      
+      out <- file.path(
+        terra_dir,
+        paste0(
+          out_prefix,
+          "_",
+          nm,
+          ".tif"
+        )
+      )
+      
+      if (!file.exists(out) ||
+          FORCE_REBUILD) {
+        
+        #w <- classify(
+        #  ecodist_r,
+        #  rcl = lookup
+        #)
+        
+        w <- subst(
+          ecodist_r,
+          from = lookup[,1],
+          to   = lookup[,2]
+        )
+        
+        writeRaster(
+          w,
+          out,
+          overwrite = TRUE,
+          wopt = list(
+            datatype = "FLT4S"
+          )
+        )
+      }
+      
+      out
+      
+    }
   )
-
-if (any(is.na(acc_bin$year))) {
-  stop("Missing year info for some rasters in acc_bin")
+  
+  s <- rast(
+    unlist(weight_files)
+  )
+  
+  names(s) <- stack_names
+  
+  s
 }
 
-# check for missing columns or naming mismatch
-missing <- setdiff(names(bin_stack), acc_bin$raster_name)
-if (length(missing) > 0) {
-  stop("Missing MCC values for: ", paste(missing, collapse = ", "))
-}
+## ---- Build binary MCC stack ---- ##
+log_msg("Building binary MCC weight stack")
 
-# check ecodistrict raster values vs IDs
-ecodist_freq <- freq(ecodist_r)
-log_msg("Ecodistrict raster value/cell counts (head): ",
-        paste(utils::capture.output(print(utils::head(ecodist_freq))), collapse = " | "))
+mcc_bin_stack <- build_weight_stack(
+  accuracy_table = acc_bin,
+  stack_names    = names(bin_stack),
+  value_col      = "weight",
+  ecodist_r      = ecodist_r,
+  out_prefix     = "bin_mcc"
+)
 
-ids_r <- unique(ecodist_freq[, "value"])
-ids_tbl <- unique(acc_bin$Ecds_ID)
+stopifnot(
+  identical(
+    names(mcc_bin_stack),
+    names(bin_stack)
+  )
+)
 
-missing_ids <- setdiff(ids_r, ids_tbl)
-if (length(missing_ids) > 0) {
-  stop("Ecodistrict IDs missing from accuracy table: ",
-       paste(utils::head(missing_ids), collapse = ", "))
-}
+## ---- Build tame weight stack ---- ##
+log_msg("Building tame weight stack")
 
-mcc_bin_stack    <- rast("mcc_bin.tif")
-mcc_tame_stack   <- rast("mcc_tame.tif")
-mcc_native_stack <- rast("mcc_native.tif")
+metric_tame_stack <- build_weight_stack(
+  accuracy_table = acc_nt,
+  stack_names    = names(nt_stack),
+  value_col      = "W_tame",
+  ecodist_r      = ecodist_r,
+  out_prefix     = "tame"
+)
+
+stopifnot(
+  identical(
+    names(metric_tame_stack),
+    names(nt_stack)
+  )
+)
+
+## ---- Build native weight stack ---- ##
+log_msg("Building native weight stack")
+
+metric_native_stack <- build_weight_stack(
+  accuracy_table = acc_nt,
+  stack_names    = names(nt_stack),
+  value_col      = "W_native",
+  ecodist_r      = ecodist_r,
+  out_prefix     = "native"
+)
+
+stopifnot(
+  identical(
+    names(metric_native_stack),
+    names(nt_stack)
+  )
+)
+
+#mcc_bin_stack    <- rast("mcc_bin.tif")
+#mcc_tame_stack   <- rast("mcc_tame.tif")
+#mcc_native_stack <- rast("mcc_native.tif")
 
 penalty_bin_stack <- rast("penalty_bin.tif")
 penalty_nt_stack  <- rast("penalty_nt.tif")
@@ -465,8 +800,8 @@ process_tile <- function(i) {
   #time_nt  <- crop(time_nt_stack, tile)
   
   rbin <- crop(mcc_bin_stack, tile)
-  rt   <- crop(mcc_tame_stack, tile)
-  rn   <- crop(mcc_native_stack, tile)
+  rt   <- crop(metric_tame_stack, tile)
+  rn   <- crop(metric_native_stack, tile)
   
   pbin <- crop(penalty_bin_stack, tile)
   pnt  <- crop(penalty_nt_stack, tile)
@@ -478,17 +813,17 @@ process_tile <- function(i) {
   
   bin_w_eff <- rbin * pbin
   
-  for (j in seq_len(nlyr(bin_w_eff))) {
-    bin_w_eff[[j]] <- bin_w_eff[[j]] * bin_time[j]
-  }
+  #for (j in seq_len(nlyr(bin_w_eff))) {
+  #  bin_w_eff[[j]] <- bin_w_eff[[j]] * bin_time[j]
+  #}
   
   nt_w_tame <- rt * pnt
   nt_w_native <- rn * pnt
   
-  for (j in seq_len(nlyr(nt_w_tame))) {
-    nt_w_tame[[j]] <- nt_w_tame[[j]] * nt_time[j]
-    nt_w_native[[j]] <- nt_w_native[[j]] * nt_time[j]
-  }
+  #for (j in seq_len(nlyr(nt_w_tame))) {
+  #  nt_w_tame[[j]] <- nt_w_tame[[j]] * nt_time[j]
+  #  nt_w_native[[j]] <- nt_w_native[[j]] * nt_time[j]
+  #}
   
   #NEG_HALF <- 0.5
   
