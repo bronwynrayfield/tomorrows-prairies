@@ -9,6 +9,7 @@
 #         to serve as baseline for modelling
 
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER
+# using ml.m5d.12xlarge instance (48 vCPU, 192 GB RAM, NVMe SSD)
 
 # THIS VERSION IS IMPROVED VERSION OF V2
 
@@ -63,6 +64,7 @@ stack_dir    <- file.path(tmp_root, "stacks")
 meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_nohfi.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
+sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_atomic_combinedCIandCM_23Jun2026.csv"
 acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_atomic_lenient_23Jun2026.csv"
 
@@ -141,6 +143,20 @@ pilot <- rast(pilot_local)
 
 log_msg("Pilot area loaded")
 
+## ---- Load study area ---- ##
+log_msg("Loading study area")
+
+sa_local <- file.path(local_dir, "study_area.tif")
+
+aws.s3::save_object(
+  object = sa_file,
+  file = sa_local
+)
+
+sa <- rast(sa_local)
+
+log_msg("Study area loaded")
+
 ## ---- Download rasters locally ---- ##
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
@@ -179,11 +195,11 @@ download_files <- function(files_named) {
       # download original
       aws.s3::save_object(files_named[[nm]], file = raw_file)
       
-      # crop + mask to pilot
+      # crop + mask to pilot/study area
       r <- rast(raw_file)
       
-      r <- crop(r, pilot)
-      r <- mask(r, pilot)
+      r <- crop(r, sa)
+      r <- mask(r, sa)
       
       writeRaster(
         r,
@@ -350,12 +366,12 @@ if (length(missing) > 0) {
 #ecodist_r <- rast(ecodist_file)
 #ecodist_r <- as.int(ecodist_r) 
 
-log_msg("Loading pilot-clipped ecodistrict raster")
+log_msg("Loading clipped ecodistrict raster")
 
 ecodist_r <- rast(ecodist_file)
 
-ecodist_r <- crop(ecodist_r, pilot)
-ecodist_r <- mask(ecodist_r, pilot)
+ecodist_r <- crop(ecodist_r, sa)
+ecodist_r <- mask(ecodist_r, sa)
 
 ecodist_r <- as.int(ecodist_r)
 
@@ -367,10 +383,46 @@ log_msg("Ecodistrict raster value/cell counts (head): ",
 ids_r <- unique(ecodist_freq[, "value"])
 ids_tbl <- unique(acc_bin$Ecds_ID)
 
+length(missing_ids)
+
+acc_bin %>%
+  filter(Ecds_ID %in% missing_ids)
+
+ecodist_freq %>%
+  filter(value %in% missing_ids)
+
 missing_ids <- setdiff(ids_r, ids_tbl)
 if (length(missing_ids) > 0) {
   stop("Ecodistrict IDs missing from accuracy table: ",
        paste(utils::head(missing_ids), collapse = ", "))
+}
+
+# For now, fill MCC for missing ecodistricts
+if (length(missing_ids) > 0) {
+  
+  log_msg(
+    "Adding missing ecodistricts with neutral MCC=0: ",
+    paste(missing_ids, collapse = ", ")
+  )
+  
+  # Create a row for every raster × missing ecodistrict combination
+  missing_rows <- expand.grid(
+    raster_name = unique(acc_bin$raster_name),
+    Ecds_ID = missing_ids,
+    stringsAsFactors = FALSE
+  ) %>%
+    as_tibble() %>%
+    left_join(
+      meta %>%
+        select(raster_id, year),
+      by = c("raster_name" = "raster_id")
+    ) %>%
+    mutate(
+      MCC = 0
+    )
+  
+  # Append to accuracy table
+  acc_bin <- bind_rows(acc_bin, missing_rows)
 }
 
 # Build weight stack layer-by-layer
@@ -520,7 +572,6 @@ prob_A_minN <- ifel(
 )
 
 #--------- Tri-class (MCC + F1 weights) ---------#
-log_msg("Running tri-class fusion")
 
 if (has_nt) {
   
@@ -704,7 +755,10 @@ p_native <- p_grass * share_native # assumes "is it grass" evidence (bin_stack) 
 p_tame   <- p_grass * share_tame   # potential disagreement is not surfaced/resolved - produces NA or silently-inconsistent output
 p_not    <- 1 - p_grass
 
+log_msg("Probabilities  calculated")
+
 # Hard classification with tiebreak rule
+log_msg("Running hard classification")
 classify_with_tiebreak <- function(p_not, p_tame, p_native) {
   eps <- 1e-9
   p_native_biased <- p_native + 2 * eps
@@ -721,19 +775,23 @@ class_map <- classify_with_tiebreak(p_not, p_tame, p_native)
 rcl <- matrix(c(1, 0, 2, 1, 3, 2), ncol = 2, byrow = TRUE)
 
 # For max-probability / uncertainty reporting, use the unbiased stack
+log_msg("Stacking unbiased rasters")
 p_stack <- c(p_not, p_tame, p_native)
 max_p <- app(p_stack, fun = "max", na.rm = TRUE,
              filename = file.path(terra_dir, "maxp.tif"), overwrite = TRUE)
 
 #----------- Uncertainty ----------#
+log_msg("Calculating uncertainty")
 uncertainty <- 1 - max_p
 
 # Combine binary + tri-class temporal uncertainty
 
 # Normalize tri-class SD
+log_msg("Normalizing tri-class SD")
 temporal_sd_nt_norm <- temporal_sd_nt / (temporal_sd_nt + 1)
 
 # Combine all uncertainty sources
+log_msg("Combining all uncertainty sources")
 uncertainty_total <- (
   uncertainty +
     temporal_sd_nt_norm
