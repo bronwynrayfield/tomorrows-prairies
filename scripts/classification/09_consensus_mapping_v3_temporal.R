@@ -9,7 +9,9 @@
 #         to serve as baseline for modelling
 
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER
-# using ml.m5d.12xlarge instance (48 vCPU, 192 GB RAM, NVMe SSD)
+# Tried ml.m5d.12xlarge instance (48 vCPU, 192 GB RAM, NVMe SSD) - ran for 24 hours and failed
+#   exit code 137: possible out of memory issue
+# Successfully ran using ml.m5d.16xlarge instance (64 vCPU, 256 GB RAM, NVMe SSD) - took about 24h
 
 # THIS VERSION IS IMPROVED VERSION OF V2
 
@@ -383,6 +385,12 @@ log_msg("Ecodistrict raster value/cell counts (head): ",
 ids_r <- unique(ecodist_freq[, "value"])
 ids_tbl <- unique(acc_bin$Ecds_ID)
 
+missing_ids <- setdiff(ids_r, ids_tbl)
+if (length(missing_ids) > 0) {
+  stop("Ecodistrict IDs missing from accuracy table: ",
+       paste(utils::head(missing_ids), collapse = ", "))
+}
+
 length(missing_ids)
 
 acc_bin %>%
@@ -390,12 +398,6 @@ acc_bin %>%
 
 ecodist_freq %>%
   filter(value %in% missing_ids)
-
-missing_ids <- setdiff(ids_r, ids_tbl)
-if (length(missing_ids) > 0) {
-  stop("Ecodistrict IDs missing from accuracy table: ",
-       paste(utils::head(missing_ids), collapse = ", "))
-}
 
 # For now, fill MCC for missing ecodistricts
 if (length(missing_ids) > 0) {
