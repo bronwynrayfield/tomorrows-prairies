@@ -12,6 +12,11 @@
 
 ## NEED TO REMOVE MORE TRAINING DATA FOR ACI??
 
+## THIS VERSION USES MORE LENIENT MATCHING RULES FOR YEAR:
+##   - All non-grass points are annual cropland: allowed year +/- 1 year
+##   - All tame points are forage pasture class from crop ins data and forages usually
+##     present for 3 years: allowed year +/- 1 year
+
 ## Goal:
 ##   Assess the accuracy of multiple grassland rasters vs. ground-truth points
 ##   using time-aligned rules that depend on class (NATIVE or TAME).
@@ -26,8 +31,8 @@
 ##   - must have non-NA raster prediction (0 or 1)
 ##   - class-based time rule using allowed years for that raster:
 ##       NATIVE: any( allowed_year <= Yer_Cll ); matched_year = max(allowed_year ≤ Yer_Cll)
-##       TAME:   any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
-##       OTHER: 
+##       TAME:   any( allowed_year +/- Yer_Cll ); matched_year = Yer_Cll (if allowed)
+##       OTHER:  any( allowed_year +/- Yer_Cll ); matched_year = Yer_Cll (if allowed)
 ##
 ## Exclusions:
 ##   - Source used for training: exclude if Training_norm matches either atomic raster code or grouped alias
@@ -112,7 +117,69 @@ points <- points %>%
 points <- points %>%
   filter(Ecds_ID != 0)
 
-required_cols <- c("Pt_ID", "LC_grass", "Training","Sorc_ID", "Ecds_ID", "Ecrg_ID", "Yer_Cll", "LC_Cl_N")
+unique(points$Ecrgn_n)
+
+# Create column for ecoprovince
+points <- points %>%
+  mutate(
+    Ecprv = case_when(
+      Ecrgn_n %in% c("Abitibi Plains", 
+                     "Lake Nipigon",
+                     "Rupert River Plateau",
+                     "Lac Seul Upland") ~ "6.2",
+      Ecrgn_n %in% c("Thunder Bay-Quetico", 
+                     "Lake of the Woods",
+                     "Rainy River") ~ "6.5",
+      Ecrgn_n %in% c("Algonquin-Lake Nipissing", 
+                     "Southern Laurentians",
+                     "Lac Temiscamingue Lowland") ~ "6.6",
+      Ecrgn_n %in% c("St-Laurent Lowlands", 
+                     "St. Lawrence Lowlands", 
+                     "Manitoulin-Lake Simcoe",
+                     "Frontenac Axis") ~ "8.1",
+      Ecrgn_n == "Lake Erie Lowland" ~ "8.2",
+      Ecrgn_n %in% c("Western Alberta Upland", 
+                     "Clear Hills Upland") ~ "9.1",
+      Ecrgn_n %in% c("Wabasca Lowland", 
+                     "Boreal Transition",
+                     "Western Boreal",
+                     "Peace Lowland",
+                     "Mid-Boreal Uplands") ~ "9.2",
+      Ecrgn_n %in% c("Interlake Plain", 
+                     "Mid-Boreal Lowland") ~ "9.3",
+      Ecrgn_n == "Lake Manitoba Plain" ~ "10.1",
+      Ecrgn_n %in% c("Aspen Parkland", 
+                     "Southwest Manitoba Uplands",
+                     "Southwest Manotoba Uplands") ~ "10.2",
+      Ecrgn_n %in% c("Mixed Grassland", 
+                     "Moist Mixed Grassland",
+                     "Fescue Grassland",
+                     "Cypress Upland") ~ "10.3",
+      Ecrgn_n %in% c("Lower Mainland", 
+                     "Eastern Vancouver Island") ~ "13.1",
+      Ecrgn_n %in% c("Pacific Ranges", 
+                     "Cascade Ranges") ~ "13.2",
+      Ecrgn_n %in% c("Central Canadian Rocky Mountains", 
+                     "Skeena Mountains",
+                     "Fraser Basin") ~ "14.1",
+      Ecrgn_n %in% c("Fraser Plateau",
+                     "Bulkley Ranges") ~ "14.2",
+      Ecrgn_n %in% c("Thompson-Okanagan Plateau", 
+                     "Okanogan Highland",
+                     "Okanogan Range",
+                     "Okanagan Highland",
+                     "Okanagan Range",
+                     "Interior Transition Ranges") ~ "14.3",
+      Ecrgn_n %in% c("Columbia Mountains and Highlands", 
+                     "Southern Rocky Mountain Trench",
+                     "Northern Continental Divide",
+                     "Eastern Continental Ranges",
+                     "Western Continental Ranges",
+                     "Selkirk-Bitterroot Foothills") ~ "14.4"))
+
+unique(points$Ecprv)
+
+required_cols <- c("Pt_ID", "LC_grass", "Training","Sorc_ID", "Ecds_ID", "Ecrg_ID", "Ecrgn_n", "Ecprv", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -310,19 +377,26 @@ long <- points_norm %>%
 # ----------------------------
 # Compute a per-record matched_year for per-year reporting:
 #   - NATIVE: latest allowed_year <= Yer_Cll (if any; else NA -> exclude)
-#   - TAME: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
-#   - OTHER: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
+#   - TAME:  Yer_Cll if Yer_Cll is in allowed_years or +/- 1 year (else NA -> exclude)
+#   - OTHER: Yer_Cll if Yer_Cll is in allowed_years or +/- 1 year (else NA -> exclude)
 compute_matched_year <- function(yrs, yer, class_label) {
   yrs <- as.integer(unlist(yrs))
-  if (length(yrs) == 0L || is.na(yer) || is.na(class_label)) return(NA_integer_)
+  
+  if (length(yrs) == 0L || is.na(yer) || is.na(class_label)) {
+    return(NA_integer_)
+  }
+  
   if (class_label == "NATIVE") {
     ok <- yrs[yrs <= yer]
     if (length(ok) == 0L) return(NA_integer_)
     return(max(ok))
+    
   } else if (class_label == "TAME") {
-    if (yer %in% yrs) return(yer) else return(NA_integer_)
+    if (any(abs(yrs - yer) <= 1)) return(yer) else return(NA_integer_)
+    
   } else if (class_label == "OTHER") {
-    if (yer %in% yrs) return(yer) else return(NA_integer_)
+    if (any(abs(yrs - yer) <= 1)) return(yer) else return(NA_integer_)
+    
   } else {
     return(NA_integer_)
   }
@@ -365,7 +439,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_compiled_23Jun2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_compiled_lenient_14Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -383,19 +457,52 @@ compute_counts <- function(df) {
 
 compute_metrics <- function(tp, tn, fp, fn) {
   n <- tp + tn + fp + fn
+  
   acc  <- safe_div(tp + tn, n)
-  prec <- safe_div(tp, tp + fp)           # PPV for grass class
-  rec  <- safe_div(tp, tp + fn)           # Sensitivity/TPR for grass
-  spec <- safe_div(tn, tn + fp)           # Specificity/TNR for not-grass
-  f1   <- ifelse(is.na(prec) | is.na(rec) | (prec + rec) == 0, NA_real_, 2 * prec * rec / (prec + rec))
-  bal  <- mean(c(rec, spec), na.rm = TRUE)
+  prec <- safe_div(tp, tp + fp)
+  rec  <- safe_div(tp, tp + fn)
+  spec <- safe_div(tn, tn + fp)
+  npv  <- safe_div(tn, tn + fn)
+  
+  f1 <- ifelse(is.na(prec) | is.na(rec) | (prec + rec) == 0,
+               NA_real_, 2 * prec * rec / (prec + rec))
+  
+  bal <- if (is.na(rec) || is.na(spec)) NA_real_ else mean(c(rec, spec)) # require recall and specificity
+  
+  # Cohen's Kappa
+  pe <- safe_div(
+    (as.numeric(tp + fp) * as.numeric(tp + fn) +
+       as.numeric(fn + tn) * as.numeric(fp + tn)),
+    as.numeric(n)^2)
+  kappa <- safe_div(acc - pe, 1 - pe)
+  
+  # MCC
+  mcc <- safe_div(
+    (as.numeric(tp) * as.numeric(tn) - as.numeric(fp) * as.numeric(fn)),
+    sqrt((as.numeric(tp + fp) * as.numeric(tp + fn) *
+            as.numeric(tn + fp) * as.numeric(tn + fn)))
+  )
+  
+  # Error rates
+  fpr <- safe_div(fp, fp + tn)
+  fnr <- safe_div(fn, fn + tp)
+  
+  # Prevalence
+  prev <- safe_div(tp + fn, n)
+  
   tibble(
     Overall_Accuracy     = acc,
     Precision_grass      = prec,
     Recall_grass         = rec,
     Specificity_notgrass = spec,
+    NPV_notgrass         = npv,
     F1_grass             = f1,
-    Balanced_Accuracy    = bal
+    Balanced_Accuracy    = bal,
+    Kappa                = kappa,
+    MCC                  = mcc,
+    False_Positive_Rate  = fpr,
+    False_Negative_Rate  = fnr,
+    Prevalence_grass     = prev
   )
 }
 
@@ -475,15 +582,15 @@ per_year_summary_grouped <- summarize_block(
 # ----------------------------
 # 12) Save outputs (CSV)
 # ----------------------------
-# GROUPED keep legacy filenames
-readr::write_csv(summary_by_raster_grouped, file.path(out_dir, "raster_accuracy_summary.csv"))
-readr::write_csv(confusion_counts_grouped,  file.path(out_dir, "raster_confusion_matrices.csv"))
-readr::write_csv(per_year_summary_grouped,  file.path(out_dir, "raster_per_year_accuracy.csv"))
+# GROUPED 
+readr::write_csv(summary_by_raster_grouped, file.path(out_dir, "raster_accuracy_summary_compiled_lenient.csv"))
+readr::write_csv(confusion_counts_grouped,  file.path(out_dir, "raster_confusion_matrices_compiled_lenient.csv"))
+readr::write_csv(per_year_summary_grouped,  file.path(out_dir, "raster_per_year_accuracy_compiled_lenient.csv"))
 
 # ATOMIC with _atomic suffix
-readr::write_csv(summary_by_raster_atomic, file.path(out_dir, "raster_accuracy_summary_atomic.csv"))
-readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_matrices_atomic.csv"))
-readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_atomic.csv"))
+readr::write_csv(summary_by_raster_atomic, file.path(out_dir, "raster_accuracy_summary_atomic_compiled_lenient.csv"))
+readr::write_csv(confusion_counts_atomic,  file.path(out_dir, "raster_confusion_matrices_atomic_compiled_lenient.csv"))
+readr::write_csv(per_year_summary_atomic,  file.path(out_dir, "raster_per_year_accuracy_atomic_compiled_lenient.csv"))
 
 # ----------------------------
 # 13) Accuracy by Ecodistrict
@@ -532,19 +639,19 @@ accuracy_by_ecodistrict_year_atomic <- summarize_block(
 # GROUPED
 readr::write_csv(
   accuracy_by_ecodistrict_grouped,
-  file.path(out_dir, "accuracy_by_ecodistrict_grouped_lenient.csv")
+  file.path(out_dir, "accuracy_by_ecodistrict_grouped_compiled_lenient.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_by_ecodistrict_atomic,
-  file.path(out_dir, "accuracy_by_ecodistrict_atomic_lenient.csv")
+  file.path(out_dir, "accuracy_by_ecodistrict_atomic_compiled_lenient.csv")
 )
 
 # ATOMIC + YEAR (detailed output)
 readr::write_csv(
   accuracy_by_ecodistrict_year_atomic,
-  file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_lenient.csv")
+  file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_compiled_lenient.csv")
 )
 
 # ----------------------------
@@ -572,7 +679,7 @@ accuracy_by_ecoregion <- eval_data %>%
 
 #---- Compute ecoprovince-level metrics ----
 accuracy_by_ecoprovince <- eval_data %>%
-  group_by(raster, Ecoprv_n) %>%
+  group_by(raster, Ecprv) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
     TN = sum(LC_grass == 0 & pred == 0),
@@ -586,26 +693,37 @@ accuracy_by_ecoprovince <- eval_data %>%
   ungroup() %>%
   tidyr::unnest_wider(metrics)
 
+#accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
+#  rename(
+#    TP_ecoP = TP,
+#    TN_ecoP = TN,
+#    FP_ecoP = FP,
+#    FN_ecoP = FN,
+#    N_evaluated_ecoP = N_evaluated
+#  )
+
 accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
-  rename(
-    TP_ecoP = TP,
-    TN_ecoP = TN,
-    FP_ecoP = FP,
-    FN_ecoP = FN,
-    N_evaluated_ecoP = N_evaluated
-  )
+  rename_with(~ paste0(.x, "_ecoP"), -c(raster, Ecprv))
 
 #---- Define mapping ----
 
 # Get mapping (one row per ecodistrict)
 ecodist_to_regions <- eval_data %>%
-  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
+  distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
 accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
 
 accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
+
+# Check whether an ecodistrict belongs to multiple regions/provinces
+ecodist_to_regions %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+#   Ecds_ID     n
+# 1     618     2
 
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
@@ -616,7 +734,7 @@ fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
 
@@ -631,7 +749,7 @@ fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
 
@@ -669,7 +787,7 @@ accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
       ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
   select(
-    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    raster, Ecds_ID, Ecrgn_n, Ecprv,
     source_level, everything())
 
 accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
@@ -704,8 +822,22 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
       ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
   select(
-    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    raster, Ecds_ID, Ecrgn_n, Ecprv,
     source_level, everything())
+
+#---- Export ----
+
+# GROUPED
+readr::write_csv(
+  accuracy_with_fallback_grouped,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_compiled_lenient_14Jul2026.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_with_fallback_atomic,
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_compiled_lenient_14Jul2026.csv")
+)
 
 # ----------------------------
 # 15) Plots: Overall accuracy (GROUPED and ATOMIC)

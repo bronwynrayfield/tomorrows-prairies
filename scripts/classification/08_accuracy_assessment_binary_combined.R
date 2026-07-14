@@ -366,7 +366,7 @@ accuracy_by_ecoregion <- eval_data %>%
 
 #---- Compute ecoprovince-level metrics ----
 accuracy_by_ecoprovince <- eval_data %>%
-  group_by(raster, Ecoprv_n) %>%
+  group_by(raster, Ecprv) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
     TN = sum(LC_grass == 0 & pred == 0),
@@ -381,19 +381,13 @@ accuracy_by_ecoprovince <- eval_data %>%
   tidyr::unnest_wider(metrics)
 
 accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
-  rename(
-    TP_ecoP = TP,
-    TN_ecoP = TN,
-    FP_ecoP = FP,
-    FN_ecoP = FN,
-    N_evaluated_ecoP = N_evaluated
-  )
+  rename_with(~ paste0(.x, "_ecoP"), -c(raster, Ecprv))
 
 #---- Define mapping ----
 
 # Get mapping (one row per ecodistrict)
 ecodist_to_regions <- eval_data %>%
-  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
+  distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
 accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
@@ -410,7 +404,7 @@ fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
 
@@ -425,7 +419,7 @@ fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
 
@@ -463,7 +457,7 @@ accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
       ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
   select(
-    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    raster, Ecds_ID, Ecrgn_n, Ecprv,
     source_level, everything())
 
 accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
@@ -498,7 +492,7 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
       ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
   select(
-    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    raster, Ecds_ID, Ecrgn_n, Ecprv,
     source_level, everything())
 
 #---- Export ----
@@ -506,12 +500,12 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_combinedCIandCM.csv")
+  file.path(out_dir, "binary_accuracy_ecoregprovfallback_grouped_combinedCIandCM_date.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_combinedCIandCM.csv")
+  file.path(out_dir, "binary_accuracy_ecoregprovfallback_atomic_combinedCIandCM_date.csv")
 )
 

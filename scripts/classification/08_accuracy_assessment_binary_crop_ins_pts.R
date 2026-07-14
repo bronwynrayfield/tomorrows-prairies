@@ -173,8 +173,65 @@ points <- points %>%
 points <- points %>%
   filter(Ecds_ID != 0)
 
+unique(points$Ecrgn_n)
+
+# Create column for ecoprovince
+points <- points %>%
+  mutate(
+    Ecprv = case_when(
+      Ecrgn_n %in% c("Abitibi Plains", 
+                     "Lake Nipigon",
+                     "Rupert River Plateau",
+                     "Lac Seul Upland") ~ "6.2",
+      Ecrgn_n %in% c("Thunder Bay-Quetico", 
+                     "Lake of the Woods",
+                     "Rainy River") ~ "6.5",
+      Ecrgn_n %in% c("Algonquin-Lake Nipissing", 
+                     "Southern Laurentians",
+                     "Lac Temiscamingue Lowland") ~ "6.6",
+      Ecrgn_n %in% c("St-Laurent Lowlands", 
+                     "Manitoulin-Lake Simcoe",
+                     "Frontenac Axis") ~ "8.1",
+      Ecrgn_n == "Lake Erie Lowland" ~ "8.2",
+      Ecrgn_n %in% c("Western Alberta Upland", 
+                     "Clear Hills Upland") ~ "9.1",
+      Ecrgn_n %in% c("Wabasca Lowland", 
+                     "Boreal Transition",
+                     "Western Boreal",
+                     "Peace Lowland",
+                     "Mid-Boreal Uplands") ~ "9.2",
+      Ecrgn_n %in% c("Interlake Plain", 
+                     "Mid-Boreal Lowland") ~ "9.3",
+      Ecrgn_n == "Lake Manitoba Plain" ~ "10.1",
+      Ecrgn_n %in% c("Aspen Parkland", 
+                     "Southwest Manotoba Uplands") ~ "10.2",
+      Ecrgn_n %in% c("Mixed Grassland", 
+                     "Moist Mixed Grassland",
+                     "Fescue Grassland",
+                     "Cypress Upland") ~ "10.3",
+      Ecrgn_n %in% c("Lower Mainland", 
+                     "Eastern Vancouver Island") ~ "13.1",
+      Ecrgn_n %in% c("Pacific Ranges", 
+                     "Cascade Ranges") ~ "13.2",
+      Ecrgn_n %in% c("Central Canadian Rocky Mountains", 
+                     "Skeena Mountains",
+                     "Fraser Basin") ~ "14.1",
+      Ecrgn_n %in% c("Fraser Plateau",
+                     "Bulkley Ranges") ~ "14.2",
+      Ecrgn_n %in% c("Thompson-Okanagan Plateau", 
+                     "Okanogan Highland",
+                     "Okanogan Range",
+                     "Interior Transition Ranges") ~ "14.3",
+      Ecrgn_n %in% c("Columbia Mountains and Highlands", 
+                     "Southern Rocky Mountain Trench",
+                     "Northern Continental Divide",
+                     "Western Continental Ranges",
+                     "Selkirk-Bitterroot Foothills") ~ "14.4"))
+
+unique(points$Ecprv)
+
 # Define rquired columns
-required_cols <- c("Pt_ID", "Ecds_ID", "Ecrgn_n", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
+required_cols <- c("Pt_ID", "Ecds_ID", "Ecrgn_n", "Ecprv", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -383,7 +440,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_26Jun2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_14Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -623,7 +680,7 @@ accuracy_by_ecoregion <- eval_data %>%
 
 #---- Compute ecoprovince-level metrics ----
 accuracy_by_ecoprovince <- eval_data %>%
-  group_by(raster, Ecoprv_n) %>%
+  group_by(raster, Ecprv) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
     TN = sum(LC_grass == 0 & pred == 0),
@@ -637,26 +694,41 @@ accuracy_by_ecoprovince <- eval_data %>%
   ungroup() %>%
   tidyr::unnest_wider(metrics)
 
+#accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
+#  rename(
+#    TP_ecoP = TP,
+#    TN_ecoP = TN,
+#    FP_ecoP = FP,
+#    FN_ecoP = FN,
+#    N_evaluated_ecoP = N_evaluated
+#  )
+
 accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
-  rename(
-    TP_ecoP = TP,
-    TN_ecoP = TN,
-    FP_ecoP = FP,
-    FN_ecoP = FN,
-    N_evaluated_ecoP = N_evaluated
-  )
+  rename_with(~ paste0(.x, "_ecoP"), -c(raster, Ecprv))
 
 #---- Define mapping ----
 
 # Get mapping (one row per ecodistrict)
 ecodist_to_regions <- eval_data %>%
-  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
+  distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
 accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
 
 accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
+
+# Check whether an ecodistrict belongs to multiple regions/provinces
+ecodist_to_regions %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+#   Ecds_ID     n
+# 1     618     2
+# 2     815     2
+# 3     828     2
+# 4     833     2
+# 5     838     2
 
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
@@ -667,7 +739,7 @@ fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
 
@@ -682,7 +754,7 @@ fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
 
@@ -720,7 +792,7 @@ accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
       ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
   select(
-    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    raster, Ecds_ID, Ecrgn_n, Ecprv,
     source_level, everything())
 
 accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
@@ -755,7 +827,7 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
       ~ compute_metrics(..1, ..2, ..3, ..4))) %>%
   tidyr::unnest_wider(metrics) %>%
   select(
-    raster, Ecds_ID, Ecrgn_n, Ecoprv_n,
+    raster, Ecds_ID, Ecrgn_n, Ecprv,
     source_level, everything())
 
 #---- Export ----
@@ -763,13 +835,13 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_14Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_14Jul2026.csv")
 )
 
 # ----------------------------

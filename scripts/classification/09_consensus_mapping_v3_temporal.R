@@ -774,6 +774,7 @@ classify_with_tiebreak <- function(p_not, p_tame, p_native) {
 class_map <- classify_with_tiebreak(p_not, p_tame, p_native)
 # class_map: 1 = not, 2 = tame, 3 = native (which.max layer index)
 
+# then reclassify so that 0 = not, 1 = tame, 2 = native
 rcl <- matrix(c(1, 0, 2, 1, 3, 2), ncol = 2, byrow = TRUE)
 
 # For max-probability / uncertainty reporting, use the unbiased stack

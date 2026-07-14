@@ -68,7 +68,7 @@ library(scales)
 # 2) File paths 
 # ----------------------------
 acc_cm_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/compiled_derived/accuracy_assessment_data_binary_pli_sep_compiled_23Jun2026.csv"
-acc_ci_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived/accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_23Jun2026.csv"
+acc_ci_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived/accuracy_assessment_data_binary_pli_sep_cropinsV2_combined_23Jun2026.csv"
 metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/combined_CI_and_compiled"
@@ -139,7 +139,7 @@ combined_out <- combined %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
 # Export
-readr::write_csv(combined_out, file.path(out_dir, "accuracy_assessment_data_natvtam_pli_sep_CIandCM_CIlenient_23Jun2026.csv"))
+readr::write_csv(combined_out, file.path(out_dir, "accuracy_assessment_data_natvtam_pli_sep_CIandCM_CIcombined_23Jun2026.csv"))
 
 # ----------------------------
 # 8) Multiclass metrics helpers
@@ -340,7 +340,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_23Jun2026_lenient.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_combined_23Jun2026.xlsx")
 
 write_xlsx(
   list(
@@ -386,13 +386,13 @@ accuracy_by_ecodistrict_year_atomic <- summarize_block_multiclass(
 
 # ---- Save ----
 readr::write_csv(accuracy_by_ecodistrict_grouped,
-                 file.path(out_dir, "accuracy_by_ecodistrict_grouped_lenient.csv"))
+                 file.path(out_dir, "accuracy_by_ecodistrict_grouped_combined.csv"))
 
 readr::write_csv(accuracy_by_ecodistrict_atomic,
-                 file.path(out_dir, "accuracy_by_ecodistrict_atomic_lenient.csv"))
+                 file.path(out_dir, "accuracy_by_ecodistrict_atomic_combined.csv"))
 
 readr::write_csv(accuracy_by_ecodistrict_year_atomic,
-                 file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_lenient.csv"))
+                 file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_combined.csv"))
 
 # ----------------------------
 # 14) Multiclass fallback hierarchy
@@ -410,16 +410,16 @@ accuracy_by_ecoregion <- summarize_block_multiclass(
 # ---- Ecoprovince metrics ----
 accuracy_by_ecoprovince <- summarize_block_multiclass(
   eval_data,
-  key_cols = c("raster", "Ecoprv_n")
+  key_cols = c("raster", "Ecprv")
 ) %>%
   rename_with(
     ~ paste0(.x, "_ecoP"),
-    -c(raster, Ecoprv_n)
+    -c(raster, Ecprv)
   )
 
 # ---- Mapping table ----
 ecodist_to_regions <- eval_data %>%
-  distinct(Ecds_ID, Ecrgn_n, Ecoprv_n)
+  distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
 # --------------------------------------------------
 # ATOMIC
@@ -436,7 +436,7 @@ fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
   )
 
 # Make sure suffixes are present 
@@ -482,7 +482,7 @@ fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   ) %>%
   left_join(
     accuracy_by_ecoprovince,
-    by = c("raster", "Ecoprv_n")
+    by = c("raster", "Ecprv")
   )
 
 # Make sure suffixes are present 
@@ -516,7 +516,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_multiclass_fallback.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_combined_date.csv"
   )
 )
 
@@ -524,7 +524,7 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_multiclass_fallback.csv"
+    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_combined_date.csv"
   )
 )
 
