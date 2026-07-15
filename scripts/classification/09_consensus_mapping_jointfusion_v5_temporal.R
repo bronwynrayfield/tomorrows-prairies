@@ -5,19 +5,20 @@
 
 ##----------------------- Alison Long - July 2026 -------------------------
 
-# step 8: use data fusion techniques to create a consensus grassland map 
+# step 9: use data fusion techniques to create a consensus grassland map 
 #         to serve as baseline for modelling
 
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER
 # Next optimization to try: build stacks directly from S3 using GDAL VRT (zero downloads)
 
+# THIS VERSION (compared to v4):
+# Adds a pixel-wise effective sample size (ESS) output and combines it with entropy/confidence
+# to represent how much independent weighted evidence (binary) supports each pixel. Also
+# combines ESS with total weight to calculate a support score
+
 # THIS VERSION (compared to v3):
 # Crops/masks to pilot area
 # Updated to fix errors encountered while running
-
-# THIS VERSION (compared to v4):
-# Adds a pixel-wise effective sample size output and combines it with entropy/confidence
-# to represent how much independent weighted evidence supports each pixel
 
 # THIS VERSION (compared to v2):
 # Has higher interpretability and stability
@@ -67,6 +68,9 @@ terraOptions(
   memfrac = 0.6, # could go down to 0.4
   progress = 1
 )
+
+# increase GDAL block cache size to 8192 MB (8 GB)
+Sys.setenv(GDAL_CACHEMAX = 8192)
 
 # Force a fresh run instead of silently re-using old scratch outputs
 FORCE_REBUILD <- TRUE
@@ -141,16 +145,20 @@ if (any(is.na(meta$file)) || any(meta$file == "")) {
 
 ## ---- Temporal settings ---- ##
 target_year <- 2025 # use newest dataset or policy-relevant year
-lambda <- 3  # decay rate (0.1–0.4 typical, 0.1 = slow decay (older data still matters))
-#  0.3 = faster decay (focus on recent)
+lambda <- 3  # temporal decay scale in years; larger values retain influence from older datasets longer
+
+# time decay function
+time_decay <- function(year, target_year, lambda) {
+  exp(-abs(year - target_year) / lambda)
+}
 
 # Assign weights
 meta <- meta %>%
   mutate(
-    time_weight = exp(
-      -abs(year - target_year) / lambda
-    )
-  )
+    time_weight = time_decay(
+      year,
+      target_year,
+      lambda))
 
 ## ---- Split by stack type ---- ##
 bin_meta <- meta %>% filter(stack_type == "binary")
@@ -364,14 +372,11 @@ has_nt <- !is.null(nt_stack)
 # =========================
 # GLOBAL OPTIONS
 # =========================
-terraOptions(
-  memfrac = 0.8,
-  tempdir = "/mnt/tmp", # use fast scratch disk
-  progress = 1
-)
-
-# increase GDAL block cache size to 8192 MB (8 GB)
-Sys.setenv(GDAL_CACHEMAX = 8192)
+#terraOptions(
+#  memfrac = 0.8,
+#  tempdir = "/mnt/tmp", # use fast scratch disk
+#  progress = 1
+#)
 
 # =========================
 # INTEGRATE ACCURACY DATA
@@ -494,9 +499,9 @@ mcc_to_weight <- function(x) {
   pmax(w, 1e-4)
 }
 
-time_decay <- function(year, target_year, lambda) {
-  exp(-lambda * abs(year - target_year))
-}
+#time_decay <- function(year, target_year, lambda) {
+#  exp(-lambda * abs(year - target_year))
+#}
 
 acc_bin <- acc_bin %>%
   left_join(
@@ -543,6 +548,12 @@ acc_nt <- acc_nt %>%
 if (any(is.na(acc_nt$year))) {
   stop("Missing year information in acc_nt")
 }
+
+# make sure F1 scores are between 0 and 1
+stopifnot(
+  all(acc_nt$F1_1 >= 0 & acc_nt$F1_1 <= 1),
+  all(acc_nt$F1_2 >= 0 & acc_nt$F1_2 <= 1)
+)
 
 acc_nt <- acc_nt %>%
   mutate(w_mcc = mcc_to_weight(
@@ -594,10 +605,25 @@ ecodist_r <- mask(ecodist_r, pilot)
 
 ecodist_r <- as.int(ecodist_r)
 
+if (!compareGeom(ecodist_r, bin_stack, stopOnError=FALSE)) {
+  stop("ecodist_r does not match bin_stack geometry")
+}
+
 ## ---- Validate ecodistrict coverage ---- ##
 log_msg("Validating ecodistrict coverage")
 
 ids_r <- unique(freq(ecodist_r)[, "value"])
+
+na_count <- sum(is.na(ids_r))
+
+log_msg("NA values in ecodistrict raster IDs: ", na_count)
+
+if (na_count > 0) {
+  warning("Ecodistrict raster contains ", na_count, " NA values")
+}
+
+# if there are NAs, use:
+ids_r <- ids_r[!is.na(ids_r)]
 
 ids_tbl_bin <- unique(acc_bin$Ecds_ID)
 missing_ids_bin <- setdiff(ids_r, ids_tbl_bin)
@@ -869,11 +895,25 @@ process_tile <- function(i) {
   
   names(ess) <- "ess"
   
+  # support score - uses ESS and total weight
+  support_score <- (
+    ess / (ess + 3)
+  ) * (
+    w_sum / (w_sum + 1)
+  )
+  
+  names(support_score) <- "support_score"
+  
   # Convert ESS into uncertainty metric
   # Higher ESS = lower uncertainty
   ess_uncertainty <- 1 / (1 + ess)
   
   names(ess_uncertainty) <- "ess_uncertainty"
+  
+  # Convert support into uncertainty metric
+  support_uncertainty <- 1 - support_score
+  
+  names(support_uncertainty) <- "support_uncertainty"
   
   # ----------------------
   # EVIDENCE COMPUTATION
@@ -905,6 +945,9 @@ process_tile <- function(i) {
     app(bin_w_norm * (b == 0), sum, na.rm=TRUE) +
     app(nt_max * (nt == 0), sum, na.rm=TRUE)
   
+  # Binary evidence contributes to both tame and native (split evenly) -
+  # if few triclass rasters, binary could dominate both classes and force probabilities  
+  # toward grass vs nongrass instead of native vs tame
   E_tame <-
     app(bin_w_norm * (b == 1), sum, na.rm=TRUE) * 0.5 +
     app(nt_w_tame_norm * (nt == 1), sum, na.rm=TRUE)
@@ -953,9 +996,10 @@ process_tile <- function(i) {
   names(entropy_norm) <- "entropy_norm"
   
   # stack outputs
-  out <- c(p_not, p_tame, p_native, entropy, entropy_norm, ess, ess_uncertainty)
+  out <- c(p_not, p_tame, p_native, entropy, entropy_norm, ess, ess_uncertainty, support_score,
+           support_uncertainty)
   names(out) <- c("p_not", "p_tame", "p_native", "entropy", "entropy_norm",
-                  "ess", "ess_uncertainty")
+                  "ess", "ess_uncertainty", "support_score", "support_uncertainty")
   
   writeRaster(out, out_file, overwrite=TRUE)
   
@@ -987,21 +1031,25 @@ cat("Mosaicking", length(files), "tiles...\n")
 
 # Check layer consistency - make sure correct number of layers
 #stopifnot(all(sapply(files, function(f) nlyr(rast(f)) == 4)))
-stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 7, logical(1))))
+stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 9, logical(1))))
 
 # Mosaic all tiles together
-mosaic_out <- mosaic(rast(files), fun="mean")
+mosaic_out <- mosaic(rast(files), fun="first")
 # or can try
 #mosaic_out <- do.call(mosaic, c(lapply(files, rast), list(fun="mean")))
 
 # Set names
 names(mosaic_out) <- c("p_not", "p_tame", "p_native", "entropy", "entropy_norm",
-                       "ess", "ess_uncertainty")
+                       "ess", "ess_uncertainty", "support_score", "support_uncertainty")
 
 #------ Derived layers ------#
 # Probability stack
 prob_stack <- mosaic_out[[c("p_not", "p_tame", "p_native")]]
 entropy <- mosaic_out[["entropy"]]
+
+# support score
+support_score <- mosaic_out[["support_score"]]
+support_uncertainty <- mosaic_out[["support_uncertainty"]]
 
 # Confidence = max probability
 confidence <- app(prob_stack, max)
@@ -1018,29 +1066,30 @@ confidence_uncertainty <- 1 - confidence
 
 names(confidence_uncertainty) <- "confidence_uncertainty"
 
-#rast_list <- lapply(files, rast)
-#mosaic_out <- do.call(mosaic, c(rast_list, list(
-#  fun="mean"
-#)))
+# adjusted confidence
+confidence <- app(prob_stack, max)
+
+confidence_adj <- confidence * support_score
+names(confidence_adj) <- "confidence_adjusted"
 
 entropy_norm <- mosaic_out[["entropy_norm"]]
 ess_uncertainty <- mosaic_out[["ess_uncertainty"]]
 
 # Build a combined uncertainty layer
-# Equal weighting:
+# Equal weighting: classifcation confidence, class ambiguity, amount of supporting eveidence
 uncertainty_total <- (
   confidence_uncertainty +
     entropy_norm +
-    ess_uncertainty
+    support_uncertainty
 ) / 3
 
 names(uncertainty_total) <- "uncertainty_total"
 
-# Weight entropy and confidence more than coverage:
+# Weight entropy and confidence more than support:
 uncertainty_total_w <- (
-  0.4 * confidence_uncertainty +
-    0.4 * entropy_norm +
-    0.2 * ess_uncertainty
+    0.35 * confidence_uncertainty +
+    0.35 * entropy_norm +
+    0.30 * support_uncertainty
 )
 
 names(uncertainty_total_w) <- "uncertainty_total_weighted"
@@ -1050,7 +1099,7 @@ names(uncertainty_total_w) <- "uncertainty_total_weighted"
 hard_class <- which.max(prob_stack)
 
 # Check to finetune confidence threshold
-hist(values(spatSample(confidence, size = 1e6, na.rm = TRUE)))
+hist(values(spatSample(confidence_adj, size = 1e6, na.rm = TRUE)))
 
 # hard classification (1=not, 2=tame, 3=native)
 # mask low-confidence or high-uncertainty pixels
@@ -1059,8 +1108,10 @@ hist(values(spatSample(confidence, size = 1e6, na.rm = TRUE)))
 # entropy: uncertainty masking - remove unreliable areas
 # max entropy for 3 classes ≈ 1.10, 0.8=moderately conservative
 # could auto-calibrate thresholds based on data distribution instead of fixed values
+# goal: keep coverage high, penalize low-support areas smoothly instead of abruptly, 
+# and prevent a large number of tiny-weight rasters from producing deceptively good ESS values
 hard_class <- ifel(
-  (confidence < 0.6) | (entropy > 0.8),
+  (confidence_adj < 0.4) | (entropy > 0.8),
   NA,
   hard_class
 )
@@ -1081,7 +1132,7 @@ levels(hard_class) <- data.frame(
 # Balanced: confidence ≥ 0.75, entropy ≤ 0.6
 # Inclusive: confidence ≥ 0.7, entropy ≤ 0.7
 high_conf_class <- ifel(
-  (confidence >= 0.75) & (entropy <= 0.6),
+  (confidence_adj >= 0.75) & (entropy <= 0.6),
   hard_class,
   NA)
 
@@ -1252,11 +1303,15 @@ process_temporal_tile <- function(i) {
         return(NA)
       }
       
-      coef(
-        lm(
-          x[ok] ~ yrs[ok]
-        )
-      )[2]
+      # could be very slow
+      #coef(
+      #  lm(
+      #    x[ok] ~ yrs[ok]
+      #  )
+      #)[2]
+      
+      # faster to compute slope analytically
+      cov(x[ok], yrs[ok])/var(yrs[ok])
     }
   )
   
@@ -1429,6 +1484,31 @@ temporal_slope <- temporal_out[["temporal_slope"]]
 
 #------ Diagnostics ------#
 
+# summary statistics
+# use to refine thresholds especially for support and conf_adj
+global(
+  c(
+    support_score,
+    confidence,
+    confidence_adj
+  ),
+  c("min","max","mean"),
+  na.rm = TRUE
+)
+
+# calculate coverage after masking
+coverage <- global(
+  !is.na(hard_class),
+  "mean",
+  na.rm = TRUE
+)
+
+log_msg(
+  "Classified coverage: ",
+  round(100 * coverage[1,1], 1),
+  "%"
+)
+
 # Visualize confidence vs entropy
 # to understand whether masking rules are too strict/loose
 
@@ -1436,14 +1516,14 @@ temporal_slope <- temporal_out[["temporal_slope"]]
 set.seed(42)
 
 vals <- spatSample(
-  c(confidence, entropy),
+  c(confidence_adj, entropy),
   size = 1e6,
   method = "random",
   na.rm = TRUE,
   as.df = TRUE
 )
 
-colnames(vals) <- c("confidence", "entropy")
+colnames(vals) <- c("confidence_adj", "entropy")
 
 # Confidence vs entropy plot
 # bottom-right = high confidence, low entropy (best pixels)
@@ -1452,10 +1532,10 @@ colnames(vals) <- c("confidence", "entropy")
 # Thresholds appear as: blue line: confidence = 0.6, red line: entropy = 0.8
 library(ggplot2)
 
-ggplot(vals, aes(x = confidence, y = entropy)) +
+ggplot(vals, aes(x = confidence_adj, y = entropy)) +
   stat_binhex(bins = 60) +
   scale_fill_viridis_c(trans = "log10") +
-  geom_vline(xintercept = 0.6, color = "blue", linetype = "dashed") +
+  geom_vline(xintercept = 0.4, color = "blue", linetype = "dashed") +
   geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
   labs(
     title = "Confidence vs Entropy",
@@ -1466,9 +1546,9 @@ ggplot(vals, aes(x = confidence, y = entropy)) +
   theme_minimal()
 
 # Density plot (smooth view)
-ggplot(vals, aes(x = confidence, y = entropy)) +
+ggplot(vals, aes(x = confidence_adj, y = entropy)) +
   geom_density_2d_filled() +
-  geom_vline(xintercept = 0.6, color = "blue", linetype = "dashed") +
+  geom_vline(xintercept = 0.4, color = "blue", linetype = "dashed") +
   geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
   labs(
     title = "Density of Confidence vs Entropy"
@@ -1476,10 +1556,10 @@ ggplot(vals, aes(x = confidence, y = entropy)) +
   theme_minimal()
 
 # Confidence distribution
-# If most points cluster around confidence > 0.7 then threshold is appropriate
-ggplot(vals, aes(x = confidence)) +
+# If most points cluster around confidence > 0.5 then threshold is appropriate
+ggplot(vals, aes(x = confidence_adj)) +
   geom_histogram(bins = 50, fill = "steelblue") +
-  geom_vline(xintercept = 0.6, color = "red", linetype = "dashed") +
+  geom_vline(xintercept = 0.4, color = "red", linetype = "dashed") +
   labs(title = "Confidence distribution") +
   theme_minimal()
 
@@ -1503,14 +1583,14 @@ plot(
 
 # Map of confidence
 plot(
-  confidence,
+  confidence_adj,
   main = "Confidence (Max Probability)",
   col = viridis::viridis(100)
 )
 
 # Binary "uncertain areas" map
 uncertain_mask <- ifel(
-  (confidence < 0.6) | (entropy > 0.8),
+  (confidence_adj < 0.4) | (entropy > 0.8),
   1,
   0
 )
@@ -1534,10 +1614,8 @@ plot(
 )
 
 # Continuous uncertainty "hotspot" map
-uncertainty_score <- (1 - confidence) + (entropy / 1.1)
-
 plot(
-  uncertainty_score,
+  uncertainty_total,
   main = "Uncertainty Hotspots",
   col = hcl.colors(100, "Reds")
 )
@@ -1558,7 +1636,8 @@ ess <- mosaic_out[["ess"]]
 ess_uncertainty <- mosaic_out[["ess_uncertainty"]]
 
 # Combined raster 
-final_stack <- c(mosaic_out, confidence, hard_class, high_conf_class,
+final_stack <- c(mosaic_out, 
+                 confidence, confidence_adj, hard_class, high_conf_class,
                  uncertainty_total, uncertainty_total_w,
                  temporal_sd, temporal_entropy, temporal_range, temporal_slope)
 
@@ -1570,7 +1649,10 @@ names(final_stack) <- c(
   "entropy_norm",
   "ess",
   "ess_uncertainty",
+  "support_score",
+  "support_uncertainty",
   "confidence",
+  "confidence_adj",
   "class",
   "high_conf_class",
   "uncertainty_total",
