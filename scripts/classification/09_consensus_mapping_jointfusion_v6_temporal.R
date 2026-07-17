@@ -11,10 +11,28 @@
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER
 # Next optimization to try: build stacks directly from S3 using GDAL VRT (zero downloads)
 
+# Strengths
+#   Accuracy-weighted
+#   Temporally weighted
+#   Ecodistrict-specific performance weighting
+#   Explicit uncertainty products
+#   Explicit support metric
+#   Conservative masking
+#   Computationally scalable
+
+# Potential concerns
+#   Softmax may overly flatten probabilities 
+#      - Could make confidence lower than underlying evidence suggest
+#      - May want to compare to normalized values (ex: p_native <- E_native / E_sum)
+#   Binary evidence may dominate native/tame separation
+#   Support-score constants are uncalibrated
+#   ESS no longer represents independent evidence
+#   High-confidence layer may become very sparse
+
 # THIS VERSION (compared to v5):
 # Removes use of penalty rasters based on redundancy (from spatial agreement analysis)
 # and instead excludes grassland maps that are not independent of each other.
-# Alternative appraoch: group maps into families (independent evidence sources) and 
+# Alternative approach: group maps into families (independent evidence sources) and 
 # allocate a fixed weight to each family
 
 # THIS VERSION (compared to v4):
@@ -798,11 +816,32 @@ stopifnot(
 #out_dir <- "tiles_out"
 #dir.create(out_dir, showWarnings = FALSE)
 
+# Confirm weights are within expected bounds
+global(
+  mcc_bin_stack,
+  c("min","max"),
+  na.rm = TRUE
+)
+
+global(
+  metric_tame_stack,
+  c("min","max"),
+  na.rm = TRUE
+)
+
+global(
+  metric_native_stack,
+  c("min","max"),
+  na.rm = TRUE
+)
+
 # =========================
 # TILE GRID
 # =========================
 # ~2000–5000 tiles is ideal, 500-1500 for single node
 tiles <- makeTiles(sa, n = 1000, overlap = 0)
+
+log_msg("Tile count: ", length(tiles))
 
 # Save tiles for reproducibility
 writeVector(vect(tiles), "tile_index.gpkg", overwrite=TRUE)
@@ -844,7 +883,7 @@ process_tile <- function(i) {
   #pbin <- crop(penalty_bin_stack, tile)
   #pnt  <- crop(penalty_nt_stack, tile)
   
-  # effective weight = accuracy x redundancy penalty
+  # effective weight = accuracy (no more redundancy penalty)
   #bin_w_eff   <- rbin * pbin * time_bin
   #nt_w_tame   <- rt * pnt * time_nt
   #nt_w_native <- rn * pnt * time_nt
@@ -875,7 +914,7 @@ process_tile <- function(i) {
   #NEG_HALF <- 0.5
   
   # ----------------------
-  # EFFECTIVE SAMPLE SIZE (effective weighted support after redundancy adjustment)
+  # EFFECTIVE SAMPLE SIZE (effective weighted support - does not use redundancy adjustment)
   # ----------------------
   
   # Sum of weights - use only binary rasters so those with native vs tame don't get double counted
@@ -909,7 +948,7 @@ process_tile <- function(i) {
   
   names(support_score) <- "support_score"
   
-  # Convert ESS into uncertainty metric
+    # Convert ESS into uncertainty metric
   # Higher ESS = lower uncertainty
   ess_uncertainty <- 1 / (1 + ess)
   
@@ -1056,6 +1095,11 @@ entropy <- mosaic_out[["entropy"]]
 support_score <- mosaic_out[["support_score"]]
 support_uncertainty <- mosaic_out[["support_uncertainty"]]
 
+# Check
+hist(values(support_score))
+
+quantile(values(spatSample(support_score, 1e6, na.rm = TRUE)))
+
 # Confidence = max probability
 confidence <- app(prob_stack, max)
 names(confidence) <- "confidence"
@@ -1065,6 +1109,17 @@ check <- app(prob_stack, sum)
 stats <- global(check, c("min", "max", "mean"), na.rm=TRUE)
 print(stats)
 log_msg(capture.output(stats))
+
+# check drivers of masking
+global(
+  entropy,
+  c("min","max","mean"),
+  na.rm = TRUE)
+
+global(
+  support_score,
+  c("min","max","mean"),
+  na.rm = TRUE)
 
 # Convert confidence to uncertainty
 confidence_uncertainty <- 1 - confidence
@@ -1104,7 +1159,13 @@ names(uncertainty_total_w) <- "uncertainty_total_weighted"
 hard_class <- which.max(prob_stack)
 
 # Check to finetune confidence threshold
-hist(values(spatSample(confidence_adj, size = 1e6, na.rm = TRUE)))
+vals_conf <- spatSample(
+  confidence_adj,
+  size = 1e6,
+  na.rm = TRUE,
+  values = TRUE)
+
+hist(vals_conf)
 
 # hard classification (1=not, 2=tame, 3=native)
 # mask low-confidence or high-uncertainty pixels
@@ -1288,25 +1349,25 @@ process_temporal_tile <- function(i) {
   # Temporal trend - will be slowest operation! few points if years aggregated! cut if needed
   # -----------------------
   
-  yrs <- years
+  #yrs <- years
   
-  temporal_slope <- app(
-    ys,
-    function(x) {
+ # temporal_slope <- app(
+ #   ys,
+ #   function(x) {
       
-      if (all(is.na(x))) {
-        return(NA)
-      }
+ #     if (all(is.na(x))) {
+ #       return(NA)
+ #     }
       
-      if (sum(!is.na(x)) < 3) {
-        return(NA)
-      }
+ #     if (sum(!is.na(x)) < 3) {
+ #       return(NA)
+ #     }
       
-      ok <- !is.na(x)
+ #     ok <- !is.na(x)
       
-      if (sum(ok) < 3) {
-        return(NA)
-      }
+ #     if (sum(ok) < 3) {
+ #       return(NA)
+ #     }
       
       # could be very slow
       #coef(
@@ -1316,17 +1377,17 @@ process_temporal_tile <- function(i) {
       #)[2]
       
       # faster to compute slope analytically
-      cov(x[ok], yrs[ok])/var(yrs[ok])
-    }
-  )
+ #     cov(x[ok], yrs[ok])/var(yrs[ok])
+ #   }
+ # )
   
-  names(temporal_slope) <- "temporal_slope"
+  #names(temporal_slope) <- "temporal_slope"
   
   out <- c(
     temporal_sd,
     temporal_entropy,
-    temporal_range,
-    temporal_slope
+    temporal_range #,
+    #temporal_slope
   )
   
   writeRaster(
@@ -1376,8 +1437,8 @@ temporal_out <- mosaic(
 names(temporal_out) <- c(
   "temporal_sd",
   "temporal_entropy",
-  "temporal_range",
-  "temporal_slope"
+  "temporal_range"#,
+  #"temporal_slope"
 )
 
 # Extract layers
@@ -1387,7 +1448,7 @@ temporal_entropy <- temporal_out[["temporal_entropy"]]
 
 temporal_range <- temporal_out[["temporal_range"]]
 
-temporal_slope <- temporal_out[["temporal_slope"]]
+#temporal_slope <- temporal_out[["temporal_slope"]]
 
 #------ Temporal analysis (grass vs nongrass) ------#
 
@@ -1513,6 +1574,11 @@ log_msg(
   round(100 * coverage[1,1], 1),
   "%"
 )
+
+# check confidence to inform calibration
+global(confidence_adj,
+       c("min","max","mean"),
+       na.rm = TRUE)
 
 # Visualize confidence vs entropy
 # to understand whether masking rules are too strict/loose
@@ -1644,7 +1710,7 @@ ess_uncertainty <- mosaic_out[["ess_uncertainty"]]
 final_stack <- c(mosaic_out, 
                  confidence, confidence_adj, hard_class, high_conf_class,
                  uncertainty_total, uncertainty_total_w,
-                 temporal_sd, temporal_entropy, temporal_range, temporal_slope)
+                 temporal_sd, temporal_entropy, temporal_range) #, temporal_slope)
 
 names(final_stack) <- c(
   "p_not",
@@ -1664,8 +1730,8 @@ names(final_stack) <- c(
   "uncertainty_total_w",
   "temporal_sd",
   "temporal_entropy",
-  "temporal_range",
-  "temporal_slope"
+  "temporal_range"#,
+#  "temporal_slope"
 )
 
 final_out <- "/mnt/tmp/joint_full_stack.tif"
@@ -1825,26 +1891,6 @@ writeRaster(
 aws.s3::put_object(
   file = "/mnt/tmp/temporal_range.tif",
   object = paste0(out_dir, "/temporal_range.tif")
-)
-
-# Temporal slope
-writeRaster(
-  temporal_slope,
-  "/mnt/tmp/temporal_slope.tif",
-  overwrite = TRUE,
-  wopt = list(
-    datatype = "FLT4S",
-    gdal = c(
-      "COMPRESS=ZSTD",
-      "TILED=YES",
-      "BIGTIFF=YES"
-    )
-  )
-)
-
-aws.s3::put_object(
-  file = "/mnt/tmp/temporal_slope.tif",
-  object = paste0(out_dir, "/temporal_slope.tif")
 )
 
 #--------- Possible next steps (examples) ---------------

@@ -312,4 +312,3 @@ attr_df_2015 <- attr_df_2015 %>%
 # write cleaned dataset to csv
 csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_23Jun2026_clean_withnongrass.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
-
