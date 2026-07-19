@@ -46,7 +46,7 @@ library(mltools)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_23Jun2026_clean_withnongrass.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_18Jul2026_clean_withnongrass.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/compiled_derived"
@@ -73,7 +73,7 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 #points <- readxl::read_excel(points_excel_path)
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 19))
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 20))
 )
 
 names(points)
@@ -83,9 +83,14 @@ table(points$Training, useNA = "ifany")
 unique(points$LC_class3)
 table(points$LC_class3, useNA = "ifany")
 
-# Remove HFI
+# Remove HFI (and ACI 2025 for now)
 points <- points %>%
-  select(-hfi)
+  select(-hfi) %>%
+  select(-aci2025)
+
+# Rename aci2024 column to aci (temporarily)
+points <- points %>%
+  dplyr::rename(aci = aci2024)
 
 # Add point ID column
 points <- points %>%
@@ -263,6 +268,10 @@ if (all(c("raster", "year") %in% names(meta_raw))) {
   )
 }
 
+# Rename aci2024 column in metadata to aci (only when excluding aci2025)
+meta_norm <- meta_norm %>%
+  mutate(raster = if_else(raster == "aci2024", "aci", raster))
+
 # Build named list: raster -> unique sorted integer vector of years
 raster_years_map <- meta_norm %>%
   mutate(years = map(years, ~ unique(sort(as.integer(.x))))) %>%
@@ -313,7 +322,7 @@ long <- points_norm %>%
 long_out <- long %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(long_out, file.path(out_dir, "long_prefiltering_26Jun2026_natvtam_withnongrass_compiled.csv"))
+write.csv(long_out, file.path(out_dir, "long_prefiltering_18Jul2026_natvtam_withnongrass_compiled.csv"))
 
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
@@ -383,7 +392,7 @@ eval_data <- long %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_out, file.path(out_dir, "eval_data_updatedtraindatfilt_23Jun2026_natvtam_withnongrass_compiled.csv"))
+write.csv(eval_data_out, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass_compiled.csv"))
 
 # Isolate datasets that need to be handled differently
 #   Datasets with training data need to be filtered separately
@@ -647,7 +656,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_23Jun2026.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_18Jul2026.xlsx")
 
 write_xlsx(
   list(
@@ -693,13 +702,13 @@ accuracy_by_ecodistrict_year_atomic <- summarize_block_multiclass(
 
 # ---- Save ----
 readr::write_csv(accuracy_by_ecodistrict_grouped,
-                 file.path(out_dir, "accuracy_by_ecodistrict_grouped_lenient.csv"))
+                 file.path(out_dir, "accuracy_by_ecodistrict_grouped_compiled.csv"))
 
 readr::write_csv(accuracy_by_ecodistrict_atomic,
-                 file.path(out_dir, "accuracy_by_ecodistrict_atomic_lenient.csv"))
+                 file.path(out_dir, "accuracy_by_ecodistrict_atomic_compiled.csv"))
 
 readr::write_csv(accuracy_by_ecodistrict_year_atomic,
-                 file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_lenient.csv"))
+                 file.path(out_dir, "accuracy_by_ecodistrict_year_atomic_compiled.csv"))
 
 # ----------------------------
 # 14) Multiclass fallback hierarchy
@@ -754,25 +763,49 @@ metric_cols <- setdiff(
   c("raster", "Ecds_ID")
 )
 
+all(paste0(metric_cols, "_ecoD") %in% names(fallback_joined_atomic))
+all(paste0(metric_cols, "_ecoR") %in% names(fallback_joined_atomic))
+all(paste0(metric_cols, "_ecoP") %in% names(fallback_joined_atomic))
+
 accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
   mutate(
     source_level = case_when(
-      N_evaluated_ecoD >= min_n ~ "ecodistrict",
-      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      N_Evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_Evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  accuracy_with_fallback_atomic[[m]] <- case_when(
+    accuracy_with_fallback_atomic$source_level == "ecodistrict" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoD")]],
+    accuracy_with_fallback_atomic$source_level == "ecoregion" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoR")]],
+    TRUE ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoP")]]
+  )
+}
+
+#accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
+#  mutate(
+#    source_level = case_when(
+#      N_Evaluated_ecoD >= min_n ~ "ecodistrict",
+#      N_Evaluated_ecoR >= min_n ~ "ecoregion",
+#      TRUE ~ "ecoprovince"
+#    )
+#  ) %>%
+#  mutate(
+#    across(
+#      all_of(metric_cols),
+#      ~ case_when(
+#        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
+#        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
+#        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
+#      ),
+#      .names = "{.col}"
+#    )
+#  )
 
 # --------------------------------------------------
 # GROUPED
@@ -795,25 +828,45 @@ fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
 # Make sure suffixes are present 
 names(fallback_joined_grouped)
 
+#accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
+#  mutate(
+#    source_level = case_when(
+#      N_Evaluated_ecoD >= min_n ~ "ecodistrict",
+#      N_Evaluated_ecoR >= min_n ~ "ecoregion",
+#      TRUE ~ "ecoprovince"
+#    )
+#  ) %>%
+#  mutate(
+#    across(
+#      all_of(metric_cols),
+#      ~ case_when(
+#        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
+#        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
+#        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
+#      ),
+#      .names = "{.col}"
+#    )
+#  )
+
 accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
   mutate(
     source_level = case_when(
-      N_evaluated_ecoD >= min_n ~ "ecodistrict",
-      N_evaluated_ecoR >= min_n ~ "ecoregion",
+      N_Evaluated_ecoD >= min_n ~ "ecodistrict",
+      N_Evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  accuracy_with_fallback_grouped[[m]] <- case_when(
+    accuracy_with_fallback_grouped$source_level == "ecodistrict" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoD")]],
+    accuracy_with_fallback_grouped$source_level == "ecoregion" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoR")]],
+    TRUE ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoP")]]
+  )
+}
 
 # ----------------------------
 # Export multiclass fallback results
@@ -823,7 +876,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_compiled_date.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_compiled_18Jul2026.csv"
   )
 )
 
@@ -831,7 +884,7 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_compiled_date.csv"
+    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_compiled_18Jul2026.csv"
   )
 )
 

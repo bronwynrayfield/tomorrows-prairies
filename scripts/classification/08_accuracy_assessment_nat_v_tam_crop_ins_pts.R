@@ -65,7 +65,7 @@ library(mltools)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame_clean.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived"
@@ -97,9 +97,10 @@ points <- readxl::read_excel(
 
 names(points)
 str(points)
-unique(points$LC_Class_N)
-unique(points$Source_ID)
-table(points$Source_ID, useNA = "ifany")
+#unique(points$LC_Cl_N)
+unique(points$Sorc_ID)
+unique(points$Training)
+#table(points$Source_ID, useNA = "ifany")
 
 # Rename columns
 points <- points %>%
@@ -135,7 +136,8 @@ points <- points %>%
 points <- points %>%
   mutate(
     Training = case_when(
-      Sorc_ID == "ACI_field_2024" ~ "aci" # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2024" ~ "aci", # if using 2024 ACI data
+      #Sorc_ID == "ACI_field_2025" ~ "aci2025" # if using 2024 ACI data
       TRUE ~ ""))    # keep unmatched cases empty
 
 # Create column with numerical class for ground-truthed cover type
@@ -305,6 +307,10 @@ if (all(c("raster", "year") %in% names(meta_raw))) {
   )
 }
 
+# Rename aci2024 column in metadata to aci (only when excluding aci2025)
+meta_norm <- meta_norm %>%
+  mutate(raster = if_else(raster == "aci2024", "aci", raster))
+
 # Build named list: raster -> unique sorted integer vector of years
 raster_years_map <- meta_norm %>%
   mutate(years = map(years, ~ unique(sort(as.integer(.x))))) %>%
@@ -355,7 +361,7 @@ long <- points_norm %>%
 long_out <- long %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(long_out, file.path(out_dir, "long_prefiltering_23Jun2026_nat_v_tam_v_oth.csv"))
+write.csv(long_out, file.path(out_dir, "long_prefiltering_18Jul2026_nat_v_tam_v_oth.csv"))
 
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
@@ -431,7 +437,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_out, file.path(out_dir, "eval_data_23Jun2026_natvtam_withnongrass.csv"))
+write.csv(eval_data_out, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass.csv"))
 
 # fully expanded confusion structure per dataset
 conf<- eval_data %>%
@@ -440,79 +446,79 @@ conf<- eval_data %>%
 
 conf
 
-write.csv(conf, file.path(out_dir, "eval_data_23Jun2026_natvtam_withnongrass_confusion.csv"))
+write.csv(conf, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass_confusion.csv"))
 
 # Isolate datasets that need to be handled differently
 #   Datasets with training data need to be filtered separately
 #   so that data is not lost
 
-# ACI
-eval_data_aci <- eval_data %>%
-  filter(raster_group == "aci")
-
-# HFI
-eval_data_hfi <- eval_data %>%
-  filter(raster_group == "hfi")
-
-# NGI
-eval_data_ngi <- eval_data %>%
-  filter(raster_group == "ngi")
-
-# PLI
-eval_data_pli <- eval_data %>%
-  filter(raster_group == "pli")
+# # ACI
+# eval_data_aci <- eval_data %>%
+#   filter(raster_group == "aci")
+# 
+# # HFI
+# eval_data_hfi <- eval_data %>%
+#   filter(raster_group == "hfi")
+# 
+# # NGI
+# eval_data_ngi <- eval_data %>%
+#   filter(raster_group == "ngi")
+# 
+# # PLI
+# eval_data_pli <- eval_data %>%
+#   filter(raster_group == "pli")
 
 # Filter out training data
 #   Remove points used to train the model
 
 # ACI
-eval_data_aci_filt <- eval_data_aci %>%
-  filter(is.na(Sorc_ID) | Sorc_ID != "aci")
+# eval_data_aci_filt <- eval_data_aci %>%
+#   filter(is.na(Sorc_ID) | Sorc_ID != "aci")
 
 # HFI
-eval_data_hfi_filt <- eval_data_hfi %>%
-  filter(is.na(Sorc_ID) | Sorc_ID != "hfi")
+# eval_data_hfi_filt <- eval_data_hfi %>%
+#   filter(is.na(Sorc_ID) | Sorc_ID != "hfi")
 
 # NGI
-eval_data_ngi_filt <- eval_data_ngi %>%
-  filter(is.na(Sorc_ID) | Sorc_ID != "ngi")
+# eval_data_ngi_filt <- eval_data_ngi %>%
+#   filter(is.na(Sorc_ID) | Sorc_ID != "ngi")
 
 # PLI
-eval_data_pli_filt <- eval_data_pli %>%
-  filter(is.na(Sorc_ID) | Sorc_ID != "pli")
+# eval_data_pli_filt <- eval_data_pli %>%
+#   filter(is.na(Sorc_ID) | Sorc_ID != "pli")
 
 # Filter ACI, HFI, NGI, and PLI out of eval_data
-eval_data_reg <- eval_data %>%
-  filter(!(raster_group %in% c("aci", "pli", "ngi", "hfi")))
+#eval_data_reg <- eval_data %>%
+#  filter(!(raster_group %in% c("aci", "pli", "ngi", "hfi")))
 
 # Combine back together
-eval_data_combined <- bind_rows(
-  eval_data_reg,
-  eval_data_aci_filt,
-  eval_data_hfi_filt,
-  eval_data_ngi_filt,
-  eval_data_pli_filt
-)
+# eval_data_combined <- bind_rows(
+#   eval_data_reg,
+#   eval_data_aci_filt,
+#   eval_data_hfi_filt,
+#   eval_data_ngi_filt,
+#   eval_data_pli_filt
+# )
 
 # Check number of rows - 60,049 total
-sapply(
-  list(
-    table1 = eval_data_reg,
-    table2 = eval_data_aci_filt,
-    table3 = eval_data_hfi_filt,
-    table4 = eval_data_ngi_filt,
-    table5 = eval_data_pli_filt
-  ),
-  nrow
-)
+# sapply(
+#   list(
+#     table1 = eval_data_reg,
+#     table2 = eval_data_aci_filt,
+#    table3 = eval_data_hfi_filt,
+#    table4 = eval_data_ngi_filt,
+#    table5 = eval_data_pli_filt
+#  ),
+#  nrow
+#)
 
 # Collapse lists to strings and export
 # KEEP list column until fully done
 # Only do this right before write.csv():
-eval_data_combined_out <- eval_data_combined %>%
-  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
+#eval_data_combined_out <- eval_data_combined %>%
+#  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_combined_out, file.path(out_dir, "eval_data_29Apr2026_withnongrass_good.csv"))
+#write.csv(eval_data_combined_out, file.path(out_dir, "eval_data_29Apr2026_withnongrass_good.csv"))
 
 # ----------------------------
 # 8) Multiclass metrics helpers
@@ -551,11 +557,11 @@ multiclass_mcc <- function(cm) {
   cm <- as.matrix(cm)
   if (!is.numeric(cm)) stop("Confusion matrix must be numeric")
   
-  n <- sum(cm)
+  n <- as.numeric(sum(cm))
   if (n == 0) return(NA_real_)
   
-  r <- rowSums(cm)
-  c <- colSums(cm)
+  r <- as.numeric(rowSums(cm))
+  c <- as.numeric(colSums(cm))
   
   sum_diag <- sum(diag(cm))
   sum_row_col <- sum(r * c)
@@ -600,10 +606,14 @@ compute_confusion_3 <- function(df,
 # ----------------------------
 compute_metrics_3 <- function(tab) {
   
-  n     <- sum(tab)
-  diagv <- diag(tab)
-  rows  <- rowSums(tab)   # support (truth)
-  cols  <- colSums(tab)   # predicted totals
+  n     <- as.numeric(sum(tab))
+  diagv <- as.numeric(diag(tab))
+  rows  <- as.numeric(rowSums(tab))   # support (truth)
+  cols  <- as.numeric(colSums(tab))   # predicted totals
+  
+  # Number of classes actually present
+  n_truth_classes <- sum(rows > 0)
+  n_pred_classes <- sum(cols > 0)
   
   # ---- Accuracy ----
   overall <- safe_div(sum(diagv), n)
@@ -633,6 +643,14 @@ compute_metrics_3 <- function(tab) {
   # ---- Multiclass MCC ----
   mcc_multiclass <- multiclass_mcc(tab)
   
+  # ---- Degenerate truth check ----
+  n_truth_classes <- sum(rows > 0)
+  
+  if (n_truth_classes < 2) {
+    kappa <- NA_real_           # make sure NA not 0
+    mcc_multiclass <- NA_real_
+  }
+  
   # ---- One-vs-rest MCC ----
   classes <- seq_len(nrow(tab))
   
@@ -648,6 +666,10 @@ compute_metrics_3 <- function(tab) {
   
   tibble(
     N_evaluated        = as.integer(n),
+    
+    Truth_Classes_Present = n_truth_classes,
+    Pred_Classes_Present  = n_pred_classes,
+    
     Overall_Accuracy  = overall,
     Balanced_Accuracy = balanced_acc,
     Kappa             = kappa,
@@ -713,7 +735,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_23Jun2026.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_18Jul2026.xlsx")
 
 write_xlsx(
   list(
@@ -794,6 +816,81 @@ accuracy_by_ecoprovince <- summarize_block_multiclass(
 ecodist_to_regions <- eval_data %>%
   distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
+# tmp <- eval_data %>%
+#   filter(raster_group == "cgr")
+# 
+# cm <- compute_confusion_3(tmp)$tab
+# 
+# cm
+# 
+# eval_data %>%
+#   group_by(raster_group) %>%
+#   summarise(
+#     n = n(),
+#     class0 = sum(LC_class3 == 0, na.rm = TRUE),
+#     class1 = sum(LC_class3 == 1, na.rm = TRUE),
+#     class2 = sum(LC_class3 == 2, na.rm = TRUE)
+#   )
+# 
+# eval_data %>%
+#   group_by(raster_group) %>%
+#   summarise(
+#     truth_levels = paste(sort(unique(LC_class3)), collapse = ","),
+#     pred_levels  = paste(sort(unique(pred)), collapse = ",")
+#   )
+# 
+# eval_data %>%
+#   count(raster_group, LC_class3)
+# 
+# eval_data %>%
+#   group_by(raster_group) %>%
+#   summarise(
+#     min_class = min(LC_class3),
+#     max_class = max(LC_class3),
+#     classes = paste(sort(unique(LC_class3)), collapse = ",")
+#   )
+# 
+# eval_data %>%
+#   filter(raster_group %in% c("cgr","pglc")) %>%
+#   count(raster_group, LC_class3)
+# 
+# long %>%
+#   group_by(raster_group, LC_class3) %>%
+#   summarise(
+#     n_before = n(),
+#     n_after = sum(
+#       !is.na(
+#         map2_int(
+#           allowed_years,
+#           Yer_Cll,
+#           ~ compute_matched_year_class3(.x, .y, first(LC_class3))
+#         )
+#       )
+#     ),
+#     .groups = "drop"
+#   )
+# 
+# test <- long %>%
+#   rowwise() %>%
+#   mutate(
+#     matched_year =
+#       compute_matched_year_class3(
+#         allowed_years,
+#         Yer_Cll,
+#         LC_class3
+#       )
+#   ) %>%
+#   ungroup()
+# 
+# test %>%
+#   group_by(raster_group, LC_class3) %>%
+#   summarise(
+#     total = n(),
+#     kept = sum(!is.na(matched_year)),
+#     pct_kept = kept / total,
+#     .groups = "drop"
+#   )
+
 # --------------------------------------------------
 # ATOMIC
 # --------------------------------------------------
@@ -827,18 +924,21 @@ accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
       N_evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  
+  accuracy_with_fallback_atomic[[m]] <- case_when(
+    accuracy_with_fallback_atomic$source_level == "ecodistrict" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoD")]],
+    
+    accuracy_with_fallback_atomic$source_level == "ecoregion" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoR")]],
+    
+    TRUE ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoP")]]
+  )
+}
 
 # --------------------------------------------------
 # GROUPED
@@ -868,18 +968,21 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
       N_evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  
+  accuracy_with_fallback_grouped[[m]] <- case_when(
+    accuracy_with_fallback_grouped$source_level == "ecodistrict" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoD")]],
+    
+    accuracy_with_fallback_grouped$source_level == "ecoregion" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoR")]],
+    
+    TRUE ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoP")]]
+  )
+}
 
 # ----------------------------
 # Export multiclass fallback results
@@ -889,7 +992,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_cropins_date.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_cropins_18Jul2026.csv"
   )
 )
 
@@ -897,7 +1000,7 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_cropins_date.csv"
+    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_cropins_18Jul2026.csv"
   )
 )
 

@@ -69,7 +69,7 @@ library(mltools)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame_clean.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived"
@@ -101,9 +101,9 @@ points <- readxl::read_excel(
 
 names(points)
 str(points)
-unique(points$LC_Class_N)
-unique(points$Source_ID)
-table(points$Source_ID, useNA = "ifany")
+# unique(points$LC_Class_N)
+# unique(points$Source_ID)
+# table(points$Source_ID, useNA = "ifany")
 
 # Rename columns
 points <- points %>%
@@ -139,7 +139,7 @@ points <- points %>%
 points <- points %>%
   mutate(
     Training = case_when(
-      Sorc_ID == "ACI_field_2024" ~ "aci" # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2024" ~ "aci", # if using 2024 ACI data
       TRUE ~ ""))    # keep unmatched cases empty
 
 # Create column with numerical class for ground-truthed cover type
@@ -309,6 +309,10 @@ if (all(c("raster", "year") %in% names(meta_raw))) {
   )
 }
 
+# Rename aci2024 column in metadata to aci (only when excluding aci2025)
+meta_norm <- meta_norm %>%
+  mutate(raster = if_else(raster == "aci2024", "aci", raster))
+
 # Build named list: raster -> unique sorted integer vector of years
 raster_years_map <- meta_norm %>%
   mutate(years = map(years, ~ unique(sort(as.integer(.x))))) %>%
@@ -359,7 +363,7 @@ long <- points_norm %>%
 long_out <- long %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(long_out, file.path(out_dir, "long_prefiltering_23Jun2026_nat_v_tam_v_oth_lenient.csv"))
+write.csv(long_out, file.path(out_dir, "long_prefiltering_18Jul2026_nat_v_tam_v_oth_lenient.csv"))
 
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
@@ -413,7 +417,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_out, file.path(out_dir, "eval_data_23Jun2026_natvtam_withnongrass_lenient.csv"))
+write.csv(eval_data_out, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass_lenient.csv"))
 
 # fully expanded confusion structure per dataset
 conf<- eval_data %>%
@@ -422,7 +426,7 @@ conf<- eval_data %>%
 
 conf
 
-write.csv(conf, file.path(out_dir, "eval_data_23Jun2026_natvtam_withnongrass_confusion_lenient.csv"))
+write.csv(conf, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass_confusion_lenient.csv"))
 
 # Isolate datasets that need to be handled differently
 #   Datasets with training data need to be filtered separately
@@ -525,11 +529,11 @@ multiclass_mcc <- function(cm) {
   cm <- as.matrix(cm)
   if (!is.numeric(cm)) stop("Confusion matrix must be numeric")
   
-  n <- sum(cm)
+  n <- as.numeric(sum(cm))
   if (n == 0) return(NA_real_)
   
-  r <- rowSums(cm)
-  c <- colSums(cm)
+  r <- as.numeric(rowSums(cm))
+  c <- as.numeric(colSums(cm))
   
   sum_diag <- sum(diag(cm))
   sum_row_col <- sum(r * c)
@@ -574,10 +578,14 @@ compute_confusion_3 <- function(df,
 # ----------------------------
 compute_metrics_3 <- function(tab) {
   
-  n     <- sum(tab)
-  diagv <- diag(tab)
-  rows  <- rowSums(tab)   # support (truth)
-  cols  <- colSums(tab)   # predicted totals
+  n     <- as.numeric(sum(tab))
+  diagv <- as.numeric(diag(tab))
+  rows  <- as.numeric(rowSums(tab))   # support (truth)
+  cols  <- as.numeric(colSums(tab))   # predicted totals
+  
+  # Number of classes actually present
+  n_truth_classes <- sum(rows > 0)
+  n_pred_classes <- sum(cols > 0)
   
   # ---- Accuracy ----
   overall <- safe_div(sum(diagv), n)
@@ -607,6 +615,14 @@ compute_metrics_3 <- function(tab) {
   # ---- Multiclass MCC ----
   mcc_multiclass <- multiclass_mcc(tab)
   
+  # ---- Degenerate truth check ----
+  n_truth_classes <- sum(rows > 0)
+  
+  if (n_truth_classes < 2) {
+    kappa <- NA_real_           # make sure NA not 0
+    mcc_multiclass <- NA_real_
+  }
+  
   # ---- One-vs-rest MCC ----
   classes <- seq_len(nrow(tab))
   
@@ -622,6 +638,10 @@ compute_metrics_3 <- function(tab) {
   
   tibble(
     N_evaluated        = as.integer(n),
+    
+    Truth_Classes_Present = n_truth_classes,
+    Pred_Classes_Present  = n_pred_classes,
+    
     Overall_Accuracy  = overall,
     Balanced_Accuracy = balanced_acc,
     Kappa             = kappa,
@@ -677,14 +697,6 @@ metrics_by_dataset <- summarize_block_multiclass(
   key_cols = "raster_group"
 )
 
-Warning messages:
-  1: In n * n : NAs produced by integer overflow
-2: In sum_diag * n : NAs produced by integer overflow
-3: In n * n : NAs produced by integer overflow
-4: In sum_diag * n : NAs produced by integer overflow
-5: In n * n : NAs produced by integer overflow
-6: In sum_diag * n : NAs produced by integer overflow
-
 confusions_by_dataset <- confusion_block_multiclass(
   eval_data,
   key_cols = "raster_group"
@@ -695,7 +707,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_23Jun2026_lenient.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_18Jul2026_lenient.xlsx")
 
 write_xlsx(
   list(
@@ -809,18 +821,21 @@ accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
       N_evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  
+  accuracy_with_fallback_atomic[[m]] <- case_when(
+    accuracy_with_fallback_atomic$source_level == "ecodistrict" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoD")]],
+    
+    accuracy_with_fallback_atomic$source_level == "ecoregion" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoR")]],
+    
+    TRUE ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoP")]]
+  )
+}
 
 # --------------------------------------------------
 # GROUPED
@@ -850,18 +865,21 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
       N_evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  
+  accuracy_with_fallback_grouped[[m]] <- case_when(
+    accuracy_with_fallback_grouped$source_level == "ecodistrict" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoD")]],
+    
+    accuracy_with_fallback_grouped$source_level == "ecoregion" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoR")]],
+    
+    TRUE ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoP")]]
+  )
+}
 
 # ----------------------------
 # Export multiclass fallback results
@@ -871,7 +889,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_cropins_lenient_date.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_cropins_lenient_18Jul2026.csv"
   )
 )
 
@@ -879,7 +897,7 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_cropins_lenient_date.csv"
+    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_cropins_lenient_18Jul2026.csv"
   )
 )
 

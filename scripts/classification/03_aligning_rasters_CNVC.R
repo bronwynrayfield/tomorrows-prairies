@@ -922,7 +922,7 @@ writeRaster(cnvc_nt_masked, cnvc_nt_pa_out_path, datatype = "INT1U",
 crop_ext <- ext(sa)
 
 # crop raster to study area
-cnvc_sa <- crop(cnvc, crop_ext)
+cnvc_sa <- crop(cnvc_algn, crop_ext)
 cnvc_sa
 plot (cnvc_sa)
 
@@ -930,6 +930,8 @@ plot (cnvc_sa)
 cnvc_masked <- mask(cnvc_sa, sa)
 cnvc_masked
 plot(cnvc_masked)
+
+cnvc_masked
 
 # Save the raster as 8-bit unsigned integer
 cnvc_sa_out_path <- file.path(cnvc_masked_dir, "cnvc_algn_masked.tif")

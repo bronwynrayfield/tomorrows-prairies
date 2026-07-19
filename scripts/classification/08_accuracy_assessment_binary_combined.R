@@ -52,13 +52,15 @@ library(scales)
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 # ----------------------------
-# 2) File paths 
+# 2) Directories and file paths 
 # ----------------------------
-acc_cm_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/compiled_derived/accuracy_assessment_data_binary_pli_sep_compiled_23Jun2026.csv"
-acc_ci_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived/accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_23Jun2026.csv"
-metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
-
+acc_cm_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/compiled_derived"
+acc_ci_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived/v2_of_dataset"
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/combined_CI_and_compiled"
+
+acc_cm_file <- file.path(acc_cm_dir, "18Jul2026/accuracy_assessment_data_binary_pli_sep_compiled_18Jul2026.csv")
+acc_ci_file <- file.path(acc_ci_dir, "18Jul2026/lenient/accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_18Jul2026.csv")
+metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
 # ----------------------------
 # 3) Configuration
@@ -81,8 +83,17 @@ str(acc_cm)
 str(acc_ci)
 
 # Add missing columns
-#acc_ci <- acc_ci %>%
-#  mutate(Training = "")
+acc_ci <- acc_ci %>%
+  mutate(Ecrg_ID = NA_real_)
+
+# Clean up ecoregion names
+acc_ci <- acc_ci %>%
+  mutate(Ecrgn_n = case_when(
+    Ecrgn_n == "Okanogan Highland"~ "Okanagan Highland", 
+    Ecrgn_n == "Okanogan Range"~ "Okanagan Range",
+    Ecrgn_n == "Southwest Manotoba Uplands"~ "Southwest Manitoba Uplands",
+    Ecrgn_n == "St-Laurent Lowlands"~ "St. Lawrence Lowlands",
+    TRUE ~ Ecrgn_n))
 
 # Reorder to match
 acc_ci <- acc_ci %>%
@@ -126,7 +137,7 @@ combined_out <- combined %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
 # Export
-readr::write_csv(combined_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_CIandCM_23Jun2026.csv"))
+readr::write_csv(combined_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_CIandCM_18Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -349,7 +360,7 @@ readr::write_csv(
 min_n <- 20
 
 #---- Compute ecoregion-level metrics ----
-accuracy_by_ecoregion <- eval_data %>%
+accuracy_by_ecoregion <- combined %>%
   group_by(raster, Ecrgn_n) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -365,7 +376,7 @@ accuracy_by_ecoregion <- eval_data %>%
   tidyr::unnest_wider(metrics)
 
 #---- Compute ecoprovince-level metrics ----
-accuracy_by_ecoprovince <- eval_data %>%
+accuracy_by_ecoprovince <- combined %>%
   group_by(raster, Ecprv) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -380,20 +391,75 @@ accuracy_by_ecoprovince <- eval_data %>%
   ungroup() %>%
   tidyr::unnest_wider(metrics)
 
+#accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
+#  rename(
+#    TP_ecoP = TP,
+#    TN_ecoP = TN,
+#    FP_ecoP = FP,
+#    FN_ecoP = FN,
+#    N_evaluated_ecoP = N_evaluated
+#  )
+
 accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
   rename_with(~ paste0(.x, "_ecoP"), -c(raster, Ecprv))
 
 #---- Define mapping ----
 
 # Get mapping (one row per ecodistrict)
-ecodist_to_regions <- eval_data %>%
+ecodist_to_regions <- combined %>%
   distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
+# examime ecodistricts associated with more than one ecoregon/prov
+combined %>%
+  distinct(Ecds_ID, Ecrgn_n, Ecprv) %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+combined %>%
+  distinct(Ecds_ID, Ecrgn_n, Ecprv) %>%
+  filter(Ecds_ID %in%
+           (combined %>%
+              distinct(Ecds_ID, Ecrgn_n, Ecprv) %>%
+              count(Ecds_ID) %>%
+              filter(n > 1) %>%
+              pull(Ecds_ID))) %>%
+  print(n = Inf)
+
+# Ecds_ID Ecrgn_n                    Ecprv
+# 1    1010 Okanogan Highland           14.3
+# 2    1009 Okanogan Range              14.3
+# 3     543 St-Laurent Lowlands          8.1
+# 4     544 St-Laurent Lowlands          8.1
+# 5     546 St-Laurent Lowlands          8.1
+# 6     541 St-Laurent Lowlands          8.1
+# 7     547 St-Laurent Lowlands          8.1
+# 8     545 St-Laurent Lowlands          8.1
+# 9     542 St-Laurent Lowlands          8.1
+# 10    1011 Okanogan Highland           14.3
+# 11     855 Southwest Manotoba Uplands  10.2
+# 12    1010 Okanagan Highland           14.3
+# 13    1009 Okanagan Range              14.3
+# 14    1011 Okanagan Highland           14.3
+# 15     543 St. Lawrence Lowlands        8.1
+# 16     544 St. Lawrence Lowlands        8.1
+# 17     546 St. Lawrence Lowlands        8.1
+# 18     541 St. Lawrence Lowlands        8.1
+# 19     547 St. Lawrence Lowlands        8.1
+# 20     545 St. Lawrence Lowlands        8.1
+# 21     542 St. Lawrence Lowlands        8.1
+# 22     855 Southwest Manitoba Uplands  10.2
+
+# Join
 accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
 
 accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
   left_join(ecodist_to_regions, by = "Ecds_ID")
+
+# Check whether an ecodistrict belongs to multiple regions/provinces
+ecodist_to_regions %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
 
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
@@ -500,12 +566,12 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_ecoregprovfallback_grouped_combinedCIandCM_date.csv")
+  file.path(out_dir, "binary_accuracy_ecoregprovfallback_grouped_combinedCIandCM_18Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_ecoregprovfallback_atomic_combinedCIandCM_date.csv")
+  file.path(out_dir, "binary_accuracy_ecoregprovfallback_atomic_combinedCIandCM_18Jul2026.csv")
 )
 

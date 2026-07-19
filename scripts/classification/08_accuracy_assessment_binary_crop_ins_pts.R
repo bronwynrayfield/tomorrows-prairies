@@ -57,7 +57,7 @@ library(scales)
 # 2) File paths 
 # ----------------------------
 #points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass_clean.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived"
@@ -95,7 +95,7 @@ points <- readxl::read_excel(
 names(points)
 str(points)
 unique(points$LC_Class_N)
-#unique(points$Source)
+unique(points$Source_ID)
 #table(points$Source, useNA = "ifany")
 
 # Rename columns
@@ -109,6 +109,7 @@ points <- points %>%
     Provinc  = PROV,
     Ecrgn_n  = ecoreg,
     aci2024  = aafc_aci_merged_reproj_algn_binary_noshrub,
+    #aci2025  = aafc_aci_2025_merged_reproj_algn_binary_noshrub,
     luts10   = luts10_reproj_algn_binary_masked,
     luts30   = luts30_reproj_algn_binary_masked,
     cec      = nalcms_reproj_algn_binary_noshrub_masked,
@@ -147,6 +148,7 @@ points <- points %>%
   mutate(
     Training = case_when(
       Sorc_ID == "ACI_field_2024" ~ "aci2024", # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2025" ~ "aci2025", # if using 2025 ACI data - check with EL
       TRUE ~ ""))    # keep unmatched cases empty
     
 # Create column with numerical class for ground-truthed cover type
@@ -440,7 +442,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_14Jul2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_18Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -723,13 +725,6 @@ ecodist_to_regions %>%
   count(Ecds_ID) %>%
   filter(n > 1)
 
-#   Ecds_ID     n
-# 1     618     2
-# 2     815     2
-# 3     828     2
-# 4     833     2
-# 5     838     2
-
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   left_join(
@@ -835,13 +830,13 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_14Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_18Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_14Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_18Jul2026.csv")
 )
 
 # ----------------------------

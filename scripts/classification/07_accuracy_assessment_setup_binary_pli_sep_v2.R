@@ -74,7 +74,7 @@ sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 sap_file <- file.path(sa_dir, "modelling_study_area_aligned_cnvc_Jan2026.shp")
 
 # ground-truthed data
-gt_file <- file.path(gt_dir, "gt_points_modified_Mar2026.shp")
+gt_file <- file.path(gt_dir, "gt_points_mod_Mar26_cleanJul26.shp")
 
 # ecodistricts
 eco_file <- file.path(eco_dir, "ecodistricts_clean_class_sa.shp")
@@ -117,6 +117,27 @@ gt_sf <- sf::st_read(gt_file)
 #gt_sf <- gt_sf[st_geometry_type(gt_sf) == "POINT", ]
 gt_sf <- gt_sf[st_geometry_type(gt_sf) == "POINT" &
     !sf::st_is_empty(gt_sf),]
+
+# clean
+coords <- st_coordinates(gt_sf)
+
+summary(coords)
+
+bad <- which(
+  coords[,1] < -180 | coords[,1] > 180 |
+    coords[,2] < -90  | coords[,2] > 90
+)
+
+length(bad)
+
+gt_sf[bad, ]
+
+keep <- coords[,1] >= -180 &
+  coords[,1] <= 180 &
+  coords[,2] >= -90 &
+  coords[,2] <= 90
+
+gt_sf <- gt_sf[keep, ]
 
 # convert to terra
 gt <- terra::vect(gt_sf)
@@ -325,7 +346,7 @@ head(attr_df)
 ####--- EXPORT ---####
 
 # write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_ecodist_pli_sep_17Jul2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_ecodist_pli_sep_18Jul2026.csv")
 write.csv(attr_df, csv_out_path, row.names = FALSE)
 
 # filter attr_df to only include rows where Yer_Cll is 2015+
@@ -335,7 +356,7 @@ attr_df_2015 <- attr_df %>%
 
 head(attr_df_2015)
 
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_17Jul2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 ####--- CLEAN FOR NEXT STEP ---####
@@ -350,10 +371,11 @@ attr_df_2015 <- attr_df_2015 %>%
     Training = case_when(
       Sorc_ID == "PLI_SKMoE" ~ "pli",
       Sorc_ID == "ABMI_HFI" ~ "hfi",
+      Sorc_ID == "ABMI_THF" ~ "hfi",
       Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
       Sorc_ID == "ACI_field_2024" ~ "aci2024", 
       Sorc_ID == "ACI_field_2025" ~ "aci2025", 
-      Sorc_ID == "BC_ACI_2025" ~ "aci2024",
+      Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", # which year of ACI?
       TRUE ~ ""    # keep unmatched cases empty
     )
   )
@@ -363,7 +385,7 @@ attr_df_2015 <- attr_df_2015 %>%
   relocate(LC_grass, Training)
 
 # write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_17Jul2026_clean.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026_clean.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 #########################################################################################

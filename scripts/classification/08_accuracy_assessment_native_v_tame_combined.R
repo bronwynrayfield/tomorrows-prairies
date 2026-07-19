@@ -51,6 +51,7 @@
 
 # load packages
 library(readxl)
+library(writexl)
 library(readr)
 library(dplyr)
 library(tidyr)
@@ -67,11 +68,13 @@ library(scales)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-acc_cm_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/compiled_derived/accuracy_assessment_data_binary_pli_sep_compiled_23Jun2026.csv"
-acc_ci_file <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived/accuracy_assessment_data_binary_pli_sep_cropinsV2_combined_23Jun2026.csv"
-metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
+acc_cm_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/compiled_derived"
+acc_ci_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived"
+out_dir    <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/combined_CI_and_compiled"
 
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/combined_CI_and_compiled"
+acc_cm_file <- file.path(acc_cm_dir, "18Jul2026/combined_18Jul2026_natvtam_withnongrass_compiled.csv")
+acc_ci_file <- file.path(acc_ci_dir, "18Jul2026/combined_18Jul2026_natvtam_withnongrass_lenient.csv")
+metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
 # ----------------------------
 # 3) Configuration
@@ -95,7 +98,16 @@ str(acc_ci)
 
 # Add missing columns
 acc_ci <- acc_ci %>%
-  mutate(Training = "")
+  mutate(Ecrg_ID = NA_real_)
+
+# Clean up ecoregion names
+acc_ci <- acc_ci %>%
+  mutate(Ecrgn_n = case_when(
+    Ecrgn_n == "Okanogan Highland"~ "Okanagan Highland", 
+    Ecrgn_n == "Okanogan Range"~ "Okanagan Range",
+    Ecrgn_n == "Southwest Manotoba Uplands"~ "Southwest Manitoba Uplands",
+    Ecrgn_n == "St-Laurent Lowlands"~ "St. Lawrence Lowlands",
+    TRUE ~ Ecrgn_n))
 
 # Reorder to match
 acc_ci <- acc_ci %>%
@@ -139,7 +151,7 @@ combined_out <- combined %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
 # Export
-readr::write_csv(combined_out, file.path(out_dir, "accuracy_assessment_data_natvtam_pli_sep_CIandCM_CIcombined_23Jun2026.csv"))
+readr::write_csv(combined_out, file.path(out_dir, "accuracy_assessment_data_natvtam_pli_sep_CIandCM_CIcombined_18Jul2026.csv"))
 
 # ----------------------------
 # 8) Multiclass metrics helpers
@@ -178,11 +190,11 @@ multiclass_mcc <- function(cm) {
   cm <- as.matrix(cm)
   if (!is.numeric(cm)) stop("Confusion matrix must be numeric")
   
-  n <- sum(cm)
+  n <- as.numeric(sum(cm))
   if (n == 0) return(NA_real_)
   
-  r <- rowSums(cm)
-  c <- colSums(cm)
+  r <- as.numeric(rowSums(cm))
+  c <- as.numeric(colSums(cm))
   
   sum_diag <- sum(diag(cm))
   sum_row_col <- sum(r * c)
@@ -227,10 +239,14 @@ compute_confusion_3 <- function(df,
 # ----------------------------
 compute_metrics_3 <- function(tab) {
   
-  n     <- sum(tab)
-  diagv <- diag(tab)
-  rows  <- rowSums(tab)   # support (truth)
-  cols  <- colSums(tab)   # predicted totals
+  n     <- as.numeric(sum(tab))
+  diagv <- as.numeric(diag(tab))
+  rows  <- as.numeric(rowSums(tab))   # support (truth)
+  cols  <- as.numeric(colSums(tab))   # predicted totals
+  
+  # Number of classes actually present
+  n_truth_classes <- sum(rows > 0)
+  n_pred_classes <- sum(cols > 0)
   
   # ---- Accuracy ----
   overall <- safe_div(sum(diagv), n)
@@ -260,6 +276,14 @@ compute_metrics_3 <- function(tab) {
   # ---- Multiclass MCC ----
   mcc_multiclass <- multiclass_mcc(tab)
   
+  # ---- Degenerate truth check ----
+  n_truth_classes <- sum(rows > 0)
+  
+  if (n_truth_classes < 2) {
+    kappa <- NA_real_           # make sure NA not 0
+    mcc_multiclass <- NA_real_
+  }
+  
   # ---- One-vs-rest MCC ----
   classes <- seq_len(nrow(tab))
   
@@ -275,6 +299,10 @@ compute_metrics_3 <- function(tab) {
   
   tibble(
     N_evaluated        = as.integer(n),
+    
+    Truth_Classes_Present = n_truth_classes,
+    Pred_Classes_Present  = n_pred_classes,
+    
     Overall_Accuracy  = overall,
     Balanced_Accuracy = balanced_acc,
     Kappa             = kappa,
@@ -326,12 +354,12 @@ confusion_block_multiclass <- function(df, key_cols) {
 # Create output tables
 # ----------------------------
 metrics_by_dataset <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = "raster_group"
 )
 
 confusions_by_dataset <- confusion_block_multiclass(
-  eval_data,
+  combined,
   key_cols = "raster_group"
 )
 
@@ -340,7 +368,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_combined_23Jun2026.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_combined_18Jul2026.xlsx")
 
 write_xlsx(
   list(
@@ -357,19 +385,19 @@ write_xlsx(
 # 13) Accuracy by Ecodistrict (TRICLASS)
 # ----------------------------
 
-if (!"Ecds_ID" %in% names(eval_data)) {
-  stop("Ecds_ID column not found in eval_data.")
+if (!"Ecds_ID" %in% names(combined)) {
+  stop("Ecds_ID column not found in combined.")
 }
 
 # ---- ATOMIC: raster × ecodistrict ----
 accuracy_by_ecodistrict_atomic <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = c("raster", "Ecds_ID")
 ) %>%
   arrange(raster, Ecds_ID)
 
 # ---- GROUPED: collapse pli_* -> pli ----
-accuracy_by_ecodistrict_grouped <- eval_data %>%
+accuracy_by_ecodistrict_grouped <- combined %>%
   mutate(raster = raster_group) %>%
   summarize_block_multiclass(
     key_cols = c("raster", "Ecds_ID")
@@ -378,7 +406,7 @@ accuracy_by_ecodistrict_grouped <- eval_data %>%
 
 # ---- OPTIONAL: atomic with year ----
 accuracy_by_ecodistrict_year_atomic <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = c("raster", "matched_year", "Ecds_ID")
 ) %>%
   rename(raster_year = matched_year) %>%
@@ -403,13 +431,13 @@ min_n <- 20
 
 # ---- Ecoregion metrics ----
 accuracy_by_ecoregion <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = c("raster", "Ecrgn_n")
 )
 
 # ---- Ecoprovince metrics ----
 accuracy_by_ecoprovince <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = c("raster", "Ecprv")
 ) %>%
   rename_with(
@@ -418,7 +446,7 @@ accuracy_by_ecoprovince <- summarize_block_multiclass(
   )
 
 # ---- Mapping table ----
-ecodist_to_regions <- eval_data %>%
+ecodist_to_regions <- combined %>%
   distinct(Ecds_ID, Ecrgn_n, Ecprv)
 
 # --------------------------------------------------
@@ -454,18 +482,21 @@ accuracy_with_fallback_atomic <- fallback_joined_atomic %>%
       N_evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  
+  accuracy_with_fallback_atomic[[m]] <- case_when(
+    accuracy_with_fallback_atomic$source_level == "ecodistrict" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoD")]],
+    
+    accuracy_with_fallback_atomic$source_level == "ecoregion" ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoR")]],
+    
+    TRUE ~
+      accuracy_with_fallback_atomic[[paste0(m, "_ecoP")]]
+  )
+}
 
 # --------------------------------------------------
 # GROUPED
@@ -495,18 +526,21 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
       N_evaluated_ecoR >= min_n ~ "ecoregion",
       TRUE ~ "ecoprovince"
     )
-  ) %>%
-  mutate(
-    across(
-      all_of(metric_cols),
-      ~ case_when(
-        source_level == "ecodistrict" ~ .data[[paste0(cur_column(), "_ecoD")]],
-        source_level == "ecoregion" ~ .data[[paste0(cur_column(), "_ecoR")]],
-        TRUE ~ .data[[paste0(cur_column(), "_ecoP")]]
-      ),
-      .names = "{.col}"
-    )
   )
+
+for (m in metric_cols) {
+  
+  accuracy_with_fallback_grouped[[m]] <- case_when(
+    accuracy_with_fallback_grouped$source_level == "ecodistrict" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoD")]],
+    
+    accuracy_with_fallback_grouped$source_level == "ecoregion" ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoR")]],
+    
+    TRUE ~
+      accuracy_with_fallback_grouped[[paste0(m, "_ecoP")]]
+  )
+}
 
 # ----------------------------
 # Export multiclass fallback results
@@ -516,7 +550,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_combined_date.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_combined_18Jul2026.csv"
   )
 )
 
@@ -524,7 +558,7 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_combined_date.csv"
+    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_combined_18Jul2026.csv"
   )
 )
 
@@ -533,7 +567,7 @@ readr::write_csv(
 # ----------------------------
 
 summary_by_ecodistrict <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = c("raster", "Ecds_ID")
 )
 
@@ -757,7 +791,7 @@ summary_by_raster_grouped <- metrics_by_dataset
 
 # atomic summary
 summary_by_raster_atomic <- summarize_block_multiclass(
-  eval_data,
+  combined,
   key_cols = "raster"
 )
 

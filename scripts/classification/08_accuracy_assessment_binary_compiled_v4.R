@@ -58,7 +58,7 @@ library(scales)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Jun2026_clean.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026_clean.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/compiled_derived"
@@ -90,7 +90,7 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 30))
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 31))
 )
 
 names(points)
@@ -98,10 +98,15 @@ str(points)
 unique(points$Training)
 table(points$Training, useNA = "ifany")
 
-# Remove Plowprint and HFI
+# Remove Plowprint and HFI (and ACI 2025 for now)
 points <- points %>%
   select(-plow) %>%
-  select(-hfi)
+  select(-hfi) %>%
+  select(-aci2025)
+
+# Rename aci2024 column to aci (temporarily)
+points <- points %>%
+  dplyr::rename(aci = aci2024)
 
 # Add point ID column
 points <- points %>%
@@ -427,7 +432,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_compiled_14Jul2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_compiled_18Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -713,6 +718,15 @@ ecodist_to_regions %>%
 #   Ecds_ID     n
 # 1     618     2
 
+eval_data %>%
+  distinct(Ecds_ID, Ecrgn_n, Ecprv) %>%
+  filter(Ecds_ID %in%
+           (eval_data %>%
+              distinct(Ecds_ID, Ecrgn_n, Ecprv) %>%
+              count(Ecds_ID) %>%
+              filter(n > 1) %>%
+              pull(Ecds_ID)))
+
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   left_join(
@@ -818,13 +832,13 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_compiled_14Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_compiled_18Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_compiled_14Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_compiled_18Jul2026.csv")
 )
 
 # ----------------------------

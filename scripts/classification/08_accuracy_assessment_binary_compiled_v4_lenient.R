@@ -63,7 +63,7 @@ library(scales)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Jun2026_clean.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026_clean.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/compiled_derived"
@@ -95,7 +95,7 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 30))
+  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 31))
 )
 
 names(points)
@@ -103,10 +103,15 @@ str(points)
 unique(points$Training)
 table(points$Training, useNA = "ifany")
 
-# Remove Plowprint and HFI
+# Remove Plowprint and HFI (and ACI 2025 for now)
 points <- points %>%
   select(-plow) %>%
-  select(-hfi)
+  select(-hfi) %>%
+  select(-aci2025)
+
+# Rename aci2024 column to aci (temporarily)
+points <- points %>%
+  dplyr::rename(aci = aci2024)
 
 # Add point ID column
 points <- points %>%

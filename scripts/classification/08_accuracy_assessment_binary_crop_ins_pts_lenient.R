@@ -61,7 +61,7 @@ library(scales)
 # 2) File paths 
 # ----------------------------
 #points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass_clean.xlsx"
 #points2_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_native_v_tame_aci25.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
 
@@ -237,6 +237,8 @@ points <- points %>%
                      "Northern Continental Divide",
                      "Western Continental Ranges",
                      "Selkirk-Bitterroot Foothills") ~ "14.4"))
+
+unique(points$Ecprv)
 
 # Define required columns
 required_cols <- c("Pt_ID", "Ecds_ID", "Ecrgn_n", "Ecprv", "Training", "Sorc_ID", "LC_grass", "Yer_Cll", "LC_Cl_N")
@@ -455,7 +457,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_14Jul2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_18Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -738,13 +740,6 @@ ecodist_to_regions %>%
   count(Ecds_ID) %>%
   filter(n > 1)
 
-#   Ecds_ID     n
-# 1     618     2
-# 2     815     2
-# 3     828     2
-# 4     833     2
-# 5     838     2
-
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   left_join(
@@ -850,13 +845,13 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_lenient_14Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_lenient_18Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_lenient_14Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_lenient_18Jul2026.csv")
 )
 
 # ----------------------------

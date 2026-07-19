@@ -292,6 +292,19 @@ write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 #  filter(LC_class3 %in% c(1, 2))
 
 # add source column and fill when points were used as training data 
+#attr_df_2015 <- attr_df_2015 %>%
+#  mutate(
+#    Training = case_when(
+#      Sorc_ID == "PLI_SKMoE" ~ "pli",
+#      Sorc_ID == "ABMI_HFI" ~ "hfi",
+#      Sorc_ID == "ABMI_THF" ~ "hfi",
+#      Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
+#      Sorc_ID == "ACI_field_2024" ~ "aci", # if using 2024 ACI data
+#      Sorc_ID == "BC_ACI_2025" ~ "aci", 
+#      TRUE ~ ""    # keep unmatched cases empty
+#    )
+#  )
+
 attr_df_2015 <- attr_df_2015 %>%
   mutate(
     Training = case_when(
@@ -299,8 +312,9 @@ attr_df_2015 <- attr_df_2015 %>%
       Sorc_ID == "ABMI_HFI" ~ "hfi",
       Sorc_ID == "ABMI_THF" ~ "hfi",
       Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
-      Sorc_ID == "ACI_field_2024" ~ "aci", # if using 2024 ACI data
-      Sorc_ID == "BC_ACI_2025" ~ "aci", 
+      Sorc_ID == "ACI_field_2024" ~ "aci2024", 
+      Sorc_ID == "ACI_field_2025" ~ "aci2025", 
+      Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", # which year of ACI?
       TRUE ~ ""    # keep unmatched cases empty
     )
   )
