@@ -95,6 +95,13 @@ acc_ci <- acc_ci %>%
     Ecrgn_n == "St-Laurent Lowlands"~ "St. Lawrence Lowlands",
     TRUE ~ Ecrgn_n))
 
+# Make sure aci raster has same name for both
+acc_cm <- acc_cm %>%
+  mutate(raster = if_else(raster == "aci", "aci2024", raster))
+
+acc_cm <- acc_cm %>%
+  mutate(raster_group = if_else(raster_group == "aci", "aci2024", raster_group))
+
 # Reorder to match
 acc_ci <- acc_ci %>%
   select(names(acc_cm))
@@ -360,7 +367,23 @@ readr::write_csv(
 min_n <- 20
 
 #---- Compute ecoregion-level metrics ----
-accuracy_by_ecoregion <- combined %>%
+accuracy_by_ecoregion_atomic <- combined %>%
+  group_by(raster, Ecrgn_n) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics)
+
+accuracy_by_ecoregion_grouped <- combined %>%
+  mutate(raster = raster_group) %>%
   group_by(raster, Ecrgn_n) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -376,7 +399,23 @@ accuracy_by_ecoregion <- combined %>%
   tidyr::unnest_wider(metrics)
 
 #---- Compute ecoprovince-level metrics ----
-accuracy_by_ecoprovince <- combined %>%
+accuracy_by_ecoprovince_atomic <- combined %>%
+  group_by(raster, Ecprv) %>%
+  summarise(
+    TP = sum(LC_grass == 1 & pred == 1),
+    TN = sum(LC_grass == 0 & pred == 0),
+    FP = sum(LC_grass == 0 & pred == 1),
+    FN = sum(LC_grass == 1 & pred == 0),
+    N_evaluated = TP + TN + FP + FN,
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(metrics = list(compute_metrics(TP, TN, FP, FN))) %>%
+  ungroup() %>%
+  tidyr::unnest_wider(metrics)
+
+accuracy_by_ecoprovince_grouped <- combined %>%
+  mutate(raster = raster_group) %>%
   group_by(raster, Ecprv) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -400,7 +439,10 @@ accuracy_by_ecoprovince <- combined %>%
 #    N_evaluated_ecoP = N_evaluated
 #  )
 
-accuracy_by_ecoprovince <- accuracy_by_ecoprovince %>%
+accuracy_by_ecoprovince_atomic <- accuracy_by_ecoprovince_atomic %>%
+  rename_with(~ paste0(.x, "_ecoP"), -c(raster, Ecprv))
+
+accuracy_by_ecoprovince_grouped <- accuracy_by_ecoprovince_grouped %>%
   rename_with(~ paste0(.x, "_ecoP"), -c(raster, Ecprv))
 
 #---- Define mapping ----
@@ -464,12 +506,12 @@ ecodist_to_regions %>%
 #------- Join ----------
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   left_join(
-    accuracy_by_ecoregion,
+    accuracy_by_ecoregion_atomic,
     by = c("raster", "Ecrgn_n"),
     suffix = c("_ecoD", "_ecoR")
   ) %>%
   left_join(
-    accuracy_by_ecoprovince,
+    accuracy_by_ecoprovince_atomic,
     by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
@@ -479,15 +521,18 @@ names(fallback_joined_atomic)
 
 fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   left_join(
-    accuracy_by_ecoregion,
+    accuracy_by_ecoregion_grouped,
     by = c("raster", "Ecrgn_n"),
     suffix = c("_ecoD", "_ecoR")
   ) %>%
   left_join(
-    accuracy_by_ecoprovince,
+    accuracy_by_ecoprovince_grouped,
     by = c("raster", "Ecprv")
     #suffix = c("", "_ecoP")
   )
+
+names(fallback_joined_grouped) %>%
+  grep("N_evaluated", ., value = TRUE)
 
 #---- Apply fallback logic ----
 # Replace metrics when N_evaluated is too small
@@ -575,3 +620,803 @@ readr::write_csv(
   file.path(out_dir, "binary_accuracy_ecoregprovfallback_atomic_combinedCIandCM_18Jul2026.csv")
 )
 
+# ----------------------------
+# 15) Diagnostics
+# ----------------------------
+
+#-------- Count number of NAs in each metic --------#
+
+# How often is MCC NA at each level?
+
+fallback_joined_grouped %>%
+  summarise(
+    n_rows = n(),
+    MCC_ecoD_NA = sum(is.na(MCC_ecoD)),
+    MCC_ecoR_NA = sum(is.na(MCC_ecoR)),
+    MCC_ecoP_NA = sum(is.na(MCC_ecoP)),
+    pct_MCC_ecoD_NA = mean(is.na(MCC_ecoD)) * 100,
+    pct_MCC_ecoR_NA = mean(is.na(MCC_ecoR)) * 100,
+    pct_MCC_ecoP_NA = mean(is.na(MCC_ecoP)) * 100
+  )
+
+#n_rows MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA pct_MCC_ecoD_NA pct_MCC_ecoR_NA pct_MCC_ecoP_NA
+#  3927        1614        1035         885            41.1            26.4            22.5
+
+fallback_joined_atomic %>%
+  summarise(
+    n_rows = n(),
+    MCC_ecoD_NA = sum(is.na(MCC_ecoD)),
+    MCC_ecoR_NA = sum(is.na(MCC_ecoR)),
+    MCC_ecoP_NA = sum(is.na(MCC_ecoP)),
+    pct_MCC_ecoD_NA = mean(is.na(MCC_ecoD)) * 100,
+    pct_MCC_ecoR_NA = mean(is.na(MCC_ecoR)) * 100,
+    pct_MCC_ecoP_NA = mean(is.na(MCC_ecoP)) * 100
+  )
+
+#n_rows MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA pct_MCC_ecoD_NA pct_MCC_ecoR_NA pct_MCC_ecoP_NA
+#  3929        1617        1057         908            41.2            26.9            23.1
+
+# How often is overall accuracy NA at each level?
+
+fallback_joined_grouped %>%
+  summarise(
+    n_rows = n(),
+    OA_ecoD_NA = sum(is.na(Overall_Accuracy_ecoD)),
+    OA_ecoR_NA = sum(is.na(Overall_Accuracy_ecoR)),
+    OA_ecoP_NA = sum(is.na(Overall_Accuracy_ecoP)),
+    pct_OA_ecoD_NA = mean(is.na(Overall_Accuracy_ecoD)) * 100,
+    pct_OA_ecoR_NA = mean(is.na(Overall_Accuracy_ecoR)) * 100,
+    pct_OA_ecoP_NA = mean(is.na(Overall_Accuracy_ecoP)) * 100
+  )
+
+#n_rows OA_ecoD_NA OA_ecoR_NA OA_ecoP_NA pct_OA_ecoD_NA pct_OA_ecoR_NA pct_OA_ecoP_NA
+#  3927          0          0          0              0              0              0
+
+fallback_joined_atomic %>%
+  summarise(
+    n_rows = n(),
+    OA_ecoD_NA = sum(is.na(Overall_Accuracy_ecoD)),
+    OA_ecoR_NA = sum(is.na(Overall_Accuracy_ecoR)),
+    OA_ecoP_NA = sum(is.na(Overall_Accuracy_ecoP)),
+    pct_OA_ecoD_NA = mean(is.na(Overall_Accuracy_ecoD)) * 100,
+    pct_OA_ecoR_NA = mean(is.na(Overall_Accuracy_ecoR)) * 100,
+    pct_OA_ecoP_NA = mean(is.na(Overall_Accuracy_ecoP)) * 100
+  )
+
+#n_rows OA_ecoD_NA OA_ecoR_NA OA_ecoP_NA pct_OA_ecoD_NA pct_OA_ecoR_NA pct_OA_ecoP_NA
+#  3929          0          0          0              0              0              0
+
+# How often is balanced accuracy NA at each level?
+
+fallback_joined_grouped %>%
+  summarise(
+    n_rows = n(),
+    BA_ecoD_NA = sum(is.na(Balanced_Accuracy_ecoD)),
+    BA_ecoR_NA = sum(is.na(Balanced_Accuracy_ecoR)),
+    BA_ecoP_NA = sum(is.na(Balanced_Accuracy_ecoP)),
+    pct_BA_ecoD_NA = mean(is.na(Balanced_Accuracy_ecoD)) * 100,
+    pct_BA_ecoR_NA = mean(is.na(Balanced_Accuracy_ecoR)) * 100,
+    pct_BA_ecoP_NA = mean(is.na(Balanced_Accuracy_ecoP)) * 100
+  )
+
+#n_rows BA_ecoD_NA BA_ecoR_NA BA_ecoP_NA pct_BA_ecoD_NA pct_BA_ecoR_NA pct_BA_ecoP_NA
+#  3927       1399        976        882           35.6           24.9           22.5
+
+fallback_joined_atomic %>%
+  summarise(
+    n_rows = n(),
+    BA_ecoD_NA = sum(is.na(Balanced_Accuracy_ecoD)),
+    BA_ecoR_NA = sum(is.na(Balanced_Accuracy_ecoR)),
+    BA_ecoP_NA = sum(is.na(Balanced_Accuracy_ecoP)),
+    pct_BA_ecoD_NA = mean(is.na(Balanced_Accuracy_ecoD)) * 100,
+    pct_BA_ecoR_NA = mean(is.na(Balanced_Accuracy_ecoR)) * 100,
+    pct_BA_ecoP_NA = mean(is.na(Balanced_Accuracy_ecoP)) * 100
+  )
+
+#n_rows BA_ecoD_NA BA_ecoR_NA BA_ecoP_NA pct_BA_ecoD_NA pct_BA_ecoR_NA pct_BA_ecoP_NA
+#  3929       1402        998        905           35.7           25.4           23.0
+
+# Using fallbacks, how often are MCC and OA na?
+accuracy_with_fallback_grouped %>%
+  summarise(
+    n_rows = n(),
+    OA_NA  = sum(is.na(Overall_Accuracy)),
+    OA_pct_NA = 100 * mean(is.na(Overall_Accuracy)),
+    F1_NA = sum(is.na(F1_grass)),
+    F1_pct_NA = 100 * mean(is.na(F1_grass)),
+    BA_NA  = sum(is.na(Balanced_Accuracy)),
+    BA_pct_NA = 100 * mean(is.na(Balanced_Accuracy)),
+    MCC_NA = sum(is.na(MCC)),
+    MCC_pct_NA = 100 * mean(is.na(MCC))
+  )
+
+#n_rows OA_NA OA_pct_NA F1_NA F1_pct_NA BA_NA BA_pct_NA MCC_NA MCC_pct_NA
+#  3927     0         0   376      9.57  1114      28.4   1312       33.4
+
+accuracy_with_fallback_atomic %>%
+  summarise(
+    n_rows = n(),
+    OA_NA  = sum(is.na(Overall_Accuracy)),
+    OA_pct_NA = 100 * mean(is.na(Overall_Accuracy)),
+    F1_NA = sum(is.na(F1_grass)),
+    F1_pct_NA = 100 * mean(is.na(F1_grass)),
+    BA_NA  = sum(is.na(Balanced_Accuracy)),
+    BA_pct_NA = 100 * mean(is.na(Balanced_Accuracy)),
+    MCC_NA = sum(is.na(MCC)),
+    MCC_pct_NA = 100 * mean(is.na(MCC))
+  )
+
+#n_rows OA_NA OA_pct_NA F1_NA F1_pct_NA BA_NA BA_pct_NA MCC_NA MCC_pct_NA
+#  3929     0         0   377      9.60  1127      28.7   1325       33.7
+
+#------ Why are there more rows for grouped than atomic? ------#
+
+# Check row counts after every step
+list(
+  accuracy_by_ecodistrict_atomic  = nrow(accuracy_by_ecodistrict_atomic),
+  accuracy_by_ecodistrict_grouped = nrow(accuracy_by_ecodistrict_grouped),
+  
+  accuracy_by_ecodistrict_atomic2  = nrow(accuracy_by_ecodistrict_atomic2),
+  accuracy_by_ecodistrict_grouped2 = nrow(accuracy_by_ecodistrict_grouped2),
+  
+  fallback_joined_atomic  = nrow(fallback_joined_atomic),
+  fallback_joined_grouped = nrow(fallback_joined_grouped)
+)
+
+# Check whether grouped contains duplicate raster × ecodistrict combinations
+accuracy_by_ecodistrict_grouped %>%
+  count(raster, Ecds_ID) %>%
+  filter(n > 1)
+
+# Check whether duplicates are introduced after joining ecoregions/ecoprovinces
+dup_keys <- fallback_joined_grouped %>%
+  count(raster, Ecds_ID) %>%
+  filter(n > 1)
+
+fallback_joined_grouped %>%
+  semi_join(dup_keys, by = c("raster", "Ecds_ID")) %>%
+  arrange(raster, Ecds_ID)
+
+# Check for duplicated keys in ecodistrict mapping
+ecodist_to_regions %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+ecodist_to_regions %>%
+  count(Ecds_ID, Ecrgn_n, Ecprv) %>%
+  filter(n > 1)
+
+# Should be equal:
+nrow(ecodist_to_regions)
+n_distinct(ecodist_to_regions$Ecds_ID)
+
+# Check ecoregion table for duplicated join keys (should be 0)
+accuracy_by_ecoregion %>%
+  count(raster, Ecrgn_n) %>%
+  filter(n > 1)
+
+accuracy_by_ecoprovince %>%
+  count(raster, Ecprv) %>%
+  filter(n > 1)
+
+# Use anti-joins to find rows present only in grouped
+group_keys <- fallback_joined_grouped %>%
+  distinct(raster, Ecds_ID)
+
+atomic_keys <- fallback_joined_atomic %>%
+  distinct(raster, Ecds_ID)
+
+group_keys %>%
+  anti_join(atomic_keys,
+            by = c("raster", "Ecds_ID")) %>%
+  nrow()
+
+# Compare unique key counts
+# If rows > unique keys then duplicates exist
+# If rows == unique keys then no duplicates (grouped genuinely contains more raster–ecodistrict combinations)
+cat(
+  "Grouped rows:", nrow(fallback_joined_grouped), "\n",
+  "Grouped unique raster-Ecds_ID:",
+  fallback_joined_grouped %>%
+    distinct(raster, Ecds_ID) %>%
+    nrow(), "\n\n",
+  
+  "Atomic rows:", nrow(fallback_joined_atomic), "\n",
+  "Atomic unique raster-Ecds_ID:",
+  fallback_joined_atomic %>%
+    distinct(raster, Ecds_ID) %>%
+    nrow(), "\n"
+)
+
+# compare ecodistrict keys directly
+atomic_keys <- accuracy_by_ecodistrict_atomic %>%
+  distinct(raster, Ecds_ID)
+
+group_keys <- accuracy_by_ecodistrict_grouped %>%
+  distinct(raster, Ecds_ID)
+
+group_keys %>%
+  anti_join(
+    atomic_keys,
+    by = c("raster", "Ecds_ID")
+  ) %>%
+  arrange(raster, Ecds_ID) %>%
+  print(n = Inf)
+
+# Check to see if 67 "extra" grouped keys are  comparison artifact
+atomic_keys_grouped <- accuracy_by_ecodistrict_atomic %>%
+  mutate(
+    raster = if_else(
+      raster %in% c("pli_ap","pli_cu","pli_mg","pli_mm"),
+      "pli",
+      raster
+    )
+  ) %>%
+  distinct(raster, Ecds_ID)
+
+group_keys <- accuracy_by_ecodistrict_grouped %>%
+  distinct(raster, Ecds_ID)
+
+anti_join(
+  group_keys,
+  atomic_keys_grouped,
+  by = c("raster", "Ecds_ID")
+)
+
+# check raster to group
+table(combined$raster_group, useNA = "ifany")
+
+# aci2024     cec     cgr    cnvc      dw    eccc     esa    esri     gcc     glc     gpw     lcc     lcr 
+#  271060   74117   28144   39971  268285   60363   62429  276256    1400   38962  275777   74117   74117 
+# luts10  luts30     mgi     ngi    pglc     pli    plvi    pudl 
+#  74117   74117    7336   24479   50713   30589     602   37736 
+
+unique(combined$raster_group)
+
+combined %>%
+  filter(raster_group == "aci") %>%
+  count(raster, sort = TRUE)
+
+combined %>%
+  filter(raster_group == "aci") %>%
+  distinct(raster)
+
+# Where are missing values?
+accuracy_with_fallback_grouped %>%
+  summarise(
+    no_grass =
+      sum(TP + FN == 0, na.rm = TRUE),
+    
+    no_notgrass =
+      sum(TN + FP == 0, na.rm = TRUE),
+    
+    no_positive_predictions =
+      sum(TP + FP == 0, na.rm = TRUE),
+    
+    no_negative_predictions =
+      sum(TN + FN == 0, na.rm = TRUE),
+    
+    BA_NA =
+      sum(is.na(Balanced_Accuracy)),
+    
+    MCC_NA =
+      sum(is.na(MCC))
+  )
+
+#no_grass no_notgrass no_positive_predictions no_negative_predictions BA_NA MCC_NA
+#      87        1027                     283                      18  1114   1312
+
+# Why different numbers in PLI grouped vs atomic?
+atomic_keys_grouped <- accuracy_by_ecodistrict_atomic %>%
+  mutate(
+    raster = if_else(
+      raster %in% c("pli_ap", "pli_cu", "pli_mg", "pli_mm"),
+      "pli",
+      raster
+    )
+  ) %>%
+  distinct(raster, Ecds_ID)
+
+group_keys <- accuracy_by_ecodistrict_grouped %>%
+  distinct(raster, Ecds_ID)
+
+atomic_keys_grouped %>%
+  anti_join(
+    group_keys,
+    by = c("raster", "Ecds_ID")
+  )
+
+nrow(accuracy_by_ecodistrict_atomic)
+nrow(accuracy_by_ecodistrict_grouped)
+
+nrow(atomic_keys_grouped)
+nrow(group_keys)
+
+# Difference is occurring because two atomic rows collapse onto existing rows when recoding
+# pli_ap, pli_cu, etc to pli
+
+accuracy_by_ecodistrict_atomic %>%
+  mutate(
+    raster = if_else(
+      raster %in% c("pli_ap","pli_cu","pli_mg","pli_mm"),
+      "pli",
+      raster
+    )
+  ) %>%
+  count(raster, Ecds_ID) %>%
+  filter(n > 1)
+
+# in atomic table, there are 2 ecodistricts where more than one PLI variant occurs:
+# raster Ecds_ID     n
+# pli        745     2
+# pli        830     2
+
+accuracy_by_ecodistrict_atomic %>%
+  filter(Ecds_ID %in% c(745, 830)) %>%
+  arrange(Ecds_ID, raster) %>%
+  select(raster, Ecds_ID, N_evaluated)
+
+combined %>%
+  filter(Ecds_ID %in% c(745, 830)) %>%
+  count(Ecds_ID, raster)
+
+#------ Check correlations among metrics ------#
+
+accuracy_with_fallback_grouped %>%
+  select(
+    Overall_Accuracy,
+    Balanced_Accuracy,
+    F1_grass,
+    MCC
+  ) %>%
+  cor(use = "pairwise.complete.obs")
+
+#                   Overall_Accuracy Balanced_Accuracy  F1_grass       MCC
+# Overall_Accuracy         1.0000000         0.6874857 0.7184568 0.7073522
+# Balanced_Accuracy        0.6874857         1.0000000 0.7667255 0.8115127
+# F1_grass                 0.7184568         0.7667255 1.0000000 0.6402146
+# MCC                      0.7073522         0.8115127 0.6402146 1.0000000
+
+#------ Check distribution of number of points ------#
+
+accuracy_with_fallback_grouped %>%
+  ggplot(aes(x = N_evaluated)) +
+  geom_histogram(binwidth = 5, color = "black", fill = "steelblue") +
+  geom_vline(
+    xintercept = 20,
+    linetype = "dashed",
+    color = "red",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Distribution of Validation Sample Sizes",
+    x = "N evaluated",
+    y = "Count of ecological units"
+  ) +
+  theme_bw()
+
+# highly right-skewed - trying log-scaled x-axis
+accuracy_with_fallback_grouped %>%
+  ggplot(aes(x = N_evaluated)) +
+  geom_histogram(bins = 50, color = "black", fill = "steelblue") +
+  scale_x_log10() +
+  labs(
+    title = "Distribution of Validation Sample Sizes",
+    x = "N evaluated (log10 scale)",
+    y = "Count of ecological units"
+  ) +
+  theme_bw()
+
+# Number of rows with N less than 20
+accuracy_with_fallback_grouped %>%
+  summarise(
+    n_below_20 = sum(N_evaluated < 20),
+    pct_below_20 = 100 * mean(N_evaluated < 20)
+  )
+
+# n_below_20 pct_below_20
+#         25        0.637
+
+accuracy_with_fallback_atomic %>%
+  summarise(
+    n_below_20 = sum(N_evaluated < 20),
+    pct_below_20 = 100 * mean(N_evaluated < 20)
+  )
+
+# n_below_20 pct_below_20
+#         26        0.662
+
+# More info on 26 rows with N less than 20 (atomic)
+accuracy_with_fallback_atomic %>%
+  filter(N_evaluated < 20) %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    F1_grass,
+    Overall_Accuracy,
+    TP, TN, FP, FN
+  ) %>%
+  arrange(N_evaluated, raster, Ecds_ID) %>%
+  print(n = Inf)
+
+#   raster Ecds_ID Ecrgn_n   Ecprv source_level N_evaluated F1_grass Overall_Accuracy    TP    TN    FP    FN
+# 1 glc        374 Lac Seul~   6.2 ecoprovince            1   NA               1          0     1     0     0
+# 2 ngi        672 Mid-Bore~   9.3 ecoprovince            1   NA               0          0     0     0     1
+# 3 ngi        850 Lake Man~  10.1 ecoprovince            1    1               1          1     0     0     0
+# 4 pli_mm     745 Aspen Pa~  10.2 ecoprovince            1   NA               1          0     1     0     0
+# 5 cec        960 Cascade ~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 6 cec        982 Fraser B~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 7 cnvc       960 Cascade ~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 8 esa        960 Cascade ~  13.2 ecoprovince            2    0.667           0.5        1     0     0     1
+# 9 esa        982 Fraser B~  14.1 ecoprovince            2    1               1          2     0     0     0
+# 10 glc        982 Fraser B~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 11 lcc        960 Cascade ~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 12 lcc        982 Fraser B~  14.1 ecoprovince            2    0.667           0.5        1     0     0     1
+# 13 lcr        960 Cascade ~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 14 lcr        982 Fraser B~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 15 luts10     960 Cascade ~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 16 luts10     982 Fraser B~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 17 luts30     960 Cascade ~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 18 luts30     982 Fraser B~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 19 gcc       1015 Southern~  14.4 ecoprovince            6    1               1          6     0     0     0
+# 20 cgr        375 Lake of ~   6.5 ecoprovince           11    0.167           0.0909     1     0     0    10
+# 21 cgr        687 Boreal T~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 22 cgr        688 Boreal T~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 23 cgr        695 Boreal T~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 24 cgr        701 Boreal T~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 25 cgr        709 Boreal T~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 26 pudl       375 Lake of ~   6.5 ecoprovince           11    0.533           0.364      4     0     0     7
+
+# More info on 17 rows with only 1 or 2 points (grouped)
+accuracy_with_fallback_grouped %>%
+  filter(N_evaluated %in% c(1, 2)) %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    F1_grass,
+    Overall_Accuracy
+  ) %>%
+  arrange(N_evaluated, raster, Ecds_ID) %>%
+  print(n = Inf)
+
+#   raster Ecds_ID Ecrgn_n             Ecprv source_level N_evaluated F1_grass Overall_Accuracy
+# 1 glc        374 Lac Seul Upland       6.2 ecoprovince            1   NA                  1  
+# 2 ngi        672 Mid-Boreal Lowland    9.3 ecoprovince            1   NA                  0  
+# 3 ngi        850 Lake Manitoba Plain  10.1 ecoprovince            1    1                  1  
+# 4 cec        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 5 cec        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 6 cnvc       960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 7 esa        960 Cascade Ranges       13.2 ecoprovince            2    0.667              0.5
+# 8 esa        982 Fraser Basin         14.1 ecoprovince            2    1                  1  
+# 9 glc        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 10 lcc        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 11 lcc        982 Fraser Basin         14.1 ecoprovince            2    0.667              0.5
+# 12 lcr        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 13 lcr        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 14 luts10     960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 15 luts10     982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 16 luts30     960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 17 luts30     982 Fraser Basin         14.1 ecoprovince            2   NA                  0 
+
+accuracy_with_fallback_atomic %>%
+  filter(N_evaluated %in% c(1, 2)) %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    F1_grass,
+    Overall_Accuracy
+  ) %>%
+  arrange(N_evaluated, raster, Ecds_ID) %>%
+  print(n = Inf)
+
+#   raster Ecds_ID Ecrgn_n             Ecprv source_level N_evaluated F1_grass Overall_Accuracy
+# 1 glc        374 Lac Seul Upland       6.2 ecoprovince            1   NA                  1  
+# 2 ngi        672 Mid-Boreal Lowland    9.3 ecoprovince            1   NA                  0  
+# 3 ngi        850 Lake Manitoba Plain  10.1 ecoprovince            1    1                  1  
+# 4 pli_mm     745 Aspen Parkland       10.2 ecoprovince            1   NA                  1  
+# 5 cec        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 6 cec        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 7 cnvc       960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 8 esa        960 Cascade Ranges       13.2 ecoprovince            2    0.667              0.5
+# 9 esa        982 Fraser Basin         14.1 ecoprovince            2    1                  1  
+# 10 glc        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 11 lcc        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 12 lcc        982 Fraser Basin         14.1 ecoprovince            2    0.667              0.5
+# 13 lcr        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 14 lcr        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 15 luts10     960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 16 luts10     982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 17 luts30     960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 18 luts30     982 Fraser Basin         14.1 ecoprovince            2   NA                  0
+
+#------ How often is OA (as acc source) 0 or 1? ------#
+
+accuracy_with_fallback_grouped_cons <- accuracy_with_fallback_grouped %>%
+  mutate(
+    acc = coalesce(F1_grass, Overall_Accuracy),
+    acc_source = if_else(
+      !is.na(F1_grass),
+      "F1_grass",
+      "Overall_Accuracy"
+    )
+  )
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Overall_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  count(acc)
+
+#     acc     n
+# 1     0    60
+# 2     1    26
+
+accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic %>%
+  mutate(
+    acc = coalesce(F1_grass, Overall_Accuracy),
+    acc_source = if_else(
+      !is.na(F1_grass),
+      "F1_grass",
+      "Overall_Accuracy"
+    )
+  )
+
+accuracy_with_fallback_atomic_cons %>%
+  filter(
+    acc_source == "Overall_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  count(acc)
+
+#     acc     n
+# 1     0    60
+# 2     1    27
+
+# Are these concentrated in raster/eco unit combos with small N?
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Overall_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  summarise(
+    n = n(),
+    min_n = min(N_evaluated),
+    median_n = median(N_evaluated),
+    max_n = max(N_evaluated)
+  )
+
+#  n min_n median_n max_n
+# 86     1       40   329
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Overall_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  count(N_evaluated, sort = TRUE) %>%
+  print(n = Inf)
+
+#   N_evaluated     n
+# 1          40    12
+# 2           2    11
+# 3         133    10
+# 4          11     5
+# 5          27     4
+# 6          25     3
+# 7          29     3
+# 8           1     2
+# 9          23     2
+# 10         35     2
+# 11         134     2
+# 12         135     2
+# 13          20     1
+# 14          21     1
+# 15          22     1
+# 16          28     1
+# 17          31     1
+# 18          32     1
+# 19          34     1
+# 20          38     1
+# 21          43     1
+# 22          48     1
+# 23          51     1
+# 24          53     1
+# 25          67     1
+# 26          71     1
+# 27          76     1
+# 28          83     1
+# 29          84     1
+# 30          98     1
+# 31         104     1
+# 32         114     1
+# 33         154     1
+# 34         156     1
+# 35         163     1
+# 36         171     1
+# 37         186     1
+# 38         187     1
+# 39         211     1
+# 40         329     1
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Overall_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    acc,
+    acc_source,
+    TP, TN, FP, FN
+  ) %>%
+  arrange(
+    desc(N_evaluated),
+    raster,
+    Ecds_ID
+  ) %>%
+  print(n = Inf)
+
+#   raster  Ecds_ID Ecrgn_n           Ecprv source_level N_evaluated   acc acc_source    TP    TN    FP    FN
+# 1 glc         544 St. Lawrence Low~   8.1 ecodistrict          329     1 Overall_A~     0   329     0     0
+# 2 glc         566 Lake Erie Lowland   8.2 ecodistrict          211     1 Overall_A~     0   211     0     0
+# 3 glc         542 St. Lawrence Low~   8.1 ecodistrict          187     1 Overall_A~     0   187     0     0
+# 4 glc         543 St. Lawrence Low~   8.1 ecodistrict          186     1 Overall_A~     0   186     0     0
+# 5 aci2024     587 Peace Lowland       9.2 ecodistrict          171     1 Overall_A~     0   171     0     0
+# 6 glc         411 Algonquin-Lake N~   6.6 ecodistrict          163     1 Overall_A~     0   163     0     0
+# 7 glc         955 Eastern Vancouve~  13.1 ecoregion            156     1 Overall_A~     0   156     0     0
+# 8 glc         956 Eastern Vancouve~  13.1 ecodistrict          154     1 Overall_A~     0   154     0     0
+# 9 aci2024     607 Wabasca Lowland     9.2 ecodistrict          135     1 Overall_A~     0   135     0     0
+# 10 dw          607 Wabasca Lowland     9.2 ecodistrict          135     1 Overall_A~     0   135     0     0
+# 11 ngi        1017 Northern Contine~  14.4 ecoregion            134     0 Overall_A~     0     0     0   134
+# 12 ngi        1019 Northern Contine~  14.4 ecoregion            134     0 Overall_A~     0     0     0   134
+# 13 glc         410 Lac Temiscamingu~   6.6 ecoregion            133     1 Overall_A~     0   133     0     0
+# 14 glc         587 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 15 glc         588 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 16 glc         590 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 17 glc         592 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 18 glc         594 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 19 glc         596 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 20 glc         597 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 21 glc         598 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 22 glc         600 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 23 glc         979 Fraser Plateau     14.2 ecodistrict          114     0 Overall_A~     0     0     0   114
+# 24 glc         408 Lac Temiscamingu~   6.6 ecodistrict          104     1 Overall_A~     0   104     0     0
+# 25 ngi        1018 Northern Contine~  14.4 ecodistrict           98     0 Overall_A~     0     0     0    98
+# 26 glc         546 St. Lawrence Low~   8.1 ecodistrict           84     1 Overall_A~     0    84     0     0
+# 27 glc         545 St. Lawrence Low~   8.1 ecodistrict           83     1 Overall_A~     0    83     0     0
+# 28 glc         383 Thunder Bay-Quet~   6.5 ecodistrict           76     1 Overall_A~     0    76     0     0
+# 29 glc         412 Algonquin-Lake N~   6.6 ecodistrict           71     1 Overall_A~     0    71     0     0
+# 30 glc         623 Western Alberta ~   9.1 ecodistrict           67     0 Overall_A~     0     0     0    67
+# 31 glc         951 Pacific Ranges     13.2 ecoregion             53     1 Overall_A~     0    53     0     0
+# 32 pudl        727 Aspen Parkland     10.2 ecodistrict           51     0 Overall_A~     0     0     0    51
+# 33 glc         950 Pacific Ranges     13.2 ecodistrict           48     1 Overall_A~     0    48     0     0
+# 34 pudl        684 Boreal Transition   9.2 ecodistrict           43     0 Overall_A~     0     0     0    43
+# 35 aci2024     589 Peace Lowland       9.2 ecodistrict           40     1 Overall_A~     0    40     0     0
+# 36 aci2024     601 Mid-Boreal Uplan~   9.2 ecodistrict           40     1 Overall_A~     0    40     0     0
+# 37 cnvc        622 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 38 cnvc        623 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 39 cnvc        628 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 40 cnvc        629 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 41 cnvc        630 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 42 cnvc        631 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 43 dw          601 Mid-Boreal Uplan~   9.2 ecodistrict           40     1 Overall_A~     0    40     0     0
+# 44 esri        589 Peace Lowland       9.2 ecodistrict           40     1 Overall_A~     0    40     0     0
+# 45 esri        601 Mid-Boreal Uplan~   9.2 ecodistrict           40     1 Overall_A~     0    40     0     0
+# 46 gpw         601 Mid-Boreal Uplan~   9.2 ecodistrict           40     0 Overall_A~     0     0    40     0
+# 47 eccc       1017 Northern Contine~  14.4 ecodistrict           38     0 Overall_A~     0     0     0    38
+# 48 glc         686 Boreal Transition   9.2 ecodistrict           35     0 Overall_A~     0     0     0    35
+# 49 ngi         631 Western Alberta ~   9.1 ecodistrict           35     0 Overall_A~     0     0     0    35
+# 50 glc         978 Fraser Plateau     14.2 ecodistrict           34     0 Overall_A~     0     0     0    34
+# 51 glc         591 Peace Lowland       9.2 ecodistrict           32     0 Overall_A~     0     0     0    32
+# 52 pudl        692 Boreal Transition   9.2 ecodistrict           31     0 Overall_A~     0     0     0    31
+# 53 glc         572 Lake Erie Lowland   8.2 ecodistrict           29     1 Overall_A~     0    29     0     0
+# 54 glc         692 Boreal Transition   9.2 ecodistrict           29     0 Overall_A~     0     0     0    29
+# 55 ngi        1016 Northern Contine~  14.4 ecodistrict           29     0 Overall_A~     0     0     0    29
+# 56 ngi         686 Boreal Transition   9.2 ecodistrict           28     0 Overall_A~     0     0     0    28
+# 57 cnvc        678 Boreal Transition   9.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 58 glc         586 Peace Lowland       9.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 59 ngi         703 Boreal Transition   9.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 60 pudl        755 Aspen Parkland     10.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 61 lcr         586 Peace Lowland       9.2 ecodistrict           25     0 Overall_A~     0     0     0    25
+# 62 luts10      586 Peace Lowland       9.2 ecodistrict           25     0 Overall_A~     0     0     0    25
+# 63 luts30      586 Peace Lowland       9.2 ecodistrict           25     0 Overall_A~     0     0     0    25
+# 64 glc         409 Lac Temiscamingu~   6.6 ecodistrict           23     1 Overall_A~     0    23     0     0
+# 65 glc         593 Peace Lowland       9.2 ecodistrict           23     0 Overall_A~     0     0     0    23
+# 66 cnvc        684 Boreal Transition   9.2 ecodistrict           22     0 Overall_A~     0     0     0    22
+# 67 pudl        590 Peace Lowland       9.2 ecodistrict           21     0 Overall_A~     0     0     0    21
+# 68 pudl        839 Aspen Parkland     10.2 ecodistrict           20     0 Overall_A~     0     0     0    20
+# 69 cgr         687 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 70 cgr         688 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 71 cgr         695 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 72 cgr         701 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 73 cgr         709 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 74 cec         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 75 cec         982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 76 cnvc        960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 77 glc         982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 78 lcc         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 79 lcr         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 80 lcr         982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 81 luts10      960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 82 luts10      982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 83 luts30      960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 84 luts30      982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 85 glc         374 Lac Seul Upland     6.2 ecoprovince            1     1 Overall_A~     0     1     0     0
+# 86 ngi         672 Mid-Boreal Lowla~   9.3 ecoprovince            1     0 Overall_A~     0     0     0     1
+
+# ----------------------------
+# 16) Export file for consensus mapping
+# ----------------------------
+
+# Primary metric: F1_grass 
+# Fallback metric: Overall Accuracy 
+
+# Grouped
+accuracy_with_fallback_grouped_cons <- accuracy_with_fallback_grouped %>%
+  mutate(
+    acc = coalesce(F1_grass, Overall_Accuracy),
+    acc_source = if_else(
+      !is.na(F1_grass),
+      "F1_grass",
+      "Overall_Accuracy"
+    )
+  )
+
+# Add quality flag for rows with N less than 20
+accuracy_with_fallback_grouped_cons <- accuracy_with_fallback_grouped_cons %>%
+  mutate(
+    low_confidence_acc =
+      #acc_source == "Overall_Accuracy" &
+      N_evaluated < 20
+  )
+
+# Atomic
+accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic %>%
+  mutate(
+    acc = coalesce(F1_grass, Overall_Accuracy),
+    acc_source = if_else(
+      !is.na(F1_grass),
+      "F1_grass",
+      "Overall_Accuracy"
+    )
+  )
+
+# Add quality flag for rows with N less than 20
+accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic_cons %>%
+  mutate(
+    low_confidence_acc =
+      #acc_source == "Overall_Accuracy" &
+      N_evaluated < 20
+  )
+
+#---- Export ----
+
+# GROUPED
+readr::write_csv(
+  accuracy_with_fallback_grouped_cons,
+  file.path(out_dir, "binary_accuracy_grouped_combinedCIandCM_forconsensus_18Jul2026.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_with_fallback_atomic_cons,
+  file.path(out_dir, "binary_accuracy_atomic_combinedCIandCM_forconsensus_18Jul2026.csv")
+)

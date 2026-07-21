@@ -109,6 +109,13 @@ acc_ci <- acc_ci %>%
     Ecrgn_n == "St-Laurent Lowlands"~ "St. Lawrence Lowlands",
     TRUE ~ Ecrgn_n))
 
+# Make sure aci raster has same name for both
+# acc_cm <- acc_cm %>%
+#   mutate(raster = if_else(raster == "aci", "aci2024", raster))
+# 
+# acc_cm <- acc_cm %>%
+#   mutate(raster_group = if_else(raster_group == "aci", "aci2024", raster_group))
+
 # Reorder to match
 acc_ci <- acc_ci %>%
   select(names(acc_cm))
@@ -430,16 +437,32 @@ readr::write_csv(accuracy_by_ecodistrict_year_atomic,
 min_n <- 20
 
 # ---- Ecoregion metrics ----
-accuracy_by_ecoregion <- summarize_block_multiclass(
+accuracy_by_ecoregion_atomic <- summarize_block_multiclass(
   combined,
   key_cols = c("raster", "Ecrgn_n")
 )
 
+accuracy_by_ecoregion_grouped <- combined %>%
+mutate(raster = raster_group) %>%
+summarize_block_multiclass(
+  key_cols = c("raster", "Ecrgn_n")
+)
+
 # ---- Ecoprovince metrics ----
-accuracy_by_ecoprovince <- summarize_block_multiclass(
+accuracy_by_ecoprovince_atomic <- summarize_block_multiclass(
   combined,
   key_cols = c("raster", "Ecprv")
 ) %>%
+  rename_with(
+    ~ paste0(.x, "_ecoP"),
+    -c(raster, Ecprv)
+  )
+
+accuracy_by_ecoprovince_grouped <- combined %>%
+  mutate(raster = raster_group) %>%
+  summarize_block_multiclass(
+    key_cols = c("raster", "Ecprv")
+  ) %>%
   rename_with(
     ~ paste0(.x, "_ecoP"),
     -c(raster, Ecprv)
@@ -458,12 +481,12 @@ accuracy_by_ecodistrict_atomic2 <- accuracy_by_ecodistrict_atomic %>%
 
 fallback_joined_atomic <- accuracy_by_ecodistrict_atomic2 %>%
   left_join(
-    accuracy_by_ecoregion,
+    accuracy_by_ecoregion_atomic,
     by = c("raster", "Ecrgn_n"),
     suffix = c("_ecoD", "_ecoR")
   ) %>%
   left_join(
-    accuracy_by_ecoprovince,
+    accuracy_by_ecoprovince_atomic,
     by = c("raster", "Ecprv")
   )
 
@@ -507,12 +530,12 @@ accuracy_by_ecodistrict_grouped2 <- accuracy_by_ecodistrict_grouped %>%
 
 fallback_joined_grouped <- accuracy_by_ecodistrict_grouped2 %>%
   left_join(
-    accuracy_by_ecoregion,
+    accuracy_by_ecoregion_grouped,
     by = c("raster", "Ecrgn_n"),
     suffix = c("_ecoD", "_ecoR")
   ) %>%
   left_join(
-    accuracy_by_ecoprovince,
+    accuracy_by_ecoprovince_grouped,
     by = c("raster", "Ecprv")
   )
 
@@ -550,7 +573,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_combined_18Jul2026.csv"
+    "nattam_accuracy_by_ecodistrict_atomic_ecoregprovfallback_combined_18Jul2026.csv"
   )
 )
 
@@ -558,12 +581,945 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_combined_18Jul2026.csv"
+    "nattam_accuracy_by_ecodistrict_grouped_ecoregprovfallback_combined_18Jul2026.csv"
   )
 )
 
 # ----------------------------
-# 15) Create rasters of accuracy by ecodistrict
+# 15) Diagnostics
+# ----------------------------
+table(combined$raster)
+
+table(combined$raster_group)
+
+sum(is.na(combined$raster_group))
+
+combined %>%
+  count(raster, raster_group) %>%
+  filter(raster %in% c("pli_ap","pli_cu","pli_mg","pli_mm"))
+
+fallback_joined_grouped %>%
+  summarise(
+    ecoR_missing =
+      sum(is.na(N_evaluated_ecoR)),
+    ecoP_missing =
+      sum(is.na(N_evaluated_ecoP))
+  )
+
+fallback_joined_grouped %>%
+  filter(
+    is.na(N_evaluated_ecoR) |
+      is.na(N_evaluated_ecoP)
+  ) %>%
+  count(raster)
+
+#------ NA rates for major metrics at each level ------#
+
+fallback_joined_grouped %>%
+  summarise(
+    n_rows = n(),
+    
+    OA_ecoD_NA = sum(is.na(Overall_Accuracy_ecoD)),
+    OA_ecoR_NA = sum(is.na(Overall_Accuracy_ecoR)),
+    OA_ecoP_NA = sum(is.na(Overall_Accuracy_ecoP)),
+    
+    BA_ecoD_NA = sum(is.na(Balanced_Accuracy_ecoD)),
+    BA_ecoR_NA = sum(is.na(Balanced_Accuracy_ecoR)),
+    BA_ecoP_NA = sum(is.na(Balanced_Accuracy_ecoP)),
+    
+    Kappa_ecoD_NA = sum(is.na(Kappa_ecoD)),
+    Kappa_ecoR_NA = sum(is.na(Kappa_ecoR)),
+    Kappa_ecoP_NA = sum(is.na(Kappa_ecoP)),
+    
+    MCC_ecoD_NA = sum(is.na(MCC_Multiclass_ecoD)),
+    MCC_ecoR_NA = sum(is.na(MCC_Multiclass_ecoR)),
+    MCC_ecoP_NA = sum(is.na(MCC_Multiclass_ecoP))
+  ) %>%
+  print(width = Inf)
+
+# n_rows OA_ecoD_NA OA_ecoR_NA OA_ecoP_NA BA_ecoD_NA BA_ecoR_NA BA_ecoP_NA Kappa_ecoD_NA Kappa_ecoR_NA
+#   1605          0          0          0          0          0          0           524           102
+# Kappa_ecoP_NA MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA
+#            43         553         117          49
+
+fallback_joined_atomic %>%
+  summarise(
+    n_rows = n(),
+    
+    OA_ecoD_NA = sum(is.na(Overall_Accuracy_ecoD)),
+    OA_ecoR_NA = sum(is.na(Overall_Accuracy_ecoR)),
+    OA_ecoP_NA = sum(is.na(Overall_Accuracy_ecoP)),
+    
+    BA_ecoD_NA = sum(is.na(Balanced_Accuracy_ecoD)),
+    BA_ecoR_NA = sum(is.na(Balanced_Accuracy_ecoR)),
+    BA_ecoP_NA = sum(is.na(Balanced_Accuracy_ecoP)),
+    
+    Kappa_ecoD_NA = sum(is.na(Kappa_ecoD)),
+    Kappa_ecoR_NA = sum(is.na(Kappa_ecoR)),
+    Kappa_ecoP_NA = sum(is.na(Kappa_ecoP)),
+    
+    MCC_ecoD_NA = sum(is.na(MCC_Multiclass_ecoD)),
+    MCC_ecoR_NA = sum(is.na(MCC_Multiclass_ecoR)),
+    MCC_ecoP_NA = sum(is.na(MCC_Multiclass_ecoP))
+  ) %>%
+  print(width = Inf)
+
+# n_rows OA_ecoD_NA OA_ecoR_NA OA_ecoP_NA BA_ecoD_NA BA_ecoR_NA BA_ecoP_NA Kappa_ecoD_NA Kappa_ecoR_NA
+#   1607          0          0          0          0          0          0           527           124
+# Kappa_ecoP_NA MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA
+#            66         556         139          72
+
+#------ Final fallback NA rates ------#
+
+accuracy_with_fallback_grouped %>%
+summarise(
+  n_rows = n(),
+  
+  OA_NA = sum(is.na(Overall_Accuracy)),
+  OA_pct_NA = 100 * mean(is.na(Overall_Accuracy)),
+  
+  Macro_F1_NA = sum(is.na(Macro_F1)),
+  Macro_F1_pct_NA = 100 * mean(is.na(Macro_F1)),
+  
+  Weighted_F1_NA = sum(is.na(Weighted_F1)),
+  Weighted_F1_pct_NA = 100 * mean(is.na(Weighted_F1)),
+  
+  BA_NA = sum(is.na(Balanced_Accuracy)),
+  BA_pct_NA = 100 * mean(is.na(Balanced_Accuracy)),
+  
+  Kappa_NA = sum(is.na(Kappa)),
+  Kappa_pct_NA = 100 * mean(is.na(Kappa)),
+  
+  MCC_NA = sum(is.na(MCC_Multiclass)),
+  MCC_pct_NA = 100 * mean(is.na(MCC_Multiclass))
+) %>%
+  print(width = Inf)
+
+# n_rows OA_NA OA_pct_NA Macro_F1_NA Macro_F1_pct_NA Weighted_F1_NA Weighted_F1_pct_NA BA_NA BA_pct_NA
+#   1605     0         0          51            3.18              0                  0     0         0
+# Kappa_NA Kappa_pct_NA MCC_NA MCC_pct_NA
+#      346         21.6    361       22.5
+
+accuracy_with_fallback_atomic %>%
+  summarise(
+    n_rows = n(),
+    
+    OA_NA = sum(is.na(Overall_Accuracy)),
+    OA_pct_NA = 100 * mean(is.na(Overall_Accuracy)),
+    
+    Macro_F1_NA = sum(is.na(Macro_F1)),
+    Macro_F1_pct_NA = 100 * mean(is.na(Macro_F1)),
+    
+    Weighted_F1_NA = sum(is.na(Weighted_F1)),
+    Weighted_F1_pct_NA = 100 * mean(is.na(Weighted_F1)),
+    
+    BA_NA = sum(is.na(Balanced_Accuracy)),
+    BA_pct_NA = 100 * mean(is.na(Balanced_Accuracy)),
+    
+    Kappa_NA = sum(is.na(Kappa)),
+    Kappa_pct_NA = 100 * mean(is.na(Kappa)),
+    
+    MCC_NA = sum(is.na(MCC_Multiclass)),
+    MCC_pct_NA = 100 * mean(is.na(MCC_Multiclass))
+  ) %>%
+  print(width = Inf)
+
+# n_rows OA_NA OA_pct_NA Macro_F1_NA Macro_F1_pct_NA Weighted_F1_NA Weighted_F1_pct_NA BA_NA BA_pct_NA
+#   1607     0         0          51            3.17              0                  0     0         0
+# Kappa_NA Kappa_pct_NA MCC_NA MCC_pct_NA
+#      359         22.3    374       23.3
+
+#------ Where are MCC/Kappa missing? ------#
+
+accuracy_with_fallback_grouped %>%
+  count(Truth_Classes_Present)
+
+#  Truth_Classes_Present     n
+#1                     1   346
+#2                     2   728
+#3                     3   531
+
+accuracy_with_fallback_grouped %>%
+  count(Pred_Classes_Present)
+
+#   Pred_Classes_Present     n
+# 1                    1    33
+# 2                    2   315
+# 3                    3  1257
+
+accuracy_with_fallback_grouped %>%
+  summarise(
+    one_truth_class =
+      sum(Truth_Classes_Present == 1),
+    
+    two_truth_classes =
+      sum(Truth_Classes_Present == 2),
+    
+    three_truth_classes =
+      sum(Truth_Classes_Present == 3),
+    
+    one_pred_class =
+      sum(Pred_Classes_Present == 1),
+    
+    two_pred_classes =
+      sum(Pred_Classes_Present == 2),
+    
+    three_pred_classes =
+      sum(Pred_Classes_Present == 3),
+    
+    Kappa_NA =
+      sum(is.na(Kappa)),
+    
+    MCC_NA =
+      sum(is.na(MCC_Multiclass))
+  ) %>%
+  print(width = Inf)
+
+# one_truth_class two_truth_classes three_truth_classes one_pred_class two_pred_classes three_pred_classes
+#             346               728                 531             33              315               1257
+# Kappa_NA MCC_NA
+#      346    361
+
+# Which class is driving the 346 single-class units?
+accuracy_with_fallback_grouped %>%
+  summarise(
+    only_class0 =
+      sum(
+        Support_0 > 0 &
+          Support_1 == 0 &
+          Support_2 == 0
+      ),
+    
+    only_class1 =
+      sum(
+        Support_0 == 0 &
+          Support_1 > 0 &
+          Support_2 == 0
+      ),
+    
+    only_class2 =
+      sum(
+        Support_0 == 0 &
+          Support_1 == 0 &
+          Support_2 > 0
+      )
+  )
+
+# only_class0 only_class1 only_class2
+#          24          11         311
+
+# Which class pairings dominate the 728 two-class units?
+accuracy_with_fallback_grouped %>%
+  mutate(
+    combo = case_when(
+      Support_0 > 0 & Support_1 > 0 & Support_2 == 0 ~ "0+1",
+      Support_0 > 0 & Support_1 == 0 & Support_2 > 0 ~ "0+2",
+      Support_0 == 0 & Support_1 > 0 & Support_2 > 0 ~ "1+2",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  count(combo)
+
+#   combo     n
+# 1 0+1     441
+# 2 0+2      33
+# 3 1+2     254
+# 4 NA      877
+
+#------ Which classes are absent? ------#
+
+accuracy_with_fallback_grouped %>%
+summarise(
+  no_class0 = sum(Support_0 == 0, na.rm = TRUE),
+  no_class1 = sum(Support_1 == 0, na.rm = TRUE),
+  no_class2 = sum(Support_2 == 0, na.rm = TRUE)
+)
+
+# no_class0 no_class1 no_class2
+#       576       368       476
+
+accuracy_with_fallback_atomic %>%
+  summarise(
+    no_class0 = sum(Support_0 == 0, na.rm = TRUE),
+    no_class1 = sum(Support_1 == 0, na.rm = TRUE),
+    no_class2 = sum(Support_2 == 0, na.rm = TRUE)
+  )
+
+# no_class0 no_class1 no_class2
+#       588       369       477
+
+# ----- Missing one-vs-rest MCCs ------#
+
+accuracy_with_fallback_grouped %>%
+  summarise(
+    MCC0_NA = sum(is.na(MCC_OvR_0)),
+    MCC1_NA = sum(is.na(MCC_OvR_1)),
+    MCC2_NA = sum(is.na(MCC_OvR_2))
+  )
+
+# MCC0_NA MCC1_NA MCC2_NA
+#     603     440     868 - highest number of NAs for native
+
+accuracy_with_fallback_grouped %>%
+  summarise(
+    no_class0_truth = sum(Support_0 == 0),
+    no_class1_truth = sum(Support_1 == 0),
+    no_class2_truth = sum(Support_2 == 0),
+    
+    no_class0_pred = sum(Precision_0 %>% is.na()),
+    no_class1_pred = sum(Precision_1 %>% is.na()),
+    no_class2_pred = sum(Precision_2 %>% is.na())
+  )
+
+# Native MCC problems are because the class is absent from truth and pred:
+# no_class0_truth no_class1_truth no_class2_truth no_class0_pred no_class1_pred no_class2_pred
+#             576             368             476             10            106            265
+
+accuracy_with_fallback_atomic %>%
+  summarise(
+    MCC0_NA = sum(is.na(MCC_OvR_0)),
+    MCC1_NA = sum(is.na(MCC_OvR_1)),
+    MCC2_NA = sum(is.na(MCC_OvR_2))
+  )
+
+# MCC0_NA MCC1_NA MCC2_NA
+#     616     441     881
+
+#------ Grouped vs atomic results ------#
+
+accuracy_with_fallback_grouped %>%
+  summarise(
+    OA_NA = sum(is.na(Overall_Accuracy)),
+    MCC_NA = sum(is.na(MCC_Multiclass))
+  )
+
+# OA_NA MCC_NA
+#     0    361
+
+accuracy_with_fallback_atomic %>%
+  summarise(
+    OA_NA = sum(is.na(Overall_Accuracy)),
+    MCC_NA = sum(is.na(MCC_Multiclass))
+  )
+
+# OA_NA MCC_NA
+#     0    374
+
+#------ Check for grouped/atomic key mismatches ------#
+
+atomic_keys <- accuracy_by_ecodistrict_atomic %>%
+  distinct(raster, Ecds_ID)
+
+group_keys <- accuracy_by_ecodistrict_grouped %>%
+  distinct(raster, Ecds_ID)
+
+atomic_keys_grouped <- accuracy_by_ecodistrict_atomic %>%
+  mutate(
+    raster = if_else(
+      raster %in% c(
+        "pli_ap",
+        "pli_cu",
+        "pli_mg",
+        "pli_mm"
+      ),
+      "pli",
+      raster
+    )
+  ) %>%
+  distinct(raster, Ecds_ID)
+
+anti_join(
+  group_keys,
+  atomic_keys_grouped,
+  by = c("raster", "Ecds_ID")
+)
+
+anti_join(
+  atomic_keys_grouped,
+  group_keys,
+  by = c("raster", "Ecds_ID")
+)
+
+#------ Which classes are often missing ------#
+
+accuracy_with_fallback_grouped %>%
+  count(
+    Truth_Classes_Present,
+    Pred_Classes_Present
+  ) %>%
+  arrange(
+    Truth_Classes_Present,
+    Pred_Classes_Present
+  )
+
+#   Truth_Classes_Present Pred_Classes_Present     n
+# 1                     1                    1    18
+# 2                     1                    2    60
+# 3                     1                    3   268
+# 4                     2                    1    15
+# 5                     2                    2   204
+# 6                     2                    3   509
+# 7                     3                    2    51
+# 8                     3                    3   480
+
+ggplot(accuracy_with_fallback_grouped,
+  aes(
+    factor(Truth_Classes_Present),
+    factor(Pred_Classes_Present))) +
+  geom_count()
+
+accuracy_with_fallback_atomic %>%
+  count(
+    Truth_Classes_Present,
+    Pred_Classes_Present
+  ) %>%
+  arrange(
+    Truth_Classes_Present,
+    Pred_Classes_Present
+  )
+
+#   Truth_Classes_Present Pred_Classes_Present     n
+# 1                     1                    1    19
+# 2                     1                    2    60
+# 3                     1                    3   280
+# 4                     2                    1    15
+# 5                     2                    2   204
+# 6                     2                    3   497
+# 7                     3                    2    51
+# 8                     3                    3   481
+
+ggplot(accuracy_with_fallback_atomic,
+       aes(
+         factor(Truth_Classes_Present),
+         factor(Pred_Classes_Present))) +
+  geom_count()
+
+#------ Check correlations among metrics ------#
+
+accuracy_with_fallback_grouped %>%
+  select(
+    Overall_Accuracy,
+    Balanced_Accuracy,
+    Weighted_F1,
+    Macro_F1
+  ) %>%
+  cor(use = "pairwise.complete.obs")
+
+#                   Overall_Accuracy Balanced_Accuracy Weighted_F1  Macro_F1
+# Overall_Accuracy         1.0000000         0.8568095   0.6588147 0.8817312
+# Balanced_Accuracy        0.8568095         1.0000000   0.4776229 0.7680445
+# Weighted_F1              0.6588147         0.4776229   1.0000000 0.4552734
+# Macro_F1                 0.8817312         0.7680445   0.4552734 1.0000000
+
+#------ Check distribution of sample sizes --------#
+
+accuracy_with_fallback_grouped %>%
+  ggplot(aes(x = N_evaluated)) +
+  geom_histogram(
+    binwidth = 5,
+    color = "black",
+    fill = "steelblue"
+  ) +
+  geom_vline(
+    xintercept = 20,
+    linetype = "dashed",
+    color = "red",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Distribution of Validation Sample Sizes",
+    x = "N evaluated",
+    y = "Count of ecological units"
+  ) +
+  theme_bw()
+
+# log-scaled version to address right skew
+accuracy_with_fallback_grouped %>%
+  ggplot(aes(x = N_evaluated)) +
+  geom_histogram(
+    bins = 50,
+    color = "black",
+    fill = "steelblue"
+  ) +
+  scale_x_log10() +
+  labs(
+    title = "Distribution of Validation Sample Sizes",
+    x = "N evaluated (log10 scale)",
+    y = "Count of ecological units"
+  ) +
+  theme_bw()
+
+#------ Number of rows with n less than 20 ------#
+
+accuracy_with_fallback_grouped %>%
+  summarise(
+    n_below_20 = sum(N_evaluated < 20),
+    pct_below_20 = 100 * mean(N_evaluated < 20)
+  )
+
+# n_below_20 pct_below_20
+#         10        0.623
+
+# Examine low-sample rows
+accuracy_with_fallback_grouped %>%
+  filter(N_evaluated < 20) %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    Truth_Classes_Present,
+    Pred_Classes_Present,
+    Macro_F1,
+    Balanced_Accuracy,
+    Weighted_F1,
+    Overall_Accuracy,
+    Support_0,
+    Support_1,
+    Support_2
+  ) %>%
+  arrange(N_evaluated, raster, Ecds_ID) %>%
+  print(width = Inf)
+
+#   raster Ecds_ID Ecrgn_n                Ecprv source_level N_evaluated Truth_Classes_Present
+# 1 ngi        623 Western Alberta Upland   9.1 ecoprovince            1                     1
+# 2 ngi        850 Lake Manitoba Plain     10.1 ecoprovince            1                     1
+# 3 cnvc       960 Cascade Ranges          13.2 ecoprovince            2                     1
+# 4 cgr        375 Lake of the Woods        6.5 ecoprovince           11                     2
+# 5 cgr        687 Boreal Transition        9.2 ecoprovince           11                     1
+# 6 cgr        688 Boreal Transition        9.2 ecoprovince           11                     1
+# 7 cgr        695 Boreal Transition        9.2 ecoprovince           11                     1
+# 8 cgr        701 Boreal Transition        9.2 ecoprovince           11                     1
+# 9 cgr        709 Boreal Transition        9.2 ecoprovince           11                     1
+# 10 pudl      375 Lake of the Woods        6.5 ecoprovince           11                     1
+
+#   Pred_Classes_Present Macro_F1 Balanced_Accuracy Weighted_F1 Overall_Accuracy Support_0 Support_1
+# 1                    1  NaN                 0               0            0             0         0
+# 2                    1  NaN                 0               0            0             0         0
+# 3                    1  NaN                 0               0            0             0         0
+# 4                    2  NaN                 0               0            0             0         4
+# 5                    1  NaN                 0               0            0             0         0
+# 6                    1  NaN                 0               0            0             0         0
+# 7                    1  NaN                 0               0            0             0         0
+# 8                    1  NaN                 0               0            0             0         0
+# 9                    1  NaN                 0               0            0             0         0
+# 10                   3    0.429             0.273           0            0.273         0         0
+
+# Support_2
+# 1         1
+# 2         1
+# 3         2
+# 4         7
+# 5        11
+# 6        11
+# 7        11
+# 8        11
+# 9        11
+# 10       11
+
+#------ Examine rows with only 1 or 2 points ------#
+
+accuracy_with_fallback_grouped %>%
+  filter(N_evaluated %in% c(1, 2)) %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    Truth_Classes_Present,
+    Pred_Classes_Present,
+    Macro_F1,
+    Balanced_Accuracy,
+    Weighted_F1,
+    Overall_Accuracy
+  ) %>%
+  arrange(N_evaluated, raster, Ecds_ID) %>%
+  print(width = Inf)
+
+#   raster Ecds_ID Ecrgn_n                Ecprv source_level N_evaluated Truth_Classes_Present
+# 1 ngi        623 Western Alberta Upland   9.1 ecoprovince            1                     1
+# 2 ngi        850 Lake Manitoba Plain     10.1 ecoprovince            1                     1
+# 3 cnvc       960 Cascade Ranges          13.2 ecoprovince            2                     1
+
+#   Pred_Classes_Present Macro_F1 Balanced_Accuracy Weighted_F1 Overall_Accuracy
+# 1                    1      NaN                 0           0                0
+# 2                    1      NaN                 0           0                0
+# 3                    1      NaN                 0           0                0
+
+#------ How often is fallback used? ------#
+
+accuracy_with_fallback_grouped_cons %>%
+  count(acc_source)
+
+#   acc_source            n
+# 1 Balanced_Accuracy    51
+# 2 Macro_F1           1554
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(acc_source == "Balanced_Accuracy") %>%
+  summarise(
+    n = n(),
+    pct = 100 * n() / nrow(accuracy_with_fallback_grouped_cons)
+  )
+
+#  n   pct
+# 51  3.18
+
+#------ Why is Macro_F1 undefined? ------#
+
+accuracy_with_fallback_grouped %>%
+  filter(is.na(Macro_F1)) %>%
+  summarise(
+    n_rows = n(),
+    one_truth_class = sum(Truth_Classes_Present == 1),
+    two_truth_classes = sum(Truth_Classes_Present == 2),
+    three_truth_classes = sum(Truth_Classes_Present == 3),
+    
+    one_pred_class = sum(Pred_Classes_Present == 1),
+    two_pred_classes = sum(Pred_Classes_Present == 2),
+    three_pred_classes = sum(Pred_Classes_Present == 3)
+  ) %>%
+  print(width = Inf)
+
+# n_rows one_truth_class two_truth_classes three_truth_classes one_pred_class two_pred_classes
+#     51              28                23                   0             25               26
+
+# three_pred_classes
+#                  0
+
+#------ How many fallback rows have extreme BA values? ------#
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Balanced_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  count(acc)
+
+#   acc     n
+#     0    51
+
+#------ Are extreme fallback values concentrated in small n? ------#
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Balanced_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  summarise(
+    n = n(),
+    min_n = min(N_evaluated),
+    median_n = median(N_evaluated),
+    max_n = max(N_evaluated)
+  )
+
+#   n min_n median_n max_n
+#  51     1       32   239
+
+#------ Distribution of n among fallback rows ------#
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(
+    acc_source == "Balanced_Accuracy",
+    acc %in% c(0, 1)
+  ) %>%
+  count(N_evaluated, sort = TRUE) %>%
+  print(n = Inf)
+
+#   N_evaluated     n
+# 1          40     8
+# 2          11     6
+# 3          27     4
+# 4          32     4
+# 5          45     4
+# 6          21     3
+# 7           1     2
+# 8          20     2
+# 9          34     2
+# 10          43     2
+# 11           2     1
+# 12          22     1
+# 13          24     1
+# 14          26     1
+# 15          30     1
+# 16          31     1
+# 17          35     1
+# 18          38     1
+# 19          41     1
+# 20          51     1
+# 21          60     1
+# 22          74     1
+# 23         202     1
+# 24         239     1
+
+#------ Inspect all fallback rows ------#
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(acc_source == "Balanced_Accuracy") %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level,
+    N_evaluated,
+    Truth_Classes_Present,
+    Pred_Classes_Present,
+    acc,
+    acc_source,
+    Macro_F1,
+    Balanced_Accuracy,
+    Overall_Accuracy,
+    Weighted_F1,
+    Support_0,
+    Support_1,
+    Support_2,
+    F1_0,
+    F1_1,
+    F1_2
+  ) %>%
+  arrange(
+    desc(N_evaluated),
+    raster,
+    Ecds_ID
+  ) %>%
+  print(n = Inf, width = Inf)
+
+#   raster Ecds_ID Ecrgn_n                     Ecprv source_level N_evaluated Truth_Classes_Present
+# 1 ngi        731 Aspen Parkland               10.2 ecodistrict          239                     1
+# 2 ngi        740 Aspen Parkland               10.2 ecodistrict          202                     1
+# 3 cnvc      1017 Northern Continental Divide  14.4 ecodistrict           74                     2
+# 4 pudl       678 Boreal Transition             9.2 ecodistrict           60                     2
+# 5 pudl       727 Aspen Parkland               10.2 ecodistrict           51                     2
+# 6 ngi        683 Boreal Transition             9.2 ecoregion             45                     2
+# 7 ngi        692 Boreal Transition             9.2 ecoregion             45                     2
+# 8 ngi        701 Boreal Transition             9.2 ecoregion             45                     2
+# 9 ngi        708 Boreal Transition             9.2 ecoregion             45                     2
+# 10 pudl       684 Boreal Transition             9.2 ecodistrict           43                     2
+# 11 pudl       760 Aspen Parkland               10.2 ecodistrict           43                     1
+# 12 cnvc       380 Lake of the Woods             6.5 ecoregion             41                     1
+# 13 cnvc       622 Western Alberta Upland        9.1 ecoregion             40                     2
+# 14 cnvc       623 Western Alberta Upland        9.1 ecoregion             40                     2
+# 15 cnvc       628 Western Alberta Upland        9.1 ecoregion             40                     2
+# 16 cnvc       629 Western Alberta Upland        9.1 ecoregion             40                     2
+# 17 cnvc       630 Western Alberta Upland        9.1 ecoregion             40                     2
+# 18 cnvc       631 Western Alberta Upland        9.1 ecoregion             40                     2
+# 19 gpw        601 Mid-Boreal Uplands            9.2 ecodistrict           40                     1
+# 20 pudl       592 Peace Lowland                 9.2 ecodistrict           40                     2
+# 21 eccc      1017 Northern Continental Divide  14.4 ecodistrict           38                     1
+# 22 pudl       703 Boreal Transition             9.2 ecodistrict           35                     2
+# 23 ngi        727 Aspen Parkland               10.2 ecodistrict           34                     1
+# 24 ngi        744 Aspen Parkland               10.2 ecodistrict           34                     1
+# 25 cnvc       375 Lake of the Woods             6.5 ecodistrict           32                     1
+# 26 pudl       686 Boreal Transition             9.2 ecodistrict           32                     2
+# 27 pudl       690 Boreal Transition             9.2 ecodistrict           32                     1
+# 28 pudl       728 Aspen Parkland               10.2 ecodistrict           32                     2
+# 29 pudl       692 Boreal Transition             9.2 ecodistrict           31                     2
+# 30 gpw        628 Western Alberta Upland        9.1 ecodistrict           30                     1
+# 31 cnvc       678 Boreal Transition             9.2 ecodistrict           27                     2
+# 32 ngi        684 Boreal Transition             9.2 ecodistrict           27                     1
+# 33 ngi        746 Aspen Parkland               10.2 ecodistrict           27                     1
+# 34 pudl       755 Aspen Parkland               10.2 ecodistrict           27                     1
+# 35 gpw        382 Thunder Bay-Quetico           6.5 ecodistrict           26                     1
+# 36 cnvc       847 Lake Manitoba Plain          10.1 ecodistrict           24                     1
+# 37 cnvc       684 Boreal Transition             9.2 ecodistrict           22                     2
+# 38 cnvc       997 Eastern Continental Ranges   14.4 ecoregion             21                     1
+# 39 cnvc       999 Eastern Continental Ranges   14.4 ecoregion             21                     1
+# 40 pudl       590 Peace Lowland                 9.2 ecodistrict           21                     2
+# 41 cnvc       839 Aspen Parkland               10.2 ecodistrict           20                     1
+# 42 pudl       839 Aspen Parkland               10.2 ecodistrict           20                     1
+# 43 cgr        375 Lake of the Woods             6.5 ecoprovince           11                     2
+# 44 cgr        687 Boreal Transition             9.2 ecoprovince           11                     1
+# 45 cgr        688 Boreal Transition             9.2 ecoprovince           11                     1
+# 46 cgr        695 Boreal Transition             9.2 ecoprovince           11                     1
+# 47 cgr        701 Boreal Transition             9.2 ecoprovince           11                     1
+# 48 cgr        709 Boreal Transition             9.2 ecoprovince           11                     1
+# 49 cnvc       960 Cascade Ranges               13.2 ecoprovince            2                     1
+# 50 ngi        623 Western Alberta Upland        9.1 ecoprovince            1                     1
+# 51 ngi        850 Lake Manitoba Plain          10.1 ecoprovince            1                     1
+
+#   Pred_Classes_Present   acc acc_source        Macro_F1 Balanced_Accuracy Overall_Accuracy Weighted_F1
+# 1                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 2                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 3                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 4                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 5                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 6                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 7                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 8                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 9                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 10                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 11                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 12                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 13                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 14                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 15                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 16                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 17                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 18                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 19                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 20                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 21                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 22                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 23                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 24                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 25                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 26                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 27                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 28                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 29                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 30                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 31                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 32                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 33                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 34                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 35                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 36                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 37                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 38                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 39                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 40                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 41                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 42                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 43                    2     0 Balanced_Accuracy      NaN                 0                0           0
+# 44                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 45                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 46                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 47                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 48                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 49                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 50                    1     0 Balanced_Accuracy      NaN                 0                0           0
+# 51                    1     0 Balanced_Accuracy      NaN                 0                0           0
+
+#   Support_0 Support_1 Support_2  F1_0  F1_1  F1_2
+# 1         0         0       239    NA    NA    NA
+# 2         0         0       202    NA    NA    NA
+# 3         0         2        72    NA    NA    NA
+# 4         0        53         7    NA    NA    NA
+# 5         0        17        34    NA    NA    NA
+# 6         1         0        44    NA    NA    NA
+# 7         1         0        44    NA    NA    NA
+# 8         1         0        44    NA    NA    NA
+# 9         1         0        44    NA    NA    NA
+# 10         0        14        29    NA    NA    NA
+# 11         0         0        43    NA    NA    NA
+# 12         0         0        41    NA    NA    NA
+# 13         0         3        37    NA    NA    NA
+# 14         0         3        37    NA    NA    NA
+# 15         0         3        37    NA    NA    NA
+# 16         0         3        37    NA    NA    NA
+# 17         0         3        37    NA    NA    NA
+# 18         0         3        37    NA    NA    NA
+# 19        40         0         0    NA    NA    NA
+# 20         0        36         4    NA    NA    NA
+# 21         0         0        38    NA    NA    NA
+# 22         0         8        27    NA    NA    NA
+# 23         0         0        34    NA    NA    NA
+# 24         0         0        34    NA    NA    NA
+# 25         0         0        32    NA    NA    NA
+# 26         0         1        31    NA    NA    NA
+# 27         0         0        32    NA    NA    NA
+# 28         0         3        29    NA    NA    NA
+# 29         0        16        15    NA    NA    NA
+# 30         0        30         0    NA    NA    NA
+# 31         0        24         3    NA    NA    NA
+# 32         0         0        27    NA    NA    NA
+# 33         0         0        27    NA    NA    NA
+# 34         0         0        27    NA    NA    NA
+# 35         0        26         0    NA    NA    NA
+# 36         0         0        24    NA    NA    NA
+# 37         0         3        19    NA    NA    NA
+# 38         0         0        21    NA    NA    NA
+# 39         0         0        21    NA    NA    NA
+# 40         0        20         1    NA    NA    NA
+# 41         0         0        20    NA    NA    NA
+# 42         0         0        20    NA    NA    NA
+# 43         0         4         7    NA    NA    NA
+# 44         0         0        11    NA    NA    NA
+# 45         0         0        11    NA    NA    NA
+# 46         0         0        11    NA    NA    NA
+# 47         0         0        11    NA    NA    NA
+# 48         0         0        11    NA    NA    NA
+# 49         0         0         2    NA    NA    NA
+# 50         0         0         1    NA    NA    NA
+# 51         0         0         1    NA    NA    NA
+
+accuracy_with_fallback_grouped_cons %>%
+  filter(acc_source == "Balanced_Accuracy") %>%
+  summarise(
+    no_class0 = sum(Support_0 == 0),
+    no_class1 = sum(Support_1 == 0),
+    no_class2 = sum(Support_2 == 0)
+  )
+
+# no_class0 no_class1 no_class2
+#        46        30         3
+
+# ----------------------------
+# 16) Export file for consensus mapping
+# ----------------------------
+
+# Primary metric: Macro F1 
+# Fallback metric: Balanced Accuracy 
+
+# Grouped
+accuracy_with_fallback_grouped_cons <- accuracy_with_fallback_grouped %>%
+  mutate(
+    acc = coalesce(Macro_F1, Balanced_Accuracy),
+    acc_source = if_else(
+      !is.na(Macro_F1),
+      "Macro_F1",
+      "Balanced_Accuracy"
+    )
+  )
+
+# Add quality flag for rows with N less than 20
+accuracy_with_fallback_grouped_cons <- accuracy_with_fallback_grouped_cons %>%
+  mutate(
+    low_confidence_acc =
+      #acc_source == "Overall_Accuracy" &
+      N_evaluated < 20
+  )
+
+# Atomic
+accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic %>%
+  mutate(
+    acc = coalesce(Macro_F1, Balanced_Accuracy),
+    acc_source = if_else(
+      !is.na(Macro_F1),
+      "Macro_F1",
+      "Balanced_Accuracy"
+    )
+  )
+
+# Add quality flag for rows with N less than 20
+accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic_cons %>%
+  mutate(
+    low_confidence_acc =
+      #acc_source == "Overall_Accuracy" &
+      N_evaluated < 20
+  )
+
+#---- Export ----
+
+# GROUPED
+readr::write_csv(
+  accuracy_with_fallback_grouped_cons,
+  file.path(out_dir, "nattam_accuracy_grouped_combinedCIandCM_forconsensus_18Jul2026.csv")
+)
+
+# ATOMIC
+readr::write_csv(
+  accuracy_with_fallback_atomic_cons,
+  file.path(out_dir, "nattam_accuracy_atomic_combinedCIandCM_forconsensus_18Jul2026.csv")
+)
+
+# ----------------------------
+# 17) Create rasters of accuracy by ecodistrict
 # ----------------------------
 
 summary_by_ecodistrict <- summarize_block_multiclass(
@@ -605,7 +1561,7 @@ weights_ecodist_mcc <- summary_by_ecodistrict %>%
 
 library(terra)
 
-eco_vect <- vect("R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean.shp")
+eco_vect <- vect("R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_class_sa.shp")
 eco_vect$Ecds_ID <- as.character(eco_vect$ECODISTRIC)
 
 weights_ecodist_mcc$Ecds_ID <- as.character(weights_ecodist_mcc$Ecds_ID)
