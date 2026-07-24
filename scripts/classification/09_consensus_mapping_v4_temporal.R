@@ -61,7 +61,7 @@ terra_dir    <- file.path(tmp_root, "terra")
 local_dir    <- file.path(tmp_root, "data")
 stack_dir    <- file.path(tmp_root, "stacks")
 
-meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_nohfi_cec_luts10.csv"
+meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_withaci2024_nohfi_cec_luts10_aci2025.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
 #pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
@@ -91,6 +91,41 @@ on.exit({
 }, add = TRUE)
 
 log_msg("Starting consensus mapping analysis")
+
+log_msg("---- SESSION INFO ----")
+
+script_name <- tryCatch({
+  cmd_args <- commandArgs(trailingOnly = FALSE)
+  sub("^--file=", "", cmd_args[grep("^--file=", cmd_args)])
+}, error = function(e) NA_character_)
+
+log_msg("Script name: ", script_name)
+
+session_lines <- capture.output(sessionInfo())
+
+for (ln in session_lines) {
+  log_msg(ln)
+}
+
+log_msg("R version: ", R.version.string)
+log_msg("Platform: ", R.version$platform)
+log_msg("Working directory: ", getwd())
+log_msg("terra version: ", as.character(packageVersion("terra")))
+log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
+log_msg("aws.s3 version: ", packageVersion("aws.s3"))
+log_msg("readr version: ", packageVersion("readr"))
+log_msg("Temp root: ", tmp_root)
+log_msg("GDAL_CACHEMAX: ", Sys.getenv("GDAL_CACHEMAX"))
+log_msg("FORCE_REBUILD: ", FORCE_REBUILD)
+log_msg("Sys.info: ",
+        paste(names(Sys.info()), Sys.info(), collapse = "; "))
+log_msg("terra options:")
+capture.output(print(terraOptions())) |>
+  lapply(log_msg)
+gc_out <- capture.output(gc())
+log_msg(paste(gc_out, collapse = " | "))
+
+log_msg("---- END SESSION INFO ----")
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -130,18 +165,18 @@ log_msg("Binary rasters: ", nrow(bin_meta))
 log_msg("Tri-class rasters: ", nrow(nt_meta))
 
 ## ---- Load pilot area ---- ##
-log_msg("Loading pilot area")
-
-pilot_local <- file.path(local_dir, "pilot_area.tif")
-
-aws.s3::save_object(
-  object = pilot_file,
-  file = pilot_local
-)
-
-pilot <- rast(pilot_local)
-
-log_msg("Pilot area loaded")
+# log_msg("Loading pilot area")
+# 
+# pilot_local <- file.path(local_dir, "pilot_area.tif")
+# 
+# aws.s3::save_object(
+#   object = pilot_file,
+#   file = pilot_local
+# )
+# 
+# pilot <- rast(pilot_local)
+# 
+# log_msg("Pilot area loaded")
 
 ## ---- Load study area ---- ##
 log_msg("Loading study area")
@@ -299,7 +334,7 @@ has_nt <- !is.null(nt_stack)
 
 ## ---- Temporal settings ---- ##
 target_year <- 2025 # use newest dataset or policy-relevant year
-lambda <- 0.25  # decay rate (0.1–0.4 typical, 0.1 = slow decay (older data still matters))
+lambda <- 0.1  # decay rate (0.1–0.4 typical, 0.1 = slow decay (older data still matters))
 #  0.3 = faster decay (focus on recent)
 
 #--------- Build accuracy-weighted rasters (binary stack) -------#
@@ -312,6 +347,10 @@ acc_bin <- aws.s3::s3read_using(read_csv, object = acc_bin_file, show_col_types 
 stopifnot(all(c("raster_name", "Ecds_ID", "acc") %in% names(acc_bin)))
 
 acc_bin <- acc_bin %>% mutate(Ecds_ID = as.integer(round(Ecds_ID)))
+
+# Remove duplicate rasters from acc_bin
+acc_bin <- acc_bin %>%
+  filter(!raster_name %in% c("cec_bin", "luts10_bin"))
 
 dup_check <- acc_bin %>% count(raster_name, Ecds_ID) %>% filter(n > 1)
 if (nrow(dup_check) > 0) {
@@ -386,53 +425,68 @@ log_msg("Ecodistrict raster value/cell counts (head): ",
 ids_r <- unique(ecodist_freq[, "value"])
 ids_tbl <- unique(acc_bin$Ecds_ID)
 
-missing_ids <- setdiff(ids_r, ids_tbl)
-if (length(missing_ids) > 0) {
-  stop("Ecodistrict IDs missing from accuracy table: ",
-       paste(utils::head(missing_ids), collapse = ", "))
+missing_ids_bin <- setdiff(ids_r, ids_tbl)
+if (length(missing_ids_bin) > 0) {
+  warning("Ecodistrict IDs missing from accuracy table: ",
+       paste(utils::head(missing_ids_bin), collapse = ", "))
 }
 
-length(missing_ids)
+length(missing_ids_bin)
 
 acc_bin %>%
-  filter(Ecds_ID %in% missing_ids)
+  filter(Ecds_ID %in% missing_ids_bin)
 
 ecodist_freq %>%
-  filter(value %in% missing_ids)
+  filter(value %in% missing_ids_bin)
 
-# For now, fill accuracy for missing ecodistricts
-# if (length(missing_ids) > 0) {
-#   
-#   log_msg(
-#     "Adding missing ecodistricts with neutral accuary of 0: ",
-#     paste(missing_ids, collapse = ", ")
-#   )
-#   
-#   # Create a row for every raster × missing ecodistrict combination
-#   missing_rows <- expand.grid(
-#     raster_name = unique(acc_bin$raster_name),
-#     Ecds_ID = missing_ids,
-#     stringsAsFactors = FALSE
-#   ) %>%
-#     as_tibble() %>%
-#     left_join(
-#       meta %>%
-#         select(raster_id, year),
-#       by = c("raster_name" = "raster_id")
-#     ) %>%
-#     mutate(
-#       acc = 0,
-#       w_acc = acc_to_weight(acc),
-#       w_time = time_decay(year, target_year, lambda),
-#       weight = w_acc * w_time
-#     )
-#   
-#   # Append to accuracy table
-#   acc_bin <- bind_rows(acc_bin, missing_rows)
-# }
+acc_global <- acc_bin %>%
+  group_by(raster_name) %>%
+  summarise(
+    global_acc = mean(acc, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Fill in missing ecodistrict-level accuracy
+if (length(missing_ids_bin) > 0) {
+  
+  log_msg(
+    "Adding missing ecodistricts using raster-level mean accuracy for: ",
+    paste(missing_ids_bin, collapse = ", ")
+  )
+  
+  # Create a row for every raster × missing ecodistrict combination
+  missing_rows <- tidyr::expand_grid(
+    raster_name = unique(acc_bin$raster_name),
+    Ecds_ID = missing_ids_bin
+  ) %>%
+    left_join(acc_global, by = "raster_name") %>%
+    left_join(
+      meta %>% select(raster_id, year),
+      by = c("raster_name" = "raster_id")
+    ) %>%
+    mutate(
+      acc = global_acc,
+      w_acc = acc_to_weight(acc),
+      w_time = time_decay(year, target_year, lambda),
+      weight = w_acc * w_time
+    ) %>%
+    select(-global_acc)
+  
+  # Append to accuracy table
+  acc_bin <- bind_rows(acc_bin, missing_rows)
+}
+
+remaining_missing <- setdiff(ids_r, unique(acc_bin$Ecds_ID))
+
+if (length(remaining_missing) > 0) {
+  stop(
+    "Still missing ecodistrict IDs after filling: ",
+    paste(remaining_missing, collapse = ", ")
+  )
+}
 
 # Build weight stack layer-by-layer
-weight_files <- lapply(names(bin_stack), function(nm) {
+weight_files_bin <- lapply(names(bin_stack), function(nm) {
   log_msg("Rasterizing weight for: ", nm)
   
   lookup_bin <- acc_bin %>%
@@ -450,10 +504,13 @@ weight_files <- lapply(names(bin_stack), function(nm) {
   out
 })
 
-weight_stack <- rast(unlist(weight_files))
+weight_stack <- rast(unlist(weight_files_bin))
 names(weight_stack) <- names(bin_stack)
 
 stopifnot(identical(names(weight_stack), names(bin_stack)))
+
+rm(weight_files_bin, acc_bin)
+gc()
 
 #--------- accuracy-weighted positive evidence -------#
 log_msg("Running accuracy-weighted fusion")
@@ -484,6 +541,9 @@ denominator_A <- app(
 # Probability
 prob_A <- numerator_A / denominator_A
 prob_A[denominator_A == 0] <- NA
+
+rm(numerator_A)
+gc()
 
 prob_A <- clamp(
   prob_A, 0, 1,
@@ -567,6 +627,16 @@ writeRaster(
   overwrite = TRUE
 )
 
+rm(
+  temporal_var_bin,
+  temporal_sd,
+  temporal_sd_norm,
+  present,
+  pos_mask,
+  neg_mask
+)
+gc()
+
 # Minimum support
 min_sources <- 2
 
@@ -579,11 +649,20 @@ prob_A_minN <- ifel(
 
 #--------- Tri-class ---------#
 
+# Run tri-class fusion
 if (has_nt) {
   
   log_msg("Running tri-class fusion")
   
-  acc_nt <- aws.s3::s3read_using(read_csv, object = acc_nt_file, show_col_types = FALSE) %>%
+  # Load accuracy data
+  acc_nt <- aws.s3::s3read_using(read_csv, object = acc_nt_file, show_col_types = FALSE) 
+  
+  # Fix names in acc_nt
+  acc_nt <- acc_nt %>%
+    mutate(raster = if_else(raster == "aci", "aci2024", raster))
+  
+  # Adjust raster names to match metadata file
+  acc_nt <- acc_nt %>%
     mutate(raster_name = paste0(tolower(trimws(raster)), "_nt"))
   
   acc_nt <- acc_nt %>%
@@ -597,8 +676,16 @@ if (has_nt) {
     stop("acc_nt contains values outside [0,1]")
   }
   
-  if (any(is.na(acc_nt$year))) {
-    stop("Missing year info for some rasters in acc_nt")
+  missing_names <- acc_nt %>%
+    filter(is.na(year)) %>%
+    distinct(raster_name) %>%
+    pull(raster_name)
+  
+  if (length(missing_names) > 0) {
+    stop(
+      "Missing year info for raster(s): ",
+      paste(missing_names, collapse = ", ")
+    )
   }
   
   req <- c("raster_name", "Ecds_ID", "acc")
@@ -628,49 +715,75 @@ if (has_nt) {
   missing_ids_nt <- setdiff(ids_r, ids_nt_tbl)
   
   if (length(missing_ids_nt) > 0) {
-    stop(
-      "Tri-class accuracy table missing ecodistrict IDs: ",
-      paste(utils::head(missing_ids_nt), collapse = ", ")
+    
+    log_msg(
+      "Adding missing triclass ecodistricts with raster's mean accuracy: ",
+      paste(missing_ids_nt, collapse = ", "),
+      level = "WARN"
     )
+    
+    # Raster-level mean accuracy for NT stack
+    acc_global_nt <- acc_nt %>%
+      group_by(raster_name) %>%
+      summarise(
+        global_acc = mean(acc, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    missing_rows_nt <- tidyr::expand_grid(
+      raster_name = unique(acc_nt$raster_name),
+      Ecds_ID = missing_ids_nt
+    ) %>%
+      left_join(acc_global_nt, by = "raster_name") %>%
+      left_join(
+        meta %>% select(raster_id, year),
+        by = c("raster_name" = "raster_id")
+      ) %>%
+      mutate(
+        acc = global_acc,
+        w_acc = acc_to_weight(acc),
+        w_time = time_decay(year, target_year, lambda),
+        weight = w_acc * w_time
+      ) %>%
+      select(-global_acc)
+    
+    if (any(is.na(missing_rows_nt$year))) {
+      stop("Missing year values generated in synthetic NT rows")
+    }
+    
+    # Add to accuracy table
+    acc_nt <- bind_rows(acc_nt, missing_rows_nt)
+    
+    # Make sure no duplicates were introduced
+    dup_check_nt <- acc_nt %>%
+      count(raster_name, Ecds_ID) %>%
+      filter(n > 1)
+    
+    if (nrow(dup_check_nt) > 0) {
+      stop(
+        "Duplicate NT rows after filling missing ecodistricts: ",
+        paste(
+          head(paste(dup_check_nt$raster_name, dup_check_nt$Ecds_ID), 10),
+          collapse = "; "
+        )
+      )
+    }
+    
+    # Confirm the fix
+    remaining_missing_ids_nt <- setdiff(
+      ids_r,
+      unique(acc_nt$Ecds_ID)
+    )
+    
+    if (length(remaining_missing_ids_nt) > 0) {
+      stop(
+        "Still missing NT ecodistrict IDs: ",
+        paste(remaining_missing_ids_nt, collapse = ", ")
+      )
+    }
+    
   }
   
-  # Fill missing ecodistricts in triclass table
-  
-  # ids_nt_tbl <- unique(acc_nt$Ecds_ID)
-  # 
-  # missing_ids_nt <- setdiff(ids_r, ids_nt_tbl)
-  # 
-  # if (length(missing_ids_nt) > 0) {
-  #   
-  #   log_msg(
-  #     "Adding missing triclass ecodistricts with neutral accuracy: ",
-  #     paste(missing_ids_nt, collapse = ", ")
-  #   )
-  #   
-  #   missing_rows_nt <- expand.grid(
-  #     raster_name = unique(acc_nt$raster_name),
-  #     Ecds_ID = missing_ids_nt,
-  #     stringsAsFactors = FALSE
-  #   ) %>%
-  #     as_tibble() %>%
-  #     left_join(
-  #       meta %>%
-  #         select(raster_id, year),
-  #       by = c("raster_name" = "raster_id")
-  #     ) %>%
-  #     mutate(
-  #       acc = 0,
-  #       w_acc = acc_to_weight(acc),
-  #       w_time = time_decay(year, target_year, lambda),
-  #       weight = w_acc * w_time
-  #     )
-  #   
-  #   acc_nt <- bind_rows(
-  #     acc_nt,
-  #     missing_rows_nt
-  #   )
-  # }
-  # 
    missing_nt <- setdiff(names(nt_stack), acc_nt$raster_name)
    if (length(missing_nt) > 0) {
      stop("Missing tri-class accuracy values for: ", paste(missing_nt, collapse = ", "))
@@ -709,6 +822,9 @@ if (has_nt) {
   
   stopifnot(identical(names(weight_stack_nt), names(nt_stack)))
   
+  rm(weight_files_nt, acc_nt)
+  gc()
+  
   native_mask <- nt_stack == 2
   tame_mask   <- nt_stack == 1
   
@@ -740,6 +856,15 @@ if (has_nt) {
   share_native[vote_total == 0] <- NA
   share_native <- clamp(share_native, 0, 1)
   share_tame <- 1 - share_native
+  
+  rm(
+    native_mask,
+    tame_mask,
+    native_votes,
+    tame_votes,
+    vote_total
+  )
+  gc()
   
 } else {
   
@@ -802,6 +927,15 @@ if (has_nt) {
   )
   
   temporal_sd_nt <- sqrt(temporal_var_nt)
+  
+  rm(
+    temporal_var_nt,
+    mean_signal,
+    signal_nt,
+    tri_present,
+    weight_present_nt
+  )
+  gc()
   
 } else {
   
@@ -906,7 +1040,7 @@ uncertainty_total <- (
 
 writeRaster(
   uncertainty_total,
-  file.path(terra_dir,"uncertainty_total_combined.tif"), # need to export!
+  file.path(terra_dir,"uncertainty_total_combined.tif"), 
   overwrite=TRUE
 )
 
@@ -936,7 +1070,8 @@ outputs <- list(
   list(raster = p_tame, local = "p_tame.tif", s3 = "p_tame.tif", wopt = wopt),
   list(raster = p_not, local = "p_not_grass.tif", s3 = "p_not_grass.tif", wopt = wopt),
   list(raster = uncertainty, local = "uncertainty.tif", s3 = "uncertainty.tif", wopt = wopt),
-  list(raster = uncertainty_composite_A,local = "uncertainty_composite.tif", s3 = "uncertainty_composite.tif", wopt = wopt),
+  list(raster = uncertainty_composite_A, local = "uncertainty_composite.tif", s3 = "uncertainty_composite.tif", wopt = wopt),
+  list(raster = uncertainty_total, local = "uncertainty_total_combined.tif", s3 = "uncertainty_total_combined.tif", wopt = wopt),
   list(raster = num_contributing, local = "num_sources.tif", s3 = "num_sources.tif", wopt = wopt_int),
   list(raster = num_positive, local = "num_positive.tif", s3 = "num_positive.tif", wopt = wopt_int),
   list(raster = num_negative, local = "num_negative.tif", s3 = "num_negative.tif", wopt = wopt_int),
@@ -952,6 +1087,17 @@ write_and_collect <- function(spec) {
 
 outputs <- lapply(outputs, write_and_collect)
 log_msg("All output rasters written locally; beginning S3 upload")
+
+rm(
+  bin_stack,
+  nt_stack,
+  weight_stack
+)
+
+if (exists("weight_stack_nt"))
+  rm(weight_stack_nt)
+
+gc()
 
 upload_results <- lapply(outputs, function(spec) {
   s3_object <- paste0(out_dir, "/", spec$s3)
@@ -979,3 +1125,13 @@ if (n_failed > 0) {
 }
 
 log_msg("Analysis complete")
+
+# Upload log to S3
+aws.s3::put_object(
+  file = log_file_local,
+  object = paste0(
+    "alison-long/tomorrows-prairies/logs/",
+    basename(log_file_local)
+  ),
+  bucket = "sagemaker-gst-stage.sharing"
+)
