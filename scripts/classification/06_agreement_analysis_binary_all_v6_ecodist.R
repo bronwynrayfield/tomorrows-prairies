@@ -36,7 +36,7 @@ terraOptions(
 )
 
 ## ---- Parallel (light use only) ---- ##
-n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
+#n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
 future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
@@ -72,7 +72,7 @@ log_msg <- function(..., level = "INFO") {
 }
 
 log_msg("Starting spatial agreement analysis")
-log_msg("Parallel workers detected: ", n_cores)
+#log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
@@ -137,10 +137,13 @@ log_msg("Rasters confirmed aligned — skipping resampling")
 #names(aligned_files) <- names(rfiles_local)
 
 ## ---- Load ecodistrict raster ---- ##
-district_rast <- rast(ecodistrict_file)
+ecodist_local <- file.path(local_dir, "ecodistricts.tif")
+aws.s3::save_object(ecodist_file, file = ecodist_local)
+
+ecodist_rast <- rast(ecodist_local)
 
 # Ensure alignment
-if (!compareGeom(district_rast, template, stopOnError = FALSE)) {
+if (!compareGeom(ecodist_rast, template, stopOnError = FALSE)) {
   stop("Ecodistrict raster is not aligned with input rasters")
 }
 
@@ -156,7 +159,9 @@ ras_names <- names(r_stack)
 ## ---- Initialize district-level count arrays ---- ##
 
 # Get unique district IDs (could also delay until first block)
-district_vals <- as.integer(sort(unique(na.omit(values(district_rast, mat = FALSE)))))
+#district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
+freq_table <- freq(ecodist_rast)
+district_vals <- as.integer(freq_table$value)
 
 # initialize empty set
 #district_vals <- integer(0)
@@ -215,7 +220,7 @@ summary(bs$nrows)
 
 # ✅ OPEN FILE CONNECTIONS
 readStart(r_stack)
-readStart(district_rast)
+readStart(ecodist_rast)
 
 for (i in 1:total_blocks) {
   
@@ -229,7 +234,7 @@ for (i in 1:total_blocks) {
   )
   
   districts <- readValues(
-    district_rast,
+    ecodist_rast,
     row = bs$row[i],
     nrows = bs$nrows[i],
     mat = FALSE
@@ -241,7 +246,7 @@ for (i in 1:total_blocks) {
   # Safe indexing
   districts <- as.integer(districts)
   
-  storage.mode(vals) <- "integer"
+  #storage.mode(vals) <- "integer"
   
   # Drop fully empty rows
   valid_rows <- rowSums(!is.na(vals)) > 0 & !is.na(districts)
@@ -258,6 +263,9 @@ for (i in 1:total_blocks) {
   M_int <- M * 1
   valid_int <- valid_mat * 1
   M_int[valid_int == 0] <- 0
+  
+  storage.mode(valid_int) <- "double"
+  storage.mode(M_int) <- "double"
   
   # ---- GLOBAL (all pixels in block) ----
   N_block_all <- t(valid_int) %*% valid_int
@@ -283,9 +291,13 @@ for (i in 1:total_blocks) {
     
     rows <- split_idx[[d]]
     
-    d_id <- district_index[[d]]
+    d_id <- district_index[as.character(d)]
+    if (is.na(d_id)) {
+      warning("Unknown district encountered: ", d)
+      next
+    }
     
-    if (is.null(d_id)) next # won't crash if there are unmatched ecodistrict IDs
+    d_id <- as.integer(d_id)
     
     M_d <- M_int[rows, , drop = FALSE]
     valid_d <- valid_int[rows, , drop = FALSE]
@@ -313,7 +325,7 @@ for (i in 1:total_blocks) {
 }
 
 readStop(r_stack)
-readStop(district_rast)
+readStop(ecodist_rast)
 
 message("Finished block processing")
 log_msg("Finished block processing")
@@ -333,6 +345,11 @@ for (d in seq_len(n_districts)) {
   
   for (i in 1:(n_rasters - 1)) {
     for (j in (i + 1):n_rasters) {
+      
+      if (i == 1) {
+        message("Sample districts:", paste(head(districts, 10), collapse = ","))
+        message("First district_vals:", paste(head(district_vals, 10), collapse = ","))
+      }
       
       tp <- n11[i,j,d]
       fp <- n10[i,j,d]
@@ -373,7 +390,7 @@ for (d in seq_len(n_districts)) {
       }
       
       results[[length(results) + 1]] <- tibble(
-        district = d_name,
+        district = as.character(d_name),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
         d_jaccard = d_j,
@@ -445,9 +462,8 @@ for (i in 1:(n_rasters - 1)) {
 }
 
 pairwise_long <- bind_rows(
-  bind_rows(global_results),
-  bind_rows(results)
-)
+  bind_rows(global_results) %>% mutate(district = as.character(district)),
+  bind_rows(results) %>% mutate(district = as.character(district)))
 
 log_msg("Done computing metrics")
 
@@ -532,7 +548,7 @@ validate_spatial_agreement <- function(
   
   ## ---- 6. Metric bounds ---- ##
   check_range <- function(x, minv, maxv, name) {
-    bad <- which(x < minv | x > maxv)
+    bad <- which(!is.na(x) & (x < minv | x > maxv))
     if (length(bad) > 0) {
       stop(sprintf("Metric %s out of bounds", name))
     }
@@ -544,24 +560,6 @@ validate_spatial_agreement <- function(
   check_range(pairwise_long$mcc, -1, 1, "MCC")
   
   message("✓ Metric bounds checks passed")
-  
-  ## ---- 7. Symmetry of metrics (GLOBAL only) ---- ##
-  global_df <- pairwise_long[pairwise_long$district == "ALL", ]
-  
-  key_ij <- paste(global_df$raster_i, global_df$raster_j)
-  key_ji <- paste(global_df$raster_j, global_df$raster_i)
-  
-  match_idx <- match(key_ij, key_ji)
-  
-  if (any(!is.na(match_idx))) {
-    diff_metric <- abs(global_df$d_jaccard - global_df$d_jaccard[match_idx])
-    
-    if (any(diff_metric > tol, na.rm = TRUE)) {
-      warning("Metric symmetry check failed (Jaccard)")
-    } else {
-      message("✓ Metric symmetry check passed")
-    }
-  }
   
   message("---- All validation checks completed ----")
 }
@@ -581,7 +579,7 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_17Jun2026.csv")
+  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_24Jun2026.csv")
 )
 
 message("Finished pairwise spatial agreement analysis")
@@ -590,7 +588,7 @@ log_msg("Spatial agreement analysis completed successfully")
 # Upload log to S3
 aws.s3::put_object(
   file = log_file_local,
-  object = log_file
+  object = file.path(log_dir, basename(log_file_local))
 )
 
 message("Log written to: ", log_file)

@@ -5,17 +5,16 @@
 
 ##----------------------- Alison Long - February 2026 -------------------------
 
-# step 8: assess accuracy of datasets mapping grasslands by comparing them
+# step 6: assess accuracy of datasets mapping grasslands by comparing them
 #         to ground-truthed point data for 2015 to present
 
-## v2 is updated with the version of the script from the "check training" file
-
-## NEED TO REMOVE MORE TRAINING DATA FOR HFI AND ACI??
+## CURRENTLY NO MCC
 
 ## Goal:
 ##   Assess the accuracy of multiple grassland rasters vs. ground-truth points
 ##   using time-aligned rules that depend on class (NATIVE or TAME).
 ##
+## NEW in this version:
 ##   1) Handles PLI as 4 separate rasters: pli_ap, pli_cu, pli_mg, pli_mm
 ##   2) Allows MULTIPLE valid metadata years per raster (e.g., pli_mm = 2020|2021)
 ##   3) Filters points by class-based time rules using ANY allowed year per raster
@@ -29,7 +28,6 @@
 ##       TAME:   any( allowed_year == Yer_Cll ); matched_year = Yer_Cll (if allowed)
 ##
 ## Exclusions:
-##   - LC_Cl_N == "SHRUB"
 ##   - Source used for training: exclude if Source_norm matches either atomic raster code or grouped alias
 ##
 ## Outputs:
@@ -58,10 +56,10 @@ library(scales)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/for_training_data_check/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Apr2026_clean_EL_pts_excld.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_Mar2026_clean_v2.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/check_training/EL_pts_excld"
+out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary"
 
 # ----------------------------
 # 3) Configuration
@@ -73,8 +71,8 @@ pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 raster_cols <- c(
   "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
   "cnvc","lcc","pudl",
-  pli_variants,            # four atomic PLI rasters
-  "lcr","gpw","plow","plvi","hfi","gcc","dw","esri","mgi")
+                 pli_variants,            # four atomic PLI rasters
+  "lcr","gpw","plow","plvi","hfi","gcc","dw","esri")
 
 # Grouping helper: collapse pli_* -> "pli"; all others remain themselves
 raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
@@ -82,21 +80,7 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 # ----------------------------
 # 4) Load points and normalize basic fields
 # ----------------------------
-#points <- readxl::read_excel(points_excel_path)
-#points <- readxl::read_excel(
-#  points_excel_path,
-#  col_types = c("guess", "text", rep("guess", 39))
-#)
-
-points <- readxl::read_excel(
-  points_excel_path,
-  col_types = c("numeric", "text", "text", "numeric", rep("guess", 10), rep("numeric", 27))
-)
-
-names(points)
-str(points)
-unique(points$Source)
-table(points$Source, useNA = "ifany")
+points <- readxl::read_excel(points_excel_path)
 
 required_cols <- c("LC_grass", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
@@ -234,27 +218,23 @@ long <- points_norm %>%
     allowed_years = map(raster, ~ raster_years_map[[.x]] %||% integer(0))
   )
 
-# Create a canonical evaluation key
-long <- long %>%
-  mutate(
-    raster_eval = raster_group   # <-- canonical evaluation identity
-  )
-
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
 # ----------------------------
 # Compute a per-record matched_year for per-year reporting:
 #   - NATIVE: latest allowed_year <= Yer_Cll (if any; else NA -> exclude)
 #   - TAME: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
-
+#   - OTHER: Yer_Cll if Yer_Cll is in allowed_years (else NA -> exclude)
 compute_matched_year <- function(yrs, yer, class_label) {
-  yrs <- as.integer(yrs)
+  yrs <- as.integer(unlist(yrs))
   if (length(yrs) == 0L || is.na(yer) || is.na(class_label)) return(NA_integer_)
   if (class_label == "NATIVE") {
     ok <- yrs[yrs <= yer]
     if (length(ok) == 0L) return(NA_integer_)
     return(max(ok))
   } else if (class_label == "TAME") {
+    if (yer %in% yrs) return(yer) else return(NA_integer_)
+  } else if (class_label == "OTHER") {
     if (yer %in% yrs) return(yer) else return(NA_integer_)
   } else {
     return(NA_integer_)
@@ -263,30 +243,21 @@ compute_matched_year <- function(yrs, yer, class_label) {
 
 # Apply full filtering:
 #   - require LC_grass, Yer_Cll, LC_Cl_N
-#   - exclude SHRUB
 #   - require pred present and allowed_years matching via matched_year
 #   - exclude training sources that match atomic raster or grouped alias
 eval_data <- long %>%
   filter(!is.na(LC_grass), !is.na(Yer_Cll), !is.na(LC_Cl_N)) %>%
-  filter(LC_Cl_N != "SHRUB") %>%
+  #filter(LC_Cl_N != "SHRUB") %>%
   filter(!is.na(pred)) %>%
   rowwise() %>%
   mutate(matched_year = compute_matched_year(allowed_years, Yer_Cll, LC_Cl_N)) %>%
   ungroup() %>%
   filter(!is.na(matched_year)) %>%
-  #filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
-  filter(is.na(Source_norm) | Source_norm != raster_eval) # filter using canonical evaluation identity
+  filter(is.na(Source_norm) | !(Source_norm %in% c(raster, raster_group)))
 
-# Check filtering
-table(eval_data$Source_norm, eval_data$raster, useNA = "ifany")
-
-eval_data %>%
-  filter(!is.na(Source_norm)) %>%
-  distinct(Source_norm, raster)
-
-eval_data %>%
-  count(raster_eval) %>%
-  arrange(n)
+# Collapse lists to strings and export
+eval_data_out <- eval_data %>%
+  mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -346,7 +317,7 @@ summary_by_raster_atomic <- summarize_block(
 
 # GROUPED: collapse pli_* -> "pli"; combine counts across all matched_year within group
 summary_by_raster_grouped <- eval_data %>%
-  mutate(raster = raster_eval) %>%
+  mutate(raster = raster_group) %>%
   group_by(raster) %>%
   summarise(
     TP = sum(LC_grass == 1 & pred == 1),
@@ -386,7 +357,7 @@ per_year_summary_atomic <- summarize_block(
 
 # GROUPED: per grouped raster × Yer_Cll (mix of multiple matched years inside)
 per_year_summary_grouped <- summarize_block(
-  eval_data %>% mutate(raster = raster_eval),
+  eval_data %>% mutate(raster = raster_group),
   key_cols = c("raster", "Yer_Cll")
 ) %>%
   mutate(raster_year = NA_integer_) %>%
@@ -419,12 +390,12 @@ p_grouped <- ggplot(summary_by_raster_grouped,
             size = 3.5) +
   coord_flip() +
   scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
-  labs(title = "Overall Accuracy by raster (training points per EL)",
+  labs(title = "Overall Accuracy by Raster (Grouped: pli combines variants)",
        x = "Raster", y = "Overall Accuracy") +
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot_EL_pts_excld2.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot.png"),
        p_grouped, width = 7, height = 5, dpi = 200)
 
 # ATOMIC plot
@@ -442,7 +413,7 @@ p_atomic <- ggplot(summary_by_raster_atomic,
   theme_minimal(base_size = 12) +
   theme(panel.grid.minor = element_blank())
 
-ggsave(file.path(out_dir, "raster_accuracy_plot_atomic_EL_pts_excld.png"),
+ggsave(file.path(out_dir, "raster_accuracy_plot_atomic.png"),
        p_atomic, width = 7, height = 5, dpi = 200)
 
 # Warning message:
@@ -593,17 +564,11 @@ ggsave(file.path(out_dir, "raster_posonly_recall_plot_atomic.png"),
 ####################################################################################
 
 # ----------------------------
-# Reload points to ensure ecodistrict field present and clean
+# Reload points to ensure ECODISTRIC field present and clean
 # ----------------------------
 points_raw <- readxl::read_excel(points_excel_path)
 
-# Update with column name that matches points file
-points_raw <- points_raw |>
-  dplyr::mutate(
-    ecodistrict_id = `Ecds_ID`   
-  )
-
-required_cols_eco <- c("LC_grass", "Yer_Cll", "ecodistrict_id", "LC_Cl_N")
+required_cols_eco <- c("LC_grass", "Yer_Cll", "ECODISTRIC", "LC_Cl_N")
 missing_req_eco <- setdiff(required_cols_eco, names(points_raw))
 if (length(missing_req_eco) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req_eco, collapse = ", "))
@@ -637,8 +602,8 @@ points2 <- points_raw %>%
       y[y %in% c("", "na", "nan", "null", "missing")] <- NA_character_
       suppressWarnings(as.integer(as.numeric(y)))
     },
-    ecodistrict_id = {
-      e <- as.character(ecodistrict_id)
+    ECODISTRIC = {
+      e <- as.character(ECODISTRIC)
       e <- str_trim(e)
       e[e %in% c("", "NA", "NaN", "null", "NULL", "missing")] <- NA_character_
       e
@@ -719,7 +684,7 @@ eval_data2 <- long2 %>%
 
 # Keep rows having ecodistrict info
 eval_by_eco <- eval_data2 %>%
-  filter(!is.na(ecodistrict_id))
+  filter(!is.na(ECODISTRIC))
 
 # ----------------------------
 # Summaries by raster × ecodistrict — ATOMIC and GROUPED
@@ -727,7 +692,7 @@ eval_by_eco <- eval_data2 %>%
 
 # ATOMIC ecodistrict metrics (positive-only)
 by_raster_ecodistrict_atomic <- eval_by_eco %>%
-  group_by(raster, matched_year, ecodistrict_id) %>%
+  group_by(raster, matched_year, ECODISTRIC) %>%
   summarise(
     TP = sum(pred == 1, na.rm = TRUE),
     FN = sum(pred == 0, na.rm = TRUE),
@@ -738,12 +703,12 @@ by_raster_ecodistrict_atomic <- eval_by_eco %>%
   ) %>%
   rename(raster_year = matched_year) %>%
   filter(N_pos_evaluated > 0) %>%
-  arrange(raster, ecodistrict_id)
+  arrange(raster, ECODISTRIC)
 
 # GROUPED ecodistrict metrics (pli_* -> pli)
 by_raster_ecodistrict_grouped <- eval_by_eco %>%
   mutate(raster = raster_group) %>%
-  group_by(raster, ecodistrict_id) %>%
+  group_by(raster, ECODISTRIC) %>%
   summarise(
     TP = sum(pred == 1, na.rm = TRUE),
     FN = sum(pred == 0, na.rm = TRUE),
@@ -754,16 +719,16 @@ by_raster_ecodistrict_grouped <- eval_by_eco %>%
   ) %>%
   mutate(raster_year = NA_integer_) %>%
   filter(N_pos_evaluated > 0) %>%
-  arrange(raster, ecodistrict_id)
+  arrange(raster, ECODISTRIC)
 
 # Counts-only views
 counts_by_raster_ecodistrict_atomic <- by_raster_ecodistrict_atomic %>%
-  select(raster, raster_year, ecodistrict_id, N_pos_evaluated) %>%
-  arrange(raster, ecodistrict_id)
+  select(raster, raster_year, ECODISTRIC, N_pos_evaluated) %>%
+  arrange(raster, ECODISTRIC)
 
 counts_by_raster_ecodistrict_grouped <- by_raster_ecodistrict_grouped %>%
-  select(raster, raster_year, ecodistrict_id, N_pos_evaluated) %>%
-  arrange(raster, ecodistrict_id)
+  select(raster, raster_year, ECODISTRIC, N_pos_evaluated) %>%
+  arrange(raster, ECODISTRIC)
 
 # ----------------------------
 # Save ecodistrict outputs
@@ -812,7 +777,7 @@ print(counts_by_raster_ecodistrict_atomic %>% slice_head(n = 30))
 
 combined_by_raster_ecodistrict <- eval_by_eco %>%
   # eval_by_eco already has the correct filters and includes ALL years
-  group_by(raster, ecodistrict_id) %>%
+  group_by(raster, ECODISTRIC) %>%
   summarise(
     TP = sum(pred == 1, na.rm = TRUE),
     FN = sum(pred == 0, na.rm = TRUE),
@@ -822,13 +787,13 @@ combined_by_raster_ecodistrict <- eval_by_eco %>%
   ) %>%
   # Keep only combos with at least 1 evaluable positive point
   filter(N_pos_evaluated > 0) %>%
-  arrange(raster, ecodistrict_id)
+  arrange(raster, ECODISTRIC)
 
 # Prepare the minimalist CSV the user requested
 combined_ecodistrict_csv <- combined_by_raster_ecodistrict %>%
   transmute(
     raster_name    = raster,
-    ecodistrict_id = ecodistrict_id,
+    ecodistrict_id = ECODISTRIC,
     recall         = recall
   )
 
@@ -856,29 +821,22 @@ print(combined_ecodistrict_csv %>% slice_head(n = 30))
 metrics_csv_grouped <- file.path(out_dir, "raster_posonly_by_ecodistrict.csv")
 metrics_csv_atomic  <- file.path(out_dir, "raster_posonly_by_ecodistrict_atomic.csv")
 
-# Ecodistrict boundary layer (must have a name column matching ecodistrict in metrics)
+# Ecodistrict boundary layer (must have a name column matching ECODISTRIC in metrics)
 ecodistrict_path <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean.shp"
-eco_bounds <- sf::st_read(ecodistrict_path, quiet = TRUE)
-
 eco_name_col     <- "ECODISTRIC"   # in the boundary layer
-
-eco_bounds <- eco_bounds |>
-  dplyr::mutate(
-    ecodistrict_id = .data[[eco_name_col]]
-  )
 
 # Optional map CRS (use native CRS if NA)
 map_crs <- 5070  # e.g., 5070 (NAD83 / Conus Albers)
 
 # Load GROUPED metrics
 by_raster_ecodistrict <- readr::read_csv(metrics_csv_grouped, show_col_types = FALSE)
-req_cols <- c("raster","ecodistrict_id","N_pos_evaluated","Recall_TPR")
+req_cols <- c("raster","ECODISTRIC","N_pos_evaluated","Recall_TPR")
 missing <- setdiff(req_cols, names(by_raster_ecodistrict))
 if (length(missing) > 0) {
   stop("Missing required columns in grouped ecodistrict CSV: ", paste(missing, collapse = ", "))
 }
 by_raster_ecodistrict <- by_raster_ecodistrict %>%
-  filter(!is.na(ecodistrict_id), N_pos_evaluated > 0)
+  filter(!is.na(ECODISTRIC), N_pos_evaluated > 0)
 
 # Load boundaries (sf)
 eco_sf <- sf::st_read(ecodistrict_path, quiet = TRUE)
@@ -895,7 +853,7 @@ make_map_data <- function(raster_code, metrics_df) {
   m <- metrics_df %>% filter(raster == raster_code)
   # Left-join polygons (x) with metrics (y) by ecodistrict name
   # by = c(x_col = y_col) -> use a named character vector:
-  join_by <- setNames("ecodistrict_id", eco_name_col)
+  join_by <- setNames("ECODISTRIC", eco_name_col)
   map_df <- eco_sf %>%
     left_join(m, by = join_by) %>%
     mutate(has_data = !is.na(N_pos_evaluated) & N_pos_evaluated > 0)
@@ -941,7 +899,7 @@ for (r in rasters_to_map_grouped) {
 
 # --- ATOMIC maps ---
 by_raster_ecodistrict_atomic_csv <- readr::read_csv(metrics_csv_atomic, show_col_types = FALSE) %>%
-  filter(!is.na(ecodistrict_id), N_pos_evaluated > 0)
+  filter(!is.na(ECODISTRIC), N_pos_evaluated > 0)
 
 rasters_to_map_atomic <- sort(unique(by_raster_ecodistrict_atomic_csv$raster))
 for (r in rasters_to_map_atomic) {
@@ -971,3 +929,4 @@ for (r in rasters_to_map_atomic) {
 }
 
 cat("\nSaved grouped and atomic ecodistrict maps to: ", out_dir, "\n")
+

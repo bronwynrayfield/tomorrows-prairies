@@ -1,12 +1,12 @@
 
 ###################################################################################
-##                       PRELIMINARY ACCURACY ASSESSMENT                         ##
+##               PRELIMINARY ACCURACY ASSESSMENT  (NATIVE V TAME)                ##
 ###################################################################################
 
 ##----------------------- Alison Long - February 2026 -------------------------
 
-# step 6: assess accuracy of datasets mapping grasslands by comparing them
-#         to ground-truthed point data
+# step 7: set up data to assess accuracy of datasets mapping grasslands by comparing 
+#         them to ground-truthed point data
 
 # load packages
 library(terra)
@@ -48,6 +48,7 @@ gpw_masked_dir   <- file.path(proc_grass_data_dir, "wri_gpw_ann/masked")
 plvi_aligned_dir <- file.path(proc_grass_data_dir, "ab_plvi/aligned")
 hfi_aligned_dir  <- file.path(proc_grass_data_dir, "abmi_hfi/aligned")
 mgi_aligned_dir   <- file.path(proc_grass_data_dir, "mb_mgi/aligned")
+pglc_aligned_dir  <- file.path(proc_grass_data_dir, "aafc_pglc/aligned")
 
 ####--- FILES ---####
 # Pilot area
@@ -56,11 +57,14 @@ pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 # Study area
 sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 
+# Modelling study area shapefile for plotting
+sap_file <- file.path(sa_dir, "modelling_study_area_aligned_cnvc_Jan2026.shp")
+
 # ground-truthed data
 gt_file <- file.path(gt_dir, "gt_points_modified_Mar2026.shp")
 
 # ecodistricts
-eco_file <- file.path(eco_dir, "ecodistricts_clean.shp")
+eco_file <- file.path(eco_dir, "ecodistricts_clean_Jun2026.shp")
 
 # grass raster files
 aci_file    <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_natvtam_noshrub.tif")
@@ -77,22 +81,33 @@ gpw_file    <- file.path(gpw_masked_dir, "gpw_reproj_algn_natvtam_noshrub_masked
 plvi_file   <- file.path(plvi_aligned_dir, "plvi_reproj_algn_natvtam_gte2015.tif")
 hfi_file    <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary_gte2015.tif") # tame only - same as binary
 mgi_file    <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_natvtam_noshrub.tif")
+pglc_file   <- file.path(pglc_aligned_dir, "pglc_reproj_algn_natvtam.tif")
 
 ####--- READ INTO TERRA ---####
 
-gt <- vect(gt_file)
-gt
+#gt <- vect(gt_file)
+gt_sf <- sf::st_read(gt_file)
+
+# keep only POINT geometries
+gt_sf <- gt_sf[st_geometry_type(gt_sf) == "POINT", ]
+
+# convert to terra
+gt <- terra::vect(gt_sf)
+gt # 200,987 points
+
+cnvc <- rast(cnvc_file) # for plotting
+sap  <- vect(sap_file)  # for plotting
 
 files <- c(
   aci_file, ngi_file, cgr_file, eccc_file,
   cnvc_file, pudl_file, pli_ap_file,
   pli_cu_file, pli_mg_file, pli_mm_file, gpw_file,
-  plvi_file, hfi_file, mgi_file
+  plvi_file, hfi_file, mgi_file, pglc_file
 )
 
 keys <- c(
   "aci","ngi","cgr","eccc","cnvc","pudl","pli_ap",
-  "pli_cu","pli_mg","pli_mm","gpw","plvi","hfi","mgi"
+  "pli_cu","pli_mg","pli_mm","gpw","plvi","hfi","mgi","pglc"
 )
 
 names(files) <- keys
@@ -152,6 +167,9 @@ extra  <- setdiff(vals_df$ID, seq_len(n_pt))        # IDs not in 1..nrow(points)
 
 length(dups); length(miss); length(extra)
 
+stopifnot(length(dups) == 0)
+stopifnot(length(miss) == 0)
+stopifnot(length(extra) == 0)
 
 # ---- Bind values back to points ----
 # vals_df: result of terra::extract(r_all, gt_in_r_crs, ID = TRUE)
@@ -175,12 +193,23 @@ stopifnot(nrow(vals_only) == n_pt)
 
 # 2) Assign directly into the attribute table of the SAME object (gt_in_r_crs)
 gt_out <- gt_in_r_crs                           # keep geometry and row order
-terra::values(gt_out)[, names(r_all)] <- vals_only
+#terra::values(gt_out)[, names(r_all)] <- vals_only
+
+v <- terra::values(gt_out)
+
+# remove any existing columns that will be replaced
+v <- v[, setdiff(names(v), names(r_all)), drop = FALSE]
+
+v <- cbind(v, vals_only[, names(r_all), drop = FALSE])
+terra::values(gt_out) <- v
 
 # How many geometries vs. how many rows in the attribute table?
 n_geom <- nrow(gt_out)
 n_attr <- nrow(terra::values(gt_out))
 n_geom; n_attr
+
+stopifnot(nrow(gt_in_r_crs) == nrow(vals_df))
+stopifnot(nrow(gt_out) == nrow(gt_in_r_crs))
 
 # Find attribute columns whose length != number of geometries
 attr_len <- sapply(terra::values(gt_out), NROW)
@@ -190,7 +219,7 @@ good_cols <- names(attr_len)[attr_len == n_geom]
 length(bad_cols); bad_cols[1:min(10, length(bad_cols))]  
 
 # 1) Attributes (already in gt_out after your binding step)
-vals <- terra::values(gt_out)               # data.frame with 196,931 rows
+vals <- terra::values(gt_out)               # data.frame with 200,987 rows
 
 # 2) Coordinates for a SpatVector (points) as a data.frame
 g   <- terra::geom(gt_out, df = TRUE)       # has columns 'geom','part','x','y','hole'
@@ -211,15 +240,17 @@ sort(sapply(attr_df[names(r_all)], function(x) mean(is.na(x))), decreasing = TRU
 
 # Normalize and derive the new field
 norm <- function(x) tolower(trimws(as.character(x)))
+stopifnot("LC_Cl_N" %in% names(attr_df))
+stopifnot("Sorc_ID" %in% names(attr_df))
 vals <- norm(attr_df$LC_Cl_N)
 
 # ---- 3-class ground truth: 0 = not grass, 1 = tame, 2 = native ----
 attr_df$LC_class3 <- NA_integer_
 
-# not grass (shrubs/woody)
+# not grass 
 attr_df$LC_class3[vals == "woody"] <- 0L
-
-# not grass (cropland)
+attr_df$LC_class3[vals == "wetland"] <- 0L
+attr_df$LC_class3[vals == "open water"] <- 0L
 attr_df$LC_class3[vals == "annual cropland"] <- 0L
 
 # tame grass
@@ -233,6 +264,7 @@ attr_df$LC_class3[vals == "native"] <- 2L
 
 # Quick QA
 table(attr_df$LC_class3, useNA = "ifany")
+table(vals, useNA = "ifany")
 
 head(attr_df)
 
@@ -240,16 +272,17 @@ head(attr_df)
 ####--- EXPORT ---####
 
 # write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_29Apr2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_23Jun2026.csv")
 write.csv(attr_df, csv_out_path, row.names = FALSE)
 
 # filter attr_df to only include rows where Yer_Cll is 2015+
+stopifnot("Yer_Cll" %in% names(attr_df))
 attr_df_2015 <- attr_df %>%
   filter(Yer_Cll >= 2015)
 
 head(attr_df_2015)
 
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_29Apr2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_23Jun2026.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 ####--- CLEAN FOR NEXT STEP ---####
@@ -259,22 +292,37 @@ write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 #  filter(LC_class3 %in% c(1, 2))
 
 # add source column and fill when points were used as training data 
-attr_df_2015_clean <- attr_df_2015 %>%
+#attr_df_2015 <- attr_df_2015 %>%
+#  mutate(
+#    Training = case_when(
+#      Sorc_ID == "PLI_SKMoE" ~ "pli",
+#      Sorc_ID == "ABMI_HFI" ~ "hfi",
+#      Sorc_ID == "ABMI_THF" ~ "hfi",
+#      Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
+#      Sorc_ID == "ACI_field_2024" ~ "aci", # if using 2024 ACI data
+#      Sorc_ID == "BC_ACI_2025" ~ "aci", 
+#      TRUE ~ ""    # keep unmatched cases empty
+#    )
+#  )
+
+attr_df_2015 <- attr_df_2015 %>%
   mutate(
-    Source = case_when(
+    Training = case_when(
       Sorc_ID == "PLI_SKMoE" ~ "pli",
       Sorc_ID == "ABMI_HFI" ~ "hfi",
       Sorc_ID == "ABMI_THF" ~ "hfi",
       Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
-      Sorc_ID == "ACI_field_2024" ~ "aci",
-      Sorc_ID == "BC_ACI_2025" ~ "aci",
+      Sorc_ID == "ACI_field_2024" ~ "aci2024", 
+      Sorc_ID == "ACI_field_2025" ~ "aci2025", 
+      Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", # which year of ACI?
       TRUE ~ ""    # keep unmatched cases empty
     )
   )
 
-# Move last two columns to first two
+# Move new columns to left
+attr_df_2015 <- attr_df_2015 %>%
+  relocate(LC_class3, Training)
 
 # write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_29Apr2026_clean_withnongrass.csv")
-write.csv(attr_df_2015_clean, csv_out_path, row.names = FALSE)
-
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_23Jun2026_clean_withnongrass.csv")
+write.csv(attr_df_2015, csv_out_path, row.names = FALSE)

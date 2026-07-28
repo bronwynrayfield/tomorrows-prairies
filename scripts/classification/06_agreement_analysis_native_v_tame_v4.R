@@ -85,18 +85,8 @@ log_msg("Metadata rows loaded: ", nrow(meta))
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
 
-#rfiles_local <- sapply(names(rfiles_s3), function(nm) {
-#  dest <- file.path(local_dir, paste0(nm, ".tif"))
-#  if (!file.exists(dest)) {
-#    aws.s3::save_object(rfiles_s3[[nm]], file = dest)
-#  }
-#  dest
-#}, USE.NAMES = TRUE)
-
 rfiles_local <- sapply(names(rfiles_s3), function(nm) {
-  
   s3_path <- rfiles_s3[[nm]]
-  
   s3_clean <- sub("^s3://", "", s3_path)
   parts <- strsplit(s3_clean, "/", fixed = TRUE)[[1]]
   
@@ -105,7 +95,9 @@ rfiles_local <- sapply(names(rfiles_s3), function(nm) {
   
   dest <- file.path(local_dir, paste0(nm, ".tif"))
   
-  aws.s3::save_object(object = key, bucket = bucket, file = dest)
+  if (!file.exists(dest)) {
+    aws.s3::save_object(object = key, bucket = bucket, file = dest)
+  }
   
   dest
 }, USE.NAMES = TRUE)
@@ -113,14 +105,17 @@ rfiles_local <- sapply(names(rfiles_s3), function(nm) {
 log_msg("All rasters downloaded locally")
 
 # Check file size to ensure correct download
-bad_files <- names(rfiles_local)[file.size(rfiles_local) < 10000]
+bad_files <- names(rfiles_local)[sapply(rfiles_local, function(f) {
+  tryCatch({ rast(f); FALSE }, error = TRUE)
+})]
+
 if (length(bad_files) > 0) {
   stop(paste("These rasters failed to download correctly:",
              paste(bad_files, collapse = ", ")))
 }
 
-file.info(rfiles_local)
-rfiles_s3[c("aci", "ngi", "cgr")]
+#log_msg(capture.output(print(file.info(rfiles_local))))
+#rfiles_s3[c("aci", "ngi", "cgr")]
 
 #unlink(local_dir, recursive = TRUE)
 #dir.create(local_dir, recursive = TRUE)
@@ -129,11 +124,12 @@ rfiles_s3[c("aci", "ngi", "cgr")]
 message("Checking alignment...")
 log_msg("Checking raster alignment")
 
+stopifnot(length(rfiles_local) > 0)
 template <- rast(rfiles_local[[1]])
 
 aligned_ok <- all(sapply(rfiles_local, function(f) {
   r <- rast(f)
-  compareGeom(r, template, stopOnError = FALSE)
+  compareGeom(r, template, crs=TRUE, stopOnError = FALSE)
 }))
 
 if (!aligned_ok) {
@@ -225,20 +221,27 @@ for (i in 1:total_blocks) {
     mat = TRUE
   )
   
+  if (is.null(vals) || length(vals) == 0) next
+  
   # Use integers to avoid double precision overhead and cut RAM
+  ok <- (vals %in% c(0,1,2)) | is.na(vals)
+  if (!all(ok)) {
+    stop("Unexpected class values detected")
+  }
+  
   storage.mode(vals) <- "integer"
   
   # Skip empty block
   if (all(is.na(vals))) next
   
   # Keep vals (not M yet)
-  valid_rows <- rowSums(!is.na(vals)) > 0
-  vals <- vals[valid_rows, , drop = FALSE]
+  #valid_rows <- rowSums(!is.na(vals)) > 0
+  #vals <- vals[valid_rows, , drop = FALSE]
   
-  if (nrow(vals) == 0) next
+  #if (nrow(vals) == 0) next
   
   # Keep all 3 categorical values
-  M <- vals 
+  #M <- vals 
   #storage.mode(M) <- "integer"
   
   ## ---- Class-wise counting ---- ##
@@ -246,15 +249,17 @@ for (i in 1:total_blocks) {
   for (ri in 1:(n_rasters - 1)) {
     for (rj in (ri + 1):n_rasters) {
       
-      valid <- !is.na(M[,ri]) & !is.na(M[,rj])
+      valid <- !is.na(vals[,ri]) & !is.na(vals[,rj])
       if (!any(valid)) next
       
-      Mi <- M[valid, ri]
-      Mj <- M[valid, rj]
+      Mi <- vals[valid, ri]
+      Mj <- vals[valid, rj]
       
       # Build contingency table
-      tab <- table(factor(Mi, levels = classes),
-                   factor(Mj, levels = classes))
+      tab <- as.matrix(table(
+        factor(Mi, levels = classes),
+        factor(Mj, levels = classes)
+      ))
       
       # Add to counts
       counts[ri, rj, , ] <- counts[ri, rj, , ] + tab
@@ -263,8 +268,8 @@ for (i in 1:total_blocks) {
   }
   
   # Force garbage collection to prevent memory accumulation
-  rm(vals, M)
-  gc()
+  rm(vals)
+  if (i %% 10 == 0) gc()
 }
 
 # ✅ CLOSE FILE CONNECTIONS
@@ -283,8 +288,8 @@ for (i in 1:(n_rasters - 1)) {
   for (j in (i + 1):n_rasters) {
     
     C <- counts[i, j, , ]  # 3x3 matrix
-    if (any(C < 0)) stop("Negative counts detected")
     N <- sum(C)
+    if (any(C < 0)) stop("Negative counts detected")
     
     if (is.na(N) || N == 0) {
       kappa <- NA
@@ -392,7 +397,7 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_02Jun2026.csv")
+  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_25Jun2026.csv")
 )
 
 message("Finished pairwise spatial agreement analysis")
@@ -401,7 +406,7 @@ log_msg("Spatial agreement analysis completed successfully")
 # Upload log to S3
 aws.s3::put_object(
   file = log_file_local,
-  object = log_file
+  object = file.path(log_dir, basename(log_file_local))
 )
 
 message("Log written to: ", log_file)
