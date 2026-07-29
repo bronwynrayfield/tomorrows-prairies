@@ -63,6 +63,8 @@ builtup_gain_year_filename <- "recentchange_2022_gain_c06_builtup_b03_year.tif"
 
 # Agriculture
 crop_suit_2019_filename <- "gp_tillage"
+aci_filename <- "aci_merged.tif"
+plowprint_filename <- "plow_reproj_algn_masked.tif"
 
 # Protected Areas
 pa_filename <- "ProtectedConservedArea_2024"
@@ -112,6 +114,9 @@ tx_mean_fut_filename <- paste("tx_mean", ssp, fut_period, "p50.tif", sep="_")
 nr_cdd_hist_filename <- paste("nr_cdd", ssp, hist_period, "p50.tif", sep="_") 
 nr_cdd_fut_filename <- paste("nr_cdd", ssp, fut_period, "p50.tif", sep="_") 
 
+# Socio-economic
+canfax_filename <- "canfax_results_tbl"
+
 #--- Directories ----
 # partial path in either the existing or processed data directories
 
@@ -138,6 +143,8 @@ builtup_gain_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/Most
 
 # Agriculture
 crop_suit_2019_filepath <- "cropland/OlimbRobinson_GrassToGrain_EcologicalIndicators2019_datashare"
+aci_filepath <- "cropland/Annual Crop Inventory"
+plowprint_filepath <- "cropland/Plowprint WWF"
 
 # Protected Areas
 pa_filepath <- "management/Canadian Protected and Conserved Areas Database/ProtectedConservedArea_2024"
@@ -155,6 +162,9 @@ dem_filepath <- "topography/NRCan_MRDEM_30m"
 
 # Climate
 climate_filepath <- "climate/CanDCS-M6/geotiff"
+
+# Socio-economic
+canfax_filepath <- "socio-economic/canfax"
 
 #--- Scale ----
 oc_scale <- 10

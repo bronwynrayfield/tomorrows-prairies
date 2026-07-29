@@ -37,7 +37,6 @@
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "functions-general.R"))
 
 #--- Load files ----
 # Study area
@@ -45,8 +44,9 @@ sa <- st_read(file.path(sa_filepath, sa_filename))
 me <- st_read(file.path(sa_filepath, me_filename))
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
 
-# Olimb & Robinson 2019 cropland suitability
+# Cropland
 crop_suit_reproj<- rast(tagged_path("./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "proj-naaea"))
+plowprint_reproj<- rast(tagged_path("./processeddatasets", plowprint_filepath, plowprint_filename, "proj-naaea"))
 
 # Census subdivisions
 census_reproj <- st_read(tagged_path("./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "proj-naaea"))
@@ -116,12 +116,14 @@ tx_mean_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, 
 nr_cdd_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea"))
 nr_cdd_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea"))
 
+# Socio-economic
+canfax_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea"))
+
 #--- Crop and mask to pilot area ----
 # LULC - AAFC LUTS
 lulc2020_pilot <- mask(crop(lulc2020_prairies_reproj, pilot), pilot)
 lulc2015_pilot <- mask(crop(lulc2015_prairies_reproj, pilot), pilot)
 crop_suit_pilot <- mask(crop(crop_suit_reproj, pilot), pilot)
-
 
 #--- Crop and mask to modelling extent ----
 # Census subdivisions
@@ -143,9 +145,10 @@ roads <- st_intersection(roads_reproj, me)
 plot(roads["ROADCLASS"], main = "Roads by Class", key.pos = 4)
 roads <- mask(crop(roads_r, me), me)
 
-# Cropland suitability
+# Cropland
 crop_suit <- mask(crop(crop_suit_reproj, me_r), me_r)
 plot(crop_suit, main = "Cropland suitability (2019)")
+plowprint <- mask(crop(plowprint_reproj, me_r), me_r)
 
 # LULC - AAFC LUTS
 lulc2020 <- mask(crop(lulc2020_prairies_reproj, me_r), me_r)
@@ -201,6 +204,9 @@ tx_mean_fut <- mask(crop(tx_mean_fut_reproj, me_r), me_r)
 nr_cdd_hist <- mask(crop(nr_cdd_hist_reproj, me_r), me_r)
 nr_cdd_fut <- mask(crop(nr_cdd_fut_reproj, me_r), me_r)
 
+# Socio-economic
+canfax <- st_intersection(canfax_reproj, me)
+
 #--- Write to disk ----
 # Pilot area
 write_rast_tagged(lulc2020_pilot, "./processeddatasets", "landcover/aafc/cropped", aafc2020_filename, "pilot")
@@ -217,6 +223,7 @@ write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-
 #write_sf_tagged(roads, "./processeddatasets", road_filepath, road_filename, "modelling-extent", layer = "roads_merge")
 #write_rast_tagged(roads, "./processeddatasets", road_filepath, "roads.tif", "modelling-extent")
 write_rast_tagged(crop_suit, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent")
+write_rast_tagged(plowprint, "./processeddatasets", plowprint_filepath, plowprint_filename, "modelling-extent")
 write_rast_tagged(lulc2020, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent")
 write_rast_tagged(lulc2015, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2015_filename, "modelling-extent")
 write_rast_tagged(lulc2010, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2010_filename, "modelling-extent")
@@ -258,6 +265,7 @@ write_rast_tagged(tx_mean_hist, "./processeddatasets", climate_filepath, tx_mean
 write_rast_tagged(tx_mean_fut, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "modelling-extent")
 write_rast_tagged(nr_cdd_hist, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "modelling-extent")
 write_rast_tagged(nr_cdd_fut, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "modelling-extent")
+write_sf_tagged(canfax, "./processeddatasets", canfax_filepath, canfax_filename, "modelling-extent")
 
 
 #st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
