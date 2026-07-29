@@ -15,8 +15,8 @@ library(tidyverse)
 # 2) File paths 
 # ----------------------------
 
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass.xlsx"
-nt_points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass_withaci2025.xlsx"
+nt_points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame_withaci2025.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived"
@@ -30,7 +30,7 @@ out_dir <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data
 # ----------------------------
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 26))
+  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 27))
 )
 
 names(points)
@@ -49,7 +49,7 @@ points2 <- points %>%
     Provinc  = PROV,
     Ecrgn_n  = ecoreg,
     aci2024  = aafc_aci_merged_reproj_algn_binary_noshrub,
-    #aci2025  = aafc_aci_2025_merged_reproj_algn_binary_noshrub,
+    aci2025  = aafc_aci_2025_merged_reproj_algn_binary_noshrub,
     luts10   = luts10_reproj_algn_binary_masked,
     luts30   = luts30_reproj_algn_binary_masked,
     cec      = nalcms_reproj_algn_binary_noshrub_masked,
@@ -146,7 +146,7 @@ ecodist_to_regions %>%
   filter(n > 1)
 
 # export
-writexl::write_xlsx(points2, file.path(out_dir, "point_raster_extract_v2_grass_v_nongrass_clean.xlsx"))
+writexl::write_xlsx(points2, file.path(out_dir, "point_raster_extract_v2_grass_v_nongrass_withaci2025_clean.xlsx"))
 
 #######################################################################################
 #######################################################################################
@@ -158,7 +158,7 @@ writexl::write_xlsx(points2, file.path(out_dir, "point_raster_extract_v2_grass_v
 # ----------------------------
 ntpoints <- readxl::read_excel(
   nt_points_excel_path,
-  col_types = c("numeric", "text", "numeric", "text", "numeric", rep("guess", 2), rep("numeric", 15))
+  col_types = c("numeric", "text", "numeric", "text", "numeric", rep("guess", 2), rep("numeric", 16))
 )
 
 names(ntpoints)
@@ -176,7 +176,8 @@ points3 <- ntpoints %>%
     Ecds_ID = ecodist,
     Provinc  = PROV,
     Ecrgn_n  = ecoreg,
-    aci      = aafc_aci_merged_reproj_algn_natvtam_noshrub,
+    aci2024  = aafc_aci_merged_reproj_algn_natvtam_noshrub,
+    aci2025  = aafc_aci_2025_merged_reproj_algn_natvtam_noshrub,
     ngi      = cfga_ngi_merged_reproj_algn_natvtam_good,
     cgr      = cgr_reproj_algn_natvtam_masked, 
     eccc     = eccc_reclass_reproj_algn_natvtam_masked,
@@ -262,4 +263,4 @@ ecodist_to_regions %>%
   filter(n > 1)
 
 # export
-writexl::write_xlsx(points3, file.path(out_dir, "point_raster_extract_v2_native_v_tame_clean.xlsx"))
+writexl::write_xlsx(points3, file.path(out_dir, "point_raster_extract_v2_native_v_tame_withaci2025_clean.xlsx"))

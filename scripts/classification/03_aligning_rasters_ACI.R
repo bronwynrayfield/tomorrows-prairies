@@ -218,7 +218,7 @@ aci_algn_binary <- classify(aci_merged_reproj_algn,
                               189, 0, # other fruits
                               190, 0, # vineyards
                               191, 0, # hops
-                              192, 0, # sod
+                              192, 0, # sod - should be 1
                               193, 0, # herbs
                               194, 0, # nursery
                               195, 0, # buckwheat
@@ -322,7 +322,7 @@ aci_algn_nattam <- classify(aci_merged_reproj_algn,
                               189, 0, # other fruits
                               190, 0, # vineyards
                               191, 0, # hops
-                              192, 0, # sod
+                              192, 0, # sod - should be 1
                               193, 0, # herbs
                               194, 0, # nursery
                               195, 0, # buckwheat

@@ -72,8 +72,8 @@ acc_cm_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessme
 acc_ci_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived"
 out_dir    <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/combined_CI_and_compiled"
 
-acc_cm_file <- file.path(acc_cm_dir, "18Jul2026/combined_18Jul2026_natvtam_withnongrass_compiled.csv")
-acc_ci_file <- file.path(acc_ci_dir, "18Jul2026/combined_18Jul2026_natvtam_withnongrass_lenient.csv")
+acc_cm_file <- file.path(acc_cm_dir, "18Jul2026/eval_data_18Jul2026_natvtam_withnongrass_compiled.csv")
+acc_ci_file <- file.path(acc_ci_dir, "18Jul2026/eval_data_18Jul2026_natvtam_withnongrass_lenient.csv")
 metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
 
 # ----------------------------
@@ -95,6 +95,15 @@ acc_ci <- readr::read_csv(acc_ci_file, show_col_types = FALSE)
 # Inspect structure
 str(acc_cm)
 str(acc_ci)
+
+# Count ACI_field_2024 point/raster combos in acc_cm (10,716)
+acc_cm %>%
+  filter(Sorc_ID == "ACI_field_2024") %>% 
+  tally()
+
+# Exclude ACI_field_2024 points from acc_cm since they are present in acc_ci also
+acc_cm <- acc_cm %>%
+  filter(Sorc_ID != "ACI_field_2024")
 
 # Add missing columns
 acc_ci <- acc_ci %>%
@@ -1459,6 +1468,256 @@ accuracy_with_fallback_grouped_cons %>%
 # no_class0 no_class1 no_class2
 #        46        30         3
 
+#------ CLASS-SPECIFIC METRICS ------#
+
+# Summary by class
+class_metrics_long <- accuracy_with_fallback_grouped %>%
+  select(
+    raster,
+    Ecds_ID,
+    N_evaluated,
+    starts_with("Precision_"),
+    starts_with("Recall_"),
+    starts_with("F1_"),
+    starts_with("MCC_OvR_")
+  ) %>%
+  pivot_longer(
+    cols = -c(raster, Ecds_ID, N_evaluated),
+    names_to = c("metric", "class"),
+    names_pattern = "(.*)_(\\d)$"
+  )
+
+class_metrics_long %>%
+  group_by(class, metric) %>%
+  summarise(
+    n = sum(!is.na(value)),
+    NAs = sum(is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    q25 = quantile(value, 0.25, na.rm = TRUE),
+    q75 = quantile(value, 0.75, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# class metric        n  mean median    sd    q25   q75
+# 1 0     F1         1016 0.722  0.837 0.280 0.563  0.943
+# 2 0     MCC_OvR    1002 0.512  0.558 0.260 0.356  0.711
+# 3 0     Precision  1595 0.446  0.434 0.419 0      0.914
+# 4 0     Recall     1029 0.860  0.949 0.205 0.833  0.984
+# 5 1     F1         1093 0.499  0.559 0.273 0.272  0.736
+# 6 1     MCC_OvR    1165 0.351  0.359 0.283 0.101  0.590
+# 7 1     Precision  1499 0.458  0.535 0.377 0      0.816
+# 8 1     Recall     1237 0.454  0.469 0.312 0.16   0.733
+# 9 2     F1          966 0.502  0.516 0.294 0.240  0.755
+# 10 2     MCC_OvR     737 0.210  0.122 0.238 0.0333 0.392
+# 11 2     Precision  1340 0.588  0.854 0.445 0      1    
+# 12 2     Recall     1129 0.409  0.382 0.324 0.0954 0.694
+# 13 NA    NA        50230 0.474  0.515 0.348 0.101  0.769
+
+# Metric distributions among classes
+class_metrics_long %>%
+  filter(metric == "F1") %>%
+  ggplot(aes(class, value)) +
+  geom_boxplot() +
+  labs(
+    x = "Class",
+    y = "F1 score",
+    title = "Distribution of F1 by class"
+  ) +
+  theme_bw()
+
+class_metrics_long %>%
+  filter(metric == "Recall") %>%
+  ggplot(aes(class, value)) +
+  geom_boxplot() +
+  theme_bw()
+
+class_metrics_long %>%
+  filter(metric == "Precision") %>%
+  ggplot(aes(class, value)) +
+  geom_boxplot() +
+  theme_bw()
+
+# How much support does each class have?
+accuracy_with_fallback_grouped %>%
+  summarise(
+    median_support0 = median(Support_0),
+    median_support1 = median(Support_1),
+    median_support2 = median(Support_2),
+    
+    mean_support0 = mean(Support_0),
+    mean_support1 = mean(Support_1),
+    mean_support2 = mean(Support_2)
+  )
+
+# median_support0 median_support1 median_support2 mean_support0 mean_support1 mean_support2
+#              33              47              33          330.          123.          351.
+
+accuracy_with_fallback_grouped %>%
+  select(
+    Support_0,
+    Support_1,
+    Support_2
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = "class",
+    values_to = "support"
+  ) %>%
+  ggplot(aes(support)) +
+  geom_histogram(bins = 40) +
+  facet_wrap(~ class, scales = "free_y") +
+  theme_bw()
+
+# How often does each class drive Macro F1 failures?
+accuracy_with_fallback_grouped %>%
+  filter(is.na(Macro_F1)) %>%
+  summarise(
+    no_class0 = sum(Support_0 == 0),
+    no_class1 = sum(Support_1 == 0),
+    no_class2 = sum(Support_2 == 0)
+  )
+
+# no_class0 no_class1 no_class2
+#        46        30         3
+
+accuracy_with_fallback_grouped %>%
+  filter(is.na(Macro_F1)) %>%
+  mutate(
+    missing_pattern = paste0(
+      ifelse(Support_0 == 0, "0", ""),
+      ifelse(Support_1 == 0, "1", ""),
+      ifelse(Support_2 == 0, "2", "")
+    )
+  ) %>%
+  count(missing_pattern, sort = TRUE)
+
+#   missing_pattern     n
+# 1 01                 25
+# 2 0                  19
+# 3 1                   4
+# 4 02                  2
+# 5 12                  1
+
+# Which rasters struggle with native grassland?
+
+# Average native-class F1 by source
+accuracy_with_fallback_grouped %>%
+  group_by(raster) %>%
+  summarise(
+    mean_F1_native = mean(F1_2, na.rm = TRUE),
+    median_F1_native = median(F1_2, na.rm = TRUE),
+    n_valid = sum(!is.na(F1_2))
+  ) %>%
+  arrange(mean_F1_native)
+
+#   raster mean_F1_native median_F1_native n_valid
+# 1 gpw             0.197            0.133      46
+# 2 aci             0.246            0.136      52
+# 3 plvi            0.316            0.347      13
+# 4 mgi             0.439            0.426      32
+# 5 cnvc            0.484            0.541     175
+# 6 pudl            0.498            0.499     148
+# 7 pli             0.505            0.495      67
+# 8 eccc            0.555            0.561     131
+# 9 cgr             0.578            0.660     118
+# 10 pglc           0.606            0.621      83
+# 11 ngi            0.607            0.702     101
+
+# Average tame-class F1 by source
+accuracy_with_fallback_grouped %>%
+  group_by(raster) %>%
+  summarise(
+    mean_F1_tame = mean(F1_1, na.rm = TRUE),
+    median_F1_tame = median(F1_1, na.rm = TRUE),
+    n_valid = sum(!is.na(F1_1))
+  ) %>%
+  arrange(mean_F1_tame)
+
+#   raster mean_F1_tame median_F1_tame n_valid
+# 1 pudl         0.0547         0.0401      50
+# 2 ngi          0.0952         0.0547      30
+# 3 cnvc         0.119          0.127       42
+# 4 cgr          0.154          0.166       54
+# 5 plvi         0.224          0.207        7
+# 6 mgi          0.397          0.377       39
+# 7 pli          0.411          0.412       45
+# 8 gpw          0.432          0.420      271
+# 9 aci          0.625          0.692      275
+# 10 pglc        0.679          0.680       86
+# 11 eccc        0.742          0.770      194
+
+# Identify systematic omission vs commission errors
+# Recall < Precision → class is being omitted.
+# Precision < Recall → class is being over-predicted.
+accuracy_with_fallback_grouped %>%
+  summarise(
+    native_precision = mean(Precision_2, na.rm = TRUE),
+    native_recall = mean(Recall_2, na.rm = TRUE),
+    
+    tame_precision = mean(Precision_1, na.rm = TRUE),
+    tame_recall = mean(Recall_1, na.rm = TRUE),
+    
+    not_precision = mean(Precision_0, na.rm = TRUE),
+    not_recall = mean(Recall_0, na.rm = TRUE)
+  )
+
+# native_precision native_recall tame_precision tame_recall not_precision not_recall
+#            0.588         0.409          0.458       0.454         0.446      0.860
+
+# Relationship between sample size and class-specific performance
+accuracy_with_fallback_grouped %>%
+  ggplot(
+    aes(
+      N_evaluated,
+      F1_2
+    )
+  ) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "loess") +
+  scale_x_log10() +
+  labs(
+    x = "N evaluated",
+    y = "F1 Native",
+    title = "Native F1 versus sample size"
+  ) +
+  theme_bw()
+
+# Quantify whether native grasslands are intrinsically harder
+# If class 2 remains substantially lower even after excluding NA values and accounting 
+# for sample size, that would support a conclusion that native grassland is genuinely 
+# the most difficult class for the underlying datasets.
+accuracy_with_fallback_grouped %>%
+  summarise(
+    mean_F1_0 = mean(F1_0, na.rm = TRUE),
+    mean_F1_1 = mean(F1_1, na.rm = TRUE),
+    mean_F1_2 = mean(F1_2, na.rm = TRUE),
+    
+    median_F1_0 = median(F1_0, na.rm = TRUE),
+    median_F1_1 = median(F1_1, na.rm = TRUE),
+    median_F1_2 = median(F1_2, na.rm = TRUE)
+  )
+
+# Sample size plot
+accuracy_with_fallback_grouped %>%
+  summarise(
+    cor_native =
+      cor(log10(N_evaluated), F1_2,
+          use = "complete.obs"),
+    
+    cor_tame =
+      cor(log10(N_evaluated), F1_1,
+          use = "complete.obs"),
+    
+    cor_not =
+      cor(log10(N_evaluated), F1_0,
+          use = "complete.obs")
+  )
+
+# cor_native cor_tame cor_not
+#      0.108   -0.202  0.0477
+
 # ----------------------------
 # 16) Export file for consensus mapping
 # ----------------------------
@@ -1504,18 +1763,31 @@ accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic_cons %>%
       N_evaluated < 20
   )
 
+# Class-specific metrics (class-specific F1 or fallbacks if NA)
+accuracy_with_fallback_grouped_cons <- accuracy_with_fallback_grouped_cons %>%
+  mutate(
+    native_metric = coalesce(F1_2, Macro_F1, Balanced_Accuracy),
+    tame_metric   = coalesce(F1_1, Macro_F1, Balanced_Accuracy),
+    not_metric    = coalesce(F1_0, Macro_F1, Balanced_Accuracy))
+
+accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic_cons %>%
+  mutate(
+    native_metric = coalesce(F1_2, Macro_F1, Balanced_Accuracy),
+    tame_metric   = coalesce(F1_1, Macro_F1, Balanced_Accuracy),
+    not_metric    = coalesce(F1_0, Macro_F1, Balanced_Accuracy))
+
 #---- Export ----
 
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped_cons,
-  file.path(out_dir, "nattam_accuracy_grouped_combinedCIandCM_forconsensus_18Jul2026.csv")
+  file.path(out_dir, "nattam_accuracy_grouped_combinedCIandCM_forconsensus_22Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic_cons,
-  file.path(out_dir, "nattam_accuracy_atomic_combinedCIandCM_forconsensus_18Jul2026.csv")
+  file.path(out_dir, "nattam_accuracy_atomic_combinedCIandCM_forconsensus_22Jul2026.csv")
 )
 
 # ----------------------------

@@ -59,7 +59,7 @@ out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/
 pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 
 # Expected raster columns (3-class values 0/1/2)
-raster_cols <- c("aci","ngi","cgr","eccc",
+raster_cols <- c("aci2024","aci2025","ngi","cgr","eccc",
                  "cnvc","pudl",
                  pli_variants,            # four atomic PLI rasters
                  "gpw","plvi","mgi","pglc")
@@ -83,14 +83,9 @@ table(points$Training, useNA = "ifany")
 unique(points$LC_class3)
 table(points$LC_class3, useNA = "ifany")
 
-# Remove HFI (and ACI 2025 for now)
+# Remove HFI 
 points <- points %>%
-  select(-hfi) %>%
-  select(-aci2025)
-
-# Rename aci2024 column to aci (temporarily)
-points <- points %>%
-  dplyr::rename(aci = aci2024)
+  select(-hfi) 
 
 # Add point ID column
 points <- points %>%
@@ -268,10 +263,6 @@ if (all(c("raster", "year") %in% names(meta_raw))) {
   )
 }
 
-# Rename aci2024 column in metadata to aci (only when excluding aci2025)
-meta_norm <- meta_norm %>%
-  mutate(raster = if_else(raster == "aci2024", "aci", raster))
-
 # Build named list: raster -> unique sorted integer vector of years
 raster_years_map <- meta_norm %>%
   mutate(years = map(years, ~ unique(sort(as.integer(.x))))) %>%
@@ -322,7 +313,7 @@ long <- points_norm %>%
 long_out <- long %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(long_out, file.path(out_dir, "long_prefiltering_18Jul2026_natvtam_withnongrass_compiled.csv"))
+write.csv(long_out, file.path(out_dir, "long_prefiltering_27Jul2026_natvtam_withnongrass_compiled.csv"))
 
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
@@ -392,7 +383,7 @@ eval_data <- long %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_out, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass_compiled.csv"))
+write.csv(eval_data_out, file.path(out_dir, "eval_data_27Jul2026_natvtam_withnongrass_compiled.csv"))
 
 # Isolate datasets that need to be handled differently
 #   Datasets with training data need to be filtered separately
@@ -656,7 +647,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_18Jul2026.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_27Jul2026.xlsx")
 
 write_xlsx(
   list(
@@ -876,7 +867,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_compiled_18Jul2026.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_compiled_27Jul2026.csv"
   )
 )
 
