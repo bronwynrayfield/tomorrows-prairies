@@ -42,7 +42,6 @@
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "functions-general.R"))
 
 #--- Load files ----
 
@@ -50,30 +49,19 @@ source(file.path("scripts/landcover/functions", "functions-general.R"))
 sa <- st_read(file.path(sa_filepath, sa_filename))
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
 
-# Olimb & Robinson 2019 cropland suitability
+# Cropland
 crop_suit_raw <- rast(file.path("./existingdatasets", capitalize_first(crop_suit_2019_filepath), crop_suit_2019_filename))
+plowprint_raw <- rast(file.path("./existingdatasets", capitalize_first(plowprint_filepath), plowprint_filename))
+
 # Census subdivisions
 census_raw <- st_read(file.path("./existingdatasets", capitalize_first(census_subdivision_filepath), census_subdivision_filename))
+
 # National ecological framework
 ecozones_raw <- st_read(file.path("./existingdatasets", capitalize_first(ecozones_filepath), ecozones_filename))
 #Note that ecoregions and ecodistrics were preprocessed manually to deal with misalignment
 ecoregions_raw <- st_read(file.path("./processeddatasets", ecoregions_filepath, ecoregions_filename))
 ecodistricts_raw <- st_read(file.path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename))
-# # Roads
-# # Merged road layer is huge so only read in the portion within the modelling extent bounding box
-# # read just the layer definition/CRS without loading everything
-# roads_crs <- st_crs(st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename),
-#                             layer="roads_merge", quiet=TRUE, query="SELECT * FROM roads_merge LIMIT 1"))
-# 
-# bb_poly <- st_as_sfc(st_bbox(me))
-# bb_poly_roads <- st_transform(bb_poly, roads_crs)
-# 
-# roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename), 
-#                              layer="roads_merge",
-#                              wkt_filter = st_as_text(bb_poly_roads),
-#                              quiet=TRUE)
-#roads_raw <-st_read(road_file, layer = "NRN_SK_14_0_ROADSEG")
-#roads_raw <-st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename), layer = "NRN_SK_14_0_ROADSEG")
+
 # LULC
 lulc2020_prairies_raw <- rast(file.path("./processeddatasets", capitalize_first(aafc_filepath), "merged", aafc2020_filename))
 lulc2015_prairies_raw <- rast(file.path("./processeddatasets", capitalize_first(aafc_filepath), "merged", aafc2015_filename))
@@ -93,8 +81,10 @@ crop_gain_class_raw <- rast(file.path("./existingdatasets", capitalize_first(cro
 crop_gain_year_raw <- rast(file.path("./existingdatasets", capitalize_first(crop_gain_filepath), crop_gain_year_filename))  
 builtup_gain_class_raw <- rast(file.path("./existingdatasets", capitalize_first(builtup_gain_filepath), builtup_gain_class_filename))
 builtup_gain_year_raw <- rast(file.path("./existingdatasets", capitalize_first(builtup_gain_filepath), builtup_gain_year_filename))  
+
 # Protected Areas
 pa_raw <- st_read(file.path("./existingdatasets", capitalize_first(pa_filepath), paste0(pa_filename, ".gdb")), layer = pa_filename)
+
 # Soil
 oc_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), oc_filename))
 bd_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), bd_filename))
@@ -102,6 +92,7 @@ clay_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath)
 sand_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), sand_filename))
 silt_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), silt_filename))
 ph_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), ph_filename))
+
 # Soil Moisture
 psssm_mean_raw <- rast(file.path("./existingdatasets", psssm_filepath, psssm_mean_filename))
 psssm_sd_raw <- rast(file.path("./existingdatasets", psssm_filepath, psssm_sd_filename))
@@ -124,6 +115,26 @@ tx_mean_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climat
 tx_mean_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), tx_mean_fut_filename))
 nr_cdd_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), nr_cdd_hist_filename))
 nr_cdd_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), nr_cdd_fut_filename))
+
+# # Roads
+# # Merged road layer is huge so only read in the portion within the modelling extent bounding box
+# # read just the layer definition/CRS without loading everything
+# roads_crs <- st_crs(st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename),
+#                             layer="roads_merge", quiet=TRUE, query="SELECT * FROM roads_merge LIMIT 1"))
+# 
+# bb_poly <- st_as_sfc(st_bbox(me))
+# bb_poly_roads <- st_transform(bb_poly, roads_crs)
+# 
+# roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename), 
+#                              layer="roads_merge",
+#                              wkt_filter = st_as_text(bb_poly_roads),
+#                              quiet=TRUE)
+#roads_raw <-st_read(road_file, layer = "NRN_SK_14_0_ROADSEG")
+#roads_raw <-st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename), layer = "NRN_SK_14_0_ROADSEG")
+
+# Canfax net returns
+canfax_raw <- st_read(file.path("./existingdatasets", capitalize_first(canfax_filepath), canfax_filename))
+
 
 #--- Unscale to real units and apply NAs ----
 oc_raw[oc_raw == oc_nodata] <- NA
@@ -157,6 +168,7 @@ sum(!st_is_valid(pa_valid))
 
 #--- Reproject to match study area shapefile CRS ----
 crop_suit_reproj <- project(crop_suit_raw, me_r, method = "bilinear")
+plowprint_reproj <- project(plowprint_raw, me_r, method = "near")
 lulc2020_prairies_reproj <- project(lulc2020_prairies_raw, me_r, method = "near")
 lulc2015_prairies_reproj <- project(lulc2015_prairies_raw, me_r, method = "near")
 lulc2010_prairies_reproj <- project(lulc2010_prairies_raw, me_r, method = "near")
@@ -213,10 +225,11 @@ nr_cdd_hist_reproj <- project(nr_cdd_hist_raw, me_r, method = "bilinear")
 nr_cdd_fut_reproj <- project(nr_cdd_fut_raw, me_r, method = "bilinear")
 # #roads_reproj <- st_transform(roads_raw, st_crs(sa))
 pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
-
+canfax_reproj <- st_transform(canfax_raw, st_crs(sa))
 
 #--- Write to disk ----
 write_rast_tagged(crop_suit_reproj, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "proj-naaea")
+write_rast_tagged(plowprint_reproj, "./processeddatasets", plowprint_filepath, plowprint_filename, "proj-naaea")
 write_sf_tagged(census_reproj, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "proj-naaea")
 write_sf_tagged(ecozones_reproj, "./processeddatasets", ecozones_filepath, ecozones_filename, "proj-naaea")
 write_sf_tagged(ecoregions_reproj, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "proj-naaea")
@@ -264,3 +277,4 @@ write_rast_tagged(tx_mean_hist_reproj, "./processeddatasets", climate_filepath, 
 write_rast_tagged(tx_mean_fut_reproj, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_hist_reproj, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_fut_reproj, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea")
+write_sf_tagged(canfax_reproj, "./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea")
