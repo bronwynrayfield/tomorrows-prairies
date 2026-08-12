@@ -84,6 +84,7 @@ builtup_gain_year_raw <- rast(file.path("./existingdatasets", capitalize_first(b
 
 # Protected Areas
 pa_raw <- st_read(file.path("./existingdatasets", capitalize_first(pa_filepath), paste0(pa_filename, ".gdb")), layer = pa_filename)
+ncc_easement_raw <- st_read(file.path("./existingdatasets", paste0(ncc_easement_filepath, ".gbd")), layer = ncc_easement_filename)
 
 # Soil
 oc_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), oc_filename))
@@ -225,6 +226,7 @@ nr_cdd_hist_reproj <- project(nr_cdd_hist_raw, me_r, method = "bilinear")
 nr_cdd_fut_reproj <- project(nr_cdd_fut_raw, me_r, method = "bilinear")
 # #roads_reproj <- st_transform(roads_raw, st_crs(sa))
 pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
+ncc_easement_reproj <- st_transform(ncc_easement_raw, crs = crs(me_r))
 canfax_reproj <- st_transform(canfax_raw, st_crs(sa))
 
 #--- Write to disk ----
@@ -235,6 +237,7 @@ write_sf_tagged(ecozones_reproj, "./processeddatasets", ecozones_filepath, ecozo
 write_sf_tagged(ecoregions_reproj, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "proj-naaea")
 write_sf_tagged(ecodistricts_reproj, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea")
 write_sf_tagged(pa_reproj, "./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG")
+write_sf_tagged(ncc_easement_reproj, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "proj-naaea", driver = "GPKG")
 # #write_sf_tagged(roads_reproj, "./processeddatasets", road_filepath, road_filename, "proj-naaea", layer = "roads_merge")
 # write_rast_tagged(roads_r, "./processeddatasets", road_filepath, "roads.tif", "proj-naaea")
 write_rast_tagged(lulc2020_prairies_reproj, file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2020_filename, "proj-naaea")

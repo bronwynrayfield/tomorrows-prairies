@@ -186,9 +186,6 @@ tsm_growing <- mask(crop(tsm_growing_reproj, me_r), me_r)
 
 # Topography
 dem <- mask(crop(dem_reproj, me_r), me_r)
-slope  <- terrain(dem, "slope",  unit="degrees")
-aspect <- terrain(dem, "aspect", unit="degrees")
-aspect[slope < 0.5] <- NA
 
 # Climate
 gddgrow_5_hist <- mask(crop(gddgrow_5_hist_reproj, me_r), me_r)
@@ -247,8 +244,6 @@ write_rast_tagged(sand, "./processeddatasets", soil_filepath, sand_filename, "mo
 write_rast_tagged(silt, "./processeddatasets", soil_filepath, silt_filename, "modelling-extent", datatype="FLT4S")
 write_rast_tagged(ph, "./processeddatasets", soil_filepath, ph_filename, "modelling-extent", datatype="FLT4S")
 write_rast_tagged(dem, "./processeddatasets", dem_filepath, dem_filename, "modelling-extent")
-write_rast_tagged(slope, "./processeddatasets", dem_filepath, slope_filename, "modelling-extent")
-write_rast_tagged(aspect, "./processeddatasets", dem_filepath, aspect_filename, "modelling-extent")
 write_rast_tagged(psssm_mean, "./processeddatasets", psssm_filepath, psssm_mean_filename, "modelling-extent")
 write_rast_tagged(psssm_sd, "./processeddatasets", psssm_filepath, psssm_sd_filename, "modelling-extent")
 write_rast_tagged(tsm_planting, "./processeddatasets", tsm_filepath, tsm_planting_filename, "modelling-extent")
