@@ -324,6 +324,24 @@ build_stack <- function(local_files, out_path, force) {
 bin_stack_file <- file.path(stack_dir, "bin_stack.tif")
 bin_stack <- build_stack(bin_local, bin_stack_file, FORCE_REBUILD)
 
+bin_stack_export <- file.path(tmp_root, "bin_stack_export.tif")
+
+writeRaster(
+  bin_stack,
+  bin_stack_export,
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT1U",
+    gdal = c(
+      "COMPRESS=ZSTD",
+      "TILED=YES",
+      "BIGTIFF=YES")))
+
+aws.s3::put_object(
+  file = bin_stack_export,
+  object = paste0(out_dir, "/diagnostics/bin_stack_export.tif")
+)
+
 nt_stack_file <- file.path(stack_dir, "nt_stack.tif")
 nt_stack <- if (length(nt_local) > 0) {
   build_stack(nt_local, nt_stack_file, FORCE_REBUILD)
@@ -331,6 +349,27 @@ nt_stack <- if (length(nt_local) > 0) {
   NULL
 }
 has_nt <- !is.null(nt_stack)
+
+if (!is.null(nt_stack)) {
+  
+  nt_stack_export <- file.path(tmp_root, "nt_stack_export.tif")
+  
+  writeRaster(
+    nt_stack,
+    nt_stack_export,
+    overwrite = TRUE,
+    wopt = list(
+      datatype = "INT1U",
+      gdal = c(
+        "COMPRESS=ZSTD",
+        "TILED=YES",
+        "BIGTIFF=YES")))
+  
+  aws.s3::put_object(
+    file = nt_stack_export,
+    object = paste0(out_dir, "/diagnostics/nt_stack_export.tif")
+  )
+}
 
 ## ---- Temporal settings ---- ##
 target_year <- 2025 # use newest dataset or policy-relevant year
@@ -504,10 +543,49 @@ weight_files_bin <- lapply(names(bin_stack), function(nm) {
   out
 })
 
-weight_stack <- rast(unlist(weight_files_bin))
-names(weight_stack) <- names(bin_stack)
+weight_stack_bin <- rast(unlist(weight_files_bin))
+names(weight_stack_bin) <- names(bin_stack)
 
-stopifnot(identical(names(weight_stack), names(bin_stack)))
+stopifnot(identical(names(weight_stack_bin), names(bin_stack)))
+
+weight_stack_bin_file <- file.path(tmp_root, "weight_stack_bin.tif")
+
+writeRaster(
+  weight_stack_bin,
+  weight_stack_bin_file,
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "FLT4S",
+    gdal = c(
+      "COMPRESS=ZSTD",
+      "TILED=YES",
+      "BIGTIFF=YES" )))
+
+aws.s3::put_object(
+  file = weight_stack_bin_file,
+  object = paste0(out_dir, "/diagnostics/weight_stack_bin.tif")
+)
+
+weights_bin_csv <- file.path(tmp_root, "weights_bin.csv")
+
+write_csv(
+  acc_bin %>%
+    select(
+      raster_name,
+      Ecds_ID,
+      acc,
+      year,
+      w_acc,
+      w_time,
+      weight
+    ),
+  weights_bin_csv
+)
+
+aws.s3::put_object(
+  file = weights_bin_csv,
+  object = paste0(out_dir, "/diagnostics/weights_bin.csv")
+)
 
 rm(weight_files_bin, acc_bin)
 gc()
@@ -520,7 +598,7 @@ pos_mask <- bin_stack == 1
 neg_mask <- bin_stack == 0
 
 # Zero-out weights where no data
-weight_present <- weight_stack * present
+weight_present <- weight_stack_bin * present
 
 # Numerator
 numerator_A <- app(
@@ -536,6 +614,27 @@ denominator_A <- app(
   fun = "sum", na.rm = TRUE,
   filename = file.path(terra_dir, "denominator_A.tif"),
   overwrite = TRUE
+)
+
+sum_weights_file <- file.path(tmp_root, "sum_weights_bin.tif")
+
+writeRaster(
+  denominator_A,
+  sum_weights_file,
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "FLT4S",
+    gdal = c(
+      "COMPRESS=ZSTD",
+      "TILED=YES",
+      "BIGTIFF=YES"
+    )
+  )
+)
+
+aws.s3::put_object(
+  file = sum_weights_file,
+  object = paste0(out_dir, "/diagnostics/sum_weights_bin.tif")
 )
 
 # Probability
@@ -587,14 +686,32 @@ writeRaster(
 )
 
 #---- Diagnostics ----
-num_contributing <- app(present, fun = "sum", na.rm = TRUE,
-                        filename = file.path(terra_dir, "num_contributing.tif"), overwrite = TRUE)
+num_bin_sources <- app(present, fun = "sum", na.rm = TRUE,
+                        filename = file.path(terra_dir, "num_bin_sources.tif"), overwrite = TRUE)
 num_positive <- app(pos_mask, fun = "sum", na.rm = TRUE,
                     filename = file.path(terra_dir, "num_positive.tif"), overwrite = TRUE)
 num_negative <- app(neg_mask, fun = "sum", na.rm = TRUE,
                     filename = file.path(terra_dir, "num_negative.tif"), overwrite = TRUE)
 
 sum_weight_present <- denominator_A
+
+# Number of contributing tri-class sources
+if (has_nt) {
+  
+  num_nt_sources <- app(
+    !is.na(nt_stack),
+    fun = "sum",
+    na.rm = TRUE,
+    filename = file.path(terra_dir, "num_nt_sources.tif"),
+    overwrite = TRUE
+  )
+  
+} else {
+  
+  num_nt_sources <- prob_A
+  values(num_nt_sources) <- 0
+  
+}
 
 #---- Uncertainty ----
 uncertainty_prob_A <- prob_A * (1 - prob_A)
@@ -641,7 +758,7 @@ gc()
 min_sources <- 2
 
 prob_A_minN <- ifel(
-  num_contributing >= min_sources,
+  num_bin_sources >= min_sources,
   prob_A, NA,
   filename = file.path(terra_dir, "prob_A_minN.tif"),
   overwrite = TRUE
@@ -819,6 +936,48 @@ if (has_nt) {
   weight_stack_nt <- rast(unlist(weight_files_nt))
   
   names(weight_stack_nt) <- names(nt_stack)
+  
+  weight_stack_nt_file <- file.path(tmp_root, "weight_stack_nt.tif")
+  
+  writeRaster(
+    weight_stack_nt,
+    weight_stack_nt_file,
+    overwrite = TRUE,
+    wopt = list(
+      datatype = "FLT4S",
+      gdal = c(
+        "COMPRESS=ZSTD",
+        "TILED=YES",
+        "BIGTIFF=YES"
+      )
+    )
+  )
+  
+  aws.s3::put_object(
+    file = weight_stack_nt_file,
+    object = paste0(out_dir, "/diagnostics/weight_stack_nt.tif")
+  )
+  
+  weights_nt_csv <- file.path(tmp_root, "weights_nt.csv")
+  
+  write_csv(
+    acc_nt %>%
+      select(
+        raster_name,
+        Ecds_ID,
+        acc,
+        year,
+        w_acc,
+        w_time,
+        weight
+      ),
+    weights_nt_csv
+  )
+  
+  aws.s3::put_object(
+    file = weights_nt_csv,
+    object = paste0(out_dir, "/diagnostics/weights_nt.csv")
+  )
   
   stopifnot(identical(names(weight_stack_nt), names(nt_stack)))
   
@@ -1072,7 +1231,8 @@ outputs <- list(
   list(raster = uncertainty, local = "uncertainty.tif", s3 = "uncertainty.tif", wopt = wopt),
   list(raster = uncertainty_composite_A, local = "uncertainty_composite.tif", s3 = "uncertainty_composite.tif", wopt = wopt),
   list(raster = uncertainty_total, local = "uncertainty_total_combined.tif", s3 = "uncertainty_total_combined.tif", wopt = wopt),
-  list(raster = num_contributing, local = "num_sources.tif", s3 = "num_sources.tif", wopt = wopt_int),
+  list(raster = num_bin_sources, local = "num_bin_sources.tif", s3 = "num_bin_sources.tif", wopt = wopt_int),
+  list(raster = num_nt_sources, local = "num_nt_sources.tif", s3 = "num_nt_sources.tif", wopt = wopt_int),
   list(raster = num_positive, local = "num_positive.tif", s3 = "num_positive.tif", wopt = wopt_int),
   list(raster = num_negative, local = "num_negative.tif", s3 = "num_negative.tif", wopt = wopt_int),
   list(raster = class_3cat, local = "grass_3class.tif", s3 = "grass_3class.tif", wopt = wopt_class)
@@ -1091,7 +1251,7 @@ log_msg("All output rasters written locally; beginning S3 upload")
 rm(
   bin_stack,
   nt_stack,
-  weight_stack
+  weight_stack_bin
 )
 
 if (exists("weight_stack_nt"))

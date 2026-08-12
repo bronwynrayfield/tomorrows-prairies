@@ -61,9 +61,8 @@ library(scales)
 # 2) File paths 
 # ----------------------------
 #points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_grass_v_nongrass.xlsx"
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass_clean.xlsx"
-#points2_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_native_v_tame_aci25.xlsx"
-metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow.csv"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_grass_v_nongrass_withaci2025_clean.xlsx"
+metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow_aci2024and2025.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/crop_ins_derived"
 
@@ -75,7 +74,7 @@ pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 
 # Expected raster columns 
 raster_cols <- c(
-  "aci2024","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc", #"aci2025",
+  "aci2024","aci2025","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc", 
   "cnvc","lcc","pudl",
   pli_variants,            # four atomic PLI rasters
   "lcr","gpw","plvi","gcc","dw","esri","mgi","pglc")
@@ -94,12 +93,12 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 26))
+  col_types = c("numeric", "text", "numeric", rep("guess", 4), rep("numeric", 27))
 )
 
 names(points)
 str(points)
-unique(points$LC_Class_N)
+#unique(points$LC_Class_N)
 #unique(points$Source)
 #table(points$Source, useNA = "ifany")
 
@@ -109,44 +108,44 @@ unique(points$LC_Class_N)
 #)
 
 # Rename columns
-points <- points %>%
-  rename(
-    Pt_ID_O    = Point_ID,
-    Sorc_ID  = Source_ID,
-    Yer_Cll  = Year_Colle,
-    LC_Cl_N  = LC_Class_N,
-    Ecds_ID = ecodist,
-    Provinc  = PROV,
-    Ecrgn_n  = ecoreg,
-    aci2024  = aafc_aci_merged_reproj_algn_binary_noshrub,
-    #aci2025  = aafc_aci_2025_merged_reproj_algn_binary_noshrub,
-    luts10   = luts10_reproj_algn_binary_masked,
-    luts30   = luts30_reproj_algn_binary_masked,
-    cec      = nalcms_reproj_algn_binary_noshrub_masked,
-    ngi      = cfga_ngi_merged_reproj_algn_binary,
-    cgr      = cgr_reproj_algn_binary_masked, 
-    eccc     = eccc_reclass_reproj_algn_binary_masked,
-    esa      = esa_reproj_algn_binary_noshrub_masked,
-    glc      = glc_reproj_algn_binary_noshrub_masked,
-    cnvc     = cnvc_algn_binary_masked,
-    lcc      = lcc_reproj_algn_binary_noshrub_masked,
-    pudl     = pudl_reclass_reproj_algn_binary_noshrub, 
-    pli_ap   = sk_pli_ap_reproj_algn_binary_noshrub,
-    pli_cu   = sk_pli_cu_reproj_algn_binary_noshrub,
-    pli_mg   = sk_pli_mg_reproj_algn_binary_noshrub,
-    pli_mm   = sk_pli_mm_reproj_algn_binary_noshrub,
-    lcr      = lcr_reproj_algn_binary_masked,
-    gpw      = gpw_reproj_algn_binary_noshrub_masked,
-    plvi     = plvi_reproj_algn_binary_gte2015,
-    hfi      = hfi_reproj_algn_binary_gte2015,
-    gcc      = gcc_reproj_algn_binary,
-    dw       = dw_reproj_algn_masked_binary,
-    plow     = plow_reproj_algn_intact_masked,
-    esri     = esri_reproj_algn_masked_binary,
-    mgi      = mb_mgi_reproj_algn_binary_noshrub,
-    pglc     = pglc_reproj_algn_binary)
-
-str(points)
+# points <- points %>%
+#   rename(
+#     Pt_ID_O    = Point_ID,
+#     Sorc_ID  = Source_ID,
+#     Yer_Cll  = Year_Colle,
+#     LC_Cl_N  = LC_Class_N,
+#     Ecds_ID = ecodist,
+#     Provinc  = PROV,
+#     Ecrgn_n  = ecoreg,
+#     aci2024  = aafc_aci_merged_reproj_algn_binary_noshrub,
+#     aci2025  = aafc_aci_2025_merged_reproj_algn_binary_noshrub,
+#     luts10   = luts10_reproj_algn_binary_masked,
+#     luts30   = luts30_reproj_algn_binary_masked,
+#     cec      = nalcms_reproj_algn_binary_noshrub_masked,
+#     ngi      = cfga_ngi_merged_reproj_algn_binary,
+#     cgr      = cgr_reproj_algn_binary_masked, 
+#     eccc     = eccc_reclass_reproj_algn_binary_masked,
+#     esa      = esa_reproj_algn_binary_noshrub_masked,
+#     glc      = glc_reproj_algn_binary_noshrub_masked,
+#     cnvc     = cnvc_algn_binary_masked,
+#     lcc      = lcc_reproj_algn_binary_noshrub_masked,
+#     pudl     = pudl_reclass_reproj_algn_binary_noshrub, 
+#     pli_ap   = sk_pli_ap_reproj_algn_binary_noshrub,
+#     pli_cu   = sk_pli_cu_reproj_algn_binary_noshrub,
+#     pli_mg   = sk_pli_mg_reproj_algn_binary_noshrub,
+#     pli_mm   = sk_pli_mm_reproj_algn_binary_noshrub,
+#     lcr      = lcr_reproj_algn_binary_masked,
+#     gpw      = gpw_reproj_algn_binary_noshrub_masked,
+#     plvi     = plvi_reproj_algn_binary_gte2015,
+#     hfi      = hfi_reproj_algn_binary_gte2015,
+#     gcc      = gcc_reproj_algn_binary,
+#     dw       = dw_reproj_algn_masked_binary,
+#     plow     = plow_reproj_algn_intact_masked,
+#     esri     = esri_reproj_algn_masked_binary,
+#     mgi      = mb_mgi_reproj_algn_binary_noshrub,
+#     pglc     = pglc_reproj_algn_binary)
+# 
+# str(points)
 
 # Remove Plowprint and HFI
 points <- points %>%
@@ -157,6 +156,7 @@ points <- points %>%
 points <- points %>%
   mutate(
     Training = case_when(
+      Sorc_ID == "ACI_CI_2025" ~ "aci2025",
       Sorc_ID == "ACI_field_2024" ~ "aci2024", # if using 2024 ACI data
       Sorc_ID == "ACI_field_2025" ~ "aci2025",
       TRUE ~ ""))    # keep unmatched cases empty
@@ -457,7 +457,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_18Jul2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_23Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -845,13 +845,13 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_lenient_18Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_lenient_23Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_lenient_18Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_lenient_23Jul2026.csv")
 )
 
 # ----------------------------

@@ -59,7 +59,7 @@ library(scales)
 # 2) File paths 
 # ----------------------------
 points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026_clean.xlsx"
-metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep.csv"
+metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow_aci2024and2025.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/binary/compiled_derived"
 
@@ -71,7 +71,7 @@ pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 
 # Expected raster columns 
 raster_cols <- c(
-  "aci","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
+  "aci2024","aci2025","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
   "cnvc","lcc","pudl",
   pli_variants,            # four atomic PLI rasters
   "lcr","gpw","plvi","gcc","dw","esri","mgi", "pglc")
@@ -98,15 +98,17 @@ str(points)
 unique(points$Training)
 table(points$Training, useNA = "ifany")
 
-# Remove Plowprint and HFI (and ACI 2025 for now)
+# aci2024 aci2025     hfi     ngi     pli    <NA> 
+#    5279    4758    4502    7245    7724   18436 
+
+# Remove Plowprint and HFI 
 points <- points %>%
   select(-plow) %>%
-  select(-hfi) %>%
-  select(-aci2025)
+  select(-hfi) 
 
 # Rename aci2024 column to aci (temporarily)
-points <- points %>%
-  dplyr::rename(aci = aci2024)
+#points <- points %>%
+#  dplyr::rename(aci = aci2024)
 
 # Add point ID column
 points <- points %>%
@@ -188,6 +190,9 @@ if (length(missing_req) > 0) {
 #Check LC types present
 table(points$LC_Cl_N, useNA = "ifany")
 
+# ANNUAL CROPLAND           MIXED          NATIVE            TAME           WOODY 
+#            1048            4066           16420           23761            2645
+
 # Rename all non-grass points as OTHER
 points <- points %>%
   mutate(
@@ -207,7 +212,10 @@ points <- points %>%
 #Check LC types present
 table(points$LC_Cl_N, useNA = "ifany")
 
-# How many OTHER points for each year?
+# NATIVE  OTHER   TAME 
+#  16420   3693  27827
+
+#How many OTHER points for each year?
 pts.oth <- points %>%
   filter(LC_Cl_N == "OTHER")
 
@@ -432,7 +440,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_compiled_18Jul2026.csv"))
+readr::write_csv(eval_data_out, file.path(out_dir, "accuracy_assessment_data_binary_pli_sep_compiled_27Jul2026.csv"))
 
 # ----------------------------
 # 8) Metrics helpers
@@ -832,13 +840,13 @@ accuracy_with_fallback_grouped <- fallback_joined_grouped %>%
 # GROUPED
 readr::write_csv(
   accuracy_with_fallback_grouped,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_compiled_18Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_grouped_compiled_27Jul2026.csv")
 )
 
 # ATOMIC
 readr::write_csv(
   accuracy_with_fallback_atomic,
-  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_compiled_18Jul2026.csv")
+  file.path(out_dir, "binary_accuracy_with_ecoregion_fallback_atomic_compiled_27Jul2026.csv")
 )
 
 # ----------------------------

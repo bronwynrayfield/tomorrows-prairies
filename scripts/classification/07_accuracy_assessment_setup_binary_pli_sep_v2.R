@@ -337,7 +337,7 @@ table(attr_df$LC_grass, useNA = "ifany")
 table(vals, useNA = "ifany")
 #vals
 #annual cropland           mixed          native      open water            tame         wetland 
-#1355            4112           18181              87          174581              22 
+#           1355            4112           18181              87          174581              22 
 #woody 
 #2647 
 
@@ -375,7 +375,7 @@ attr_df_2015 <- attr_df_2015 %>%
       Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
       Sorc_ID == "ACI_field_2024" ~ "aci2024", 
       Sorc_ID == "ACI_field_2025" ~ "aci2025", 
-      Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", # which year of ACI?
+      Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", 
       TRUE ~ ""    # keep unmatched cases empty
     )
   )

@@ -65,7 +65,7 @@ library(mltools)
 # ----------------------------
 # 2) File paths 
 # ----------------------------
-points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame_clean.xlsx"
+points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/ci_derived/point_raster_extract_v2_native_v_tame_withaci2025_clean.xlsx"
 metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
 out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/crop_ins_derived"
@@ -78,10 +78,10 @@ out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/
 pli_variants <- c("pli_ap", "pli_cu", "pli_mg", "pli_mm")
 
 # Expected raster columns (3-class values 0/1/2)
-raster_cols <- c("aci","ngi","cgr","eccc",
-                 "cnvc","pudl",
+raster_cols <- c("aci2024", "aci2025", "ngi", "cgr", "eccc",
+                 "cnvc", "pudl",
                  pli_variants,            # four atomic PLI rasters
-                 "gpw","plvi","mgi","pglc")
+                 "gpw", "plvi", "mgi", "pglc")
 
 # Grouping helper: collapse pli_* -> "pli"; all others remain themselves
 raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
@@ -92,41 +92,42 @@ raster_to_group <- function(x) ifelse(x %in% pli_variants, "pli", x)
 #points <- readxl::read_excel(points_excel_path)
 points <- readxl::read_excel(
   points_excel_path,
-  col_types = c("numeric", "text", "numeric", "text", "numeric", rep("guess", 2), rep("numeric", 15))
+  col_types = c("numeric", "text", "numeric", "text", "numeric", rep("guess", 2), rep("numeric", 16))
 )
 
 names(points)
 str(points)
 #unique(points$LC_Cl_N)
 unique(points$Sorc_ID)
-unique(points$Training)
+#unique(points$Training)
 #table(points$Source_ID, useNA = "ifany")
 
 # Rename columns
-points <- points %>%
-  rename(
-    Pt_ID_O    = Point_ID,
-    Sorc_ID  = Source_ID,
-    Yer_Cll  = Year_Colle,
-    LC_Cl_N  = LC_Class_N,
-    Ecds_ID = ecodist,
-    Provinc  = PROV,
-    Ecrgn_n  = ecoreg,
-    aci      = aafc_aci_merged_reproj_algn_natvtam_noshrub,
-    ngi      = cfga_ngi_merged_reproj_algn_natvtam_good,
-    cgr      = cgr_reproj_algn_natvtam_masked, 
-    eccc     = eccc_reclass_reproj_algn_natvtam_masked,
-    cnvc     = cnvc_algn_natvtam_masked,
-    pudl     = pudl_reclass_reproj_algn_natvtam_noshrub, 
-    pli_ap   = sk_pli_ap_reproj_algn_natvtam_noshrub,
-    pli_cu   = sk_pli_cu_reproj_algn_natvtam_noshrub,
-    pli_mg   = sk_pli_mg_reproj_algn_natvtam_noshrub,
-    pli_mm   = sk_pli_mm_reproj_algn_natvtam_noshrub,
-    gpw      = gpw_reproj_algn_natvtam_noshrub_masked,
-    plvi     = plvi_reproj_algn_natvtam_gte2015,
-    hfi      = hfi_reproj_algn_binary_gte2015,
-    mgi      = mb_mgi_reproj_algn_natvtam_noshrub,
-    pglc     = pglc_reproj_algn_natvtam)
+# points <- points %>%
+#   rename(
+#     Pt_ID_O    = Point_ID,
+#     Sorc_ID  = Source_ID,
+#     Yer_Cll  = Year_Colle,
+#     LC_Cl_N  = LC_Class_N,
+#     Ecds_ID = ecodist,
+#     Provinc  = PROV,
+#     Ecrgn_n  = ecoreg,
+#     aci2024  = aafc_aci_merged_reproj_algn_natvtam_noshrub,
+#     aci2025  = aafc_aci_2025_merged_reproj_algn_natvtam_noshrub,
+#     ngi      = cfga_ngi_merged_reproj_algn_natvtam_good,
+#     cgr      = cgr_reproj_algn_natvtam_masked, 
+#     eccc     = eccc_reclass_reproj_algn_natvtam_masked,
+#     cnvc     = cnvc_algn_natvtam_masked,
+#     pudl     = pudl_reclass_reproj_algn_natvtam_noshrub, 
+#     pli_ap   = sk_pli_ap_reproj_algn_natvtam_noshrub,
+#     pli_cu   = sk_pli_cu_reproj_algn_natvtam_noshrub,
+#     pli_mg   = sk_pli_mg_reproj_algn_natvtam_noshrub,
+#     pli_mm   = sk_pli_mm_reproj_algn_natvtam_noshrub,
+#     gpw      = gpw_reproj_algn_natvtam_noshrub_masked,
+#     plvi     = plvi_reproj_algn_natvtam_gte2015,
+#     hfi      = hfi_reproj_algn_binary_gte2015,
+#     mgi      = mb_mgi_reproj_algn_natvtam_noshrub,
+#     pglc     = pglc_reproj_algn_natvtam)
 
 # Remove HFI
 points <- points %>%
@@ -136,8 +137,9 @@ points <- points %>%
 points <- points %>%
   mutate(
     Training = case_when(
-      Sorc_ID == "ACI_field_2024" ~ "aci", # if using 2024 ACI data
-      #Sorc_ID == "ACI_field_2025" ~ "aci2025" # if using 2024 ACI data
+      Sorc_ID == "ACI_CI_2025" ~ "aci2025",
+      Sorc_ID == "ACI_field_2024" ~ "aci2024", # if using 2024 ACI data
+      Sorc_ID == "ACI_field_2025" ~ "aci2025", # if using 2025 ACI data
       TRUE ~ ""))    # keep unmatched cases empty
 
 # Create column with numerical class for ground-truthed cover type
@@ -308,8 +310,8 @@ if (all(c("raster", "year") %in% names(meta_raw))) {
 }
 
 # Rename aci2024 column in metadata to aci (only when excluding aci2025)
-meta_norm <- meta_norm %>%
-  mutate(raster = if_else(raster == "aci2024", "aci", raster))
+#meta_norm <- meta_norm %>%
+#  mutate(raster = if_else(raster == "aci2024", "aci", raster))
 
 # Build named list: raster -> unique sorted integer vector of years
 raster_years_map <- meta_norm %>%
@@ -361,7 +363,7 @@ long <- points_norm %>%
 long_out <- long %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(long_out, file.path(out_dir, "long_prefiltering_18Jul2026_nat_v_tam_v_oth.csv"))
+write.csv(long_out, file.path(out_dir, "long_prefiltering_23Jul2026_nat_v_tam_v_oth.csv"))
 
 # ----------------------------
 # 7) Filter rows via class-based time rules using MULTIPLE allowed years
@@ -437,7 +439,7 @@ eval_data <- eval_data %>%
 eval_data_out <- eval_data %>%
   mutate(allowed_years = map_chr(allowed_years, ~ paste(.x, collapse = ";")))
 
-write.csv(eval_data_out, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass.csv"))
+write.csv(eval_data_out, file.path(out_dir, "eval_data_23Jul2026_natvtam_withnongrass.csv"))
 
 # fully expanded confusion structure per dataset
 conf<- eval_data %>%
@@ -446,7 +448,7 @@ conf<- eval_data %>%
 
 conf
 
-write.csv(conf, file.path(out_dir, "eval_data_18Jul2026_natvtam_withnongrass_confusion.csv"))
+write.csv(conf, file.path(out_dir, "eval_data_23Jul2026_natvtam_withnongrass_confusion.csv"))
 
 # Isolate datasets that need to be handled differently
 #   Datasets with training data need to be filtered separately
@@ -735,7 +737,7 @@ metrics_by_dataset
 # ----------------------------
 # Export output tables
 # ----------------------------
-out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_18Jul2026.xlsx")
+out_xlsx <- file.path(out_dir, "nat_v_tame_v_nongrass_accuracy_assessment_results_23Jul2026.xlsx")
 
 write_xlsx(
   list(
@@ -992,7 +994,7 @@ readr::write_csv(
   accuracy_with_fallback_atomic,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_cropins_18Jul2026.csv"
+    "accuracy_by_ecodistrict_atomic_nattam_ecoregprovfallback_cropins_23Jul2026.csv"
   )
 )
 
@@ -1000,7 +1002,7 @@ readr::write_csv(
   accuracy_with_fallback_grouped,
   file.path(
     out_dir,
-    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_cropins_18Jul2026.csv"
+    "accuracy_by_ecodistrict_grouped_nattam_ecoregprovfallback_cropins_23Jul2026.csv"
   )
 )
 
