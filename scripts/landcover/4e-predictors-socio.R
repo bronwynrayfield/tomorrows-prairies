@@ -43,7 +43,7 @@ source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 # ---- Resolution setting ----
 # Change to 30 for final run
-target_res <- 300
+target_res <- 30
 agg_fact   <- target_res / 30
 
 # ---- Window sizes ----
@@ -67,6 +67,9 @@ sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 # Ecodistricts (for cropland suitability imputation)
 ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
                                     ecodistricts_filename, "modelling-extent"))
+
+# Canfax results
+canfax <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax_filename, "modelling-extent"))
 
 # Binary AAFC filenames = cleaner than using the merged filename
 aafc2015_binary_filename <- "AAFC2015.tif"
@@ -133,6 +136,11 @@ if (agg_fact > 1) {
   pa_provpasture_bin <- resample(pa_provpasture_bin, me_r, method = "average")
   pa_provpasture_bin <- ifel(pa_provpasture_bin > 0.5, 1, 0)
 }
+
+# ---- Rasterize Canfax results ----
+canfax_v <- vect(canfax)
+canfax_r <- rasterize(canfax_v, me_r, field = "nt_b_25")
+write_rast_tagged(canfax_r, outdir, paste0(canfax_filename, ".tif"), paste0(target_res, "m"))
 
 # ---- Apply pa_hard mask to native and tame grass ----
 # Required step to map unprotected grasslands

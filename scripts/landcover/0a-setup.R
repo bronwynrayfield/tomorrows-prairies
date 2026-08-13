@@ -7,10 +7,13 @@ library(ggplot2)
 #library(maptiles)
 library(ranger)
 #library(caret)
-#library(pROC)
+library(pROC)
+library(usdm)
+library(tidyterra)
+library(patchwork)
+library(geodata)
 
-
-# check available space on different mount points
+# check available space on different mount points and memory
 system("df -h")
 
 # set terra options for memory, temp directory, and progress bar
@@ -24,7 +27,7 @@ source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 #--- Parameters ---
 # Resolution of rasters in m
-res <- 30
+res_m <- 30
 
 #--- File names ----
 # Study Area
@@ -68,6 +71,7 @@ plowprint_filename <- "plow_reproj_algn_masked.tif"
 
 # Protected Areas
 pa_filename <- "ProtectedConservedArea_2024"
+ncc_easement_filename <- "NatureUnited_Ownership"
 
 # Soil
 oc_filename <- "oc_iso.10694.1995.mg.cm3_m_30m_b0cm..30cm_20050101_20101231_g_epsg.4326_v20250204_clip.tif"
@@ -76,14 +80,11 @@ clay_filename <- "clay.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_2022123
 sand_filename <- "sand.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250523_clip.tif"
 silt_filename <- "silt.tot_iso.11277.2020.wpct_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250523_clip.tif"
 ph_filename <- "ph.h2o_iso.10390.2021.index_m_30m_b0cm..30cm_20200101_20221231_g_epsg.4326_v20250204_clip.tif"
-
-# Soil Moisture
 psssm_mean_filename <- "psssm_mean_2011_2020.tif"
 psssm_sd_filename <- "psssm_sd_2011_2020.tif"
 tsm_planting_filename <- "tsm_planting_2020.tif"
 tsm_growing_filename <- "tsm_growing_2020.tif"
 dss_drainage_filename <- "dss_drainage.tif"
-dss_slope_filename <- "dss_slope.tif"
 dss_watertbl_filename <- "dss_watertbl.tif"
 dss_kp0_filename <- "dss_kp0.tif"
 dss_kp33_filename <- "dss_kp33.tif"
@@ -92,9 +93,15 @@ dss_ldepth_filename <- "dss_ldepth.tif"
 dss_ldepth_max_filename <- "dss_ldepth_max.tif"
 
 # Topography
+w <- 27
+
 dem_filename <- "MRDEM Digital Terrain Model (COG).tif" 
-slope_filename <- "slope.tif"
-aspect_filename <- "aspect.tif"
+dss_slope_filename <- "dss_slope.tif"
+tri_filename <- paste("tri", paste0(w, "x", w), sep = "-")
+tpi_filename <- paste("tpi", paste0(w, "x", w), sep = "-")
+srr_filename <- paste("srr", paste0(w, "x", w), sep = "-")
+northness_filename <- paste("northness", paste0(w, "x", w), sep = "-")
+eastness_filename <- paste("eastness", paste0(w, "x", w), sep = "-")
 
 # Climate
 hist_period <- "1991-2020"
@@ -148,6 +155,7 @@ plowprint_filepath <- "cropland/Plowprint WWF"
 
 # Protected Areas
 pa_filepath <- "management/Canadian Protected and Conserved Areas Database/ProtectedConservedArea_2024"
+ncc_easement_filepath <- "management/Tenure data (NCC)"
 
 # Soil
 soil_filepath <- "soil"

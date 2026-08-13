@@ -41,7 +41,7 @@
 #   - 1-merge-tiled-data.R outputs (AAFC LUTS merged rasters)
 # =============================================================================
 
-source(file.path("scripts/landcover", "0-setup.R"))
+source(file.path("scripts/landcover", "0a-setup.R"))
 
 #--- Load files ----
 
@@ -84,6 +84,10 @@ builtup_gain_year_raw <- rast(file.path("./existingdatasets", capitalize_first(b
 
 # Protected Areas
 pa_raw <- st_read(file.path("./existingdatasets", capitalize_first(pa_filepath), paste0(pa_filename, ".gdb")), layer = pa_filename)
+ncc_gdb <- file.path("./existingdatasets", capitalize_first(ncc_easement_filepath), paste0(ncc_easement_filename, ".gdb"))
+lyr_names <- st_layers(ncc_gdb)$name
+ncc_list <- lapply(lyr_names, \(x) st_read(ncc_gdb, layer = x, quiet = TRUE))
+# lapply(ncc_list, names)  # check names to make sure the layers all have the same schema (they do! but their crs are different)
 
 # Soil
 oc_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), oc_filename))
@@ -151,6 +155,7 @@ ph_raw[ph_raw == ph_nodata] <- NA
 ph_real <- ph_raw / ph_scale
 
 #--- clean PA data ----
+# CPCAD
 # Cast to multipolygon to eliminate exotic geometry types
 pa_cast <- st_cast(pa_raw, "MULTIPOLYGON")
 
@@ -165,6 +170,14 @@ table(st_geometry_type(pa_valid))
 
 # Check how many are still invalid
 sum(!st_is_valid(pa_valid))
+
+# NCC easements
+ncc_all <- Map(\(x, nm) x |> mutate(src_layer = nm) |> st_transform(crs(me_r)),
+               ncc_list, lyr_names) |>
+  bind_rows() |>
+  st_cast("MULTIPOLYGON") |>
+  st_make_valid()
+
 
 #--- Reproject to match study area shapefile CRS ----
 crop_suit_reproj <- project(crop_suit_raw, me_r, method = "bilinear")
@@ -235,6 +248,7 @@ write_sf_tagged(ecozones_reproj, "./processeddatasets", ecozones_filepath, ecozo
 write_sf_tagged(ecoregions_reproj, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "proj-naaea")
 write_sf_tagged(ecodistricts_reproj, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea")
 write_sf_tagged(pa_reproj, "./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG")
+write_sf_tagged(ncc_all, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "proj-naaea", driver = "GPKG")
 # #write_sf_tagged(roads_reproj, "./processeddatasets", road_filepath, road_filename, "proj-naaea", layer = "roads_merge")
 # write_rast_tagged(roads_r, "./processeddatasets", road_filepath, "roads.tif", "proj-naaea")
 write_rast_tagged(lulc2020_prairies_reproj, file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2020_filename, "proj-naaea")

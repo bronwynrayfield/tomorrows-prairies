@@ -1,5 +1,5 @@
 # =============================================================================
-# 5-response-plowprint.R
+# 7-response-plowprint.R
 # =============================================================================
 #
 # Purpose:
@@ -11,7 +11,7 @@
 #
 #   Response:  1 = previously or currently cultivated (Plowprint 1/2/3)
 #              0 = intact habitat (Plowprint 0, restricted -- see below)
-#              NA = outside the analysis domain
+#              NA = outside the training set
 #
 #   This is NOT a change response. It has no 2010 baseline, no grass_origin,
 #   and no conversion interval. Because Plowprint is cumulative
@@ -23,7 +23,7 @@
 #
 # Inputs:
 #   - WWF Plowprint 2024 (aligned to the modelling extent by an earlier script)
-#   - AAFC LUTS 2020 (cropped to modelling extent) -- defines the domain
+#   - AAFC LUTS 2020 (cropped to modelling extent)
 #   - Study area raster (sa_r) : Prairie ecozone
 #
 # Outputs:
@@ -46,7 +46,7 @@
 #     100      water and roads mask.         } calling them intact is indefensible
 #
 # -----------------------------------------------------------------------------
-# DOMAIN DEFINITION
+# TRAINING SET DEFINITION
 # -----------------------------------------------------------------------------
 #   Plowprint 0 means "not plowed", NOT "intact grassland". Within the Prairies
 #   Ecozone it breaks down as:

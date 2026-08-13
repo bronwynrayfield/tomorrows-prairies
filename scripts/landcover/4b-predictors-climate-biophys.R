@@ -38,7 +38,6 @@
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "functions-general.R"))
 source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 # ---- Resolution setting ----

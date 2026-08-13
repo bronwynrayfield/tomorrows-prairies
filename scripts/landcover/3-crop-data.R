@@ -84,6 +84,11 @@ pa_reproj <- st_read(
   tagged_path("./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG"),
   layer = paste0(tools::file_path_sans_ext(pa_filename), "_proj-naaea")
 )
+ncc_reproj <- st_read(
+  tagged_path("./processeddatasets", ncc_easement_filepath, ncc_easement_filename,
+              "proj-naaea", driver = "GPKG"),
+  layer = paste0(tools::file_path_sans_ext(ncc_easement_filename), "_proj-naaea")
+)
 
 # Soil
 oc_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, oc_filename, "proj-naaea"))
@@ -139,6 +144,7 @@ ecodistricts <- st_intersection(ecodistricts_reproj, me)
 # using st_crop() instead of st_intersection() for speed
 # will rasterize later which will take care of NAs
 pa <- st_crop(pa_reproj, st_bbox(me_r))
+ncc <- st_crop(ncc_reproj, st_bbox(me_r))
 
 # Roads
 roads <- st_intersection(roads_reproj, me)
@@ -186,9 +192,6 @@ tsm_growing <- mask(crop(tsm_growing_reproj, me_r), me_r)
 
 # Topography
 dem <- mask(crop(dem_reproj, me_r), me_r)
-slope  <- terrain(dem, "slope",  unit="degrees")
-aspect <- terrain(dem, "aspect", unit="degrees")
-aspect[slope < 0.5] <- NA
 
 # Climate
 gddgrow_5_hist <- mask(crop(gddgrow_5_hist_reproj, me_r), me_r)
@@ -220,6 +223,7 @@ write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_fil
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
 write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
+write_sf_tagged(ncc, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "modelling-extent", driver = "GPKG")
 #write_sf_tagged(roads, "./processeddatasets", road_filepath, road_filename, "modelling-extent", layer = "roads_merge")
 #write_rast_tagged(roads, "./processeddatasets", road_filepath, "roads.tif", "modelling-extent")
 write_rast_tagged(crop_suit, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent")
@@ -247,8 +251,6 @@ write_rast_tagged(sand, "./processeddatasets", soil_filepath, sand_filename, "mo
 write_rast_tagged(silt, "./processeddatasets", soil_filepath, silt_filename, "modelling-extent", datatype="FLT4S")
 write_rast_tagged(ph, "./processeddatasets", soil_filepath, ph_filename, "modelling-extent", datatype="FLT4S")
 write_rast_tagged(dem, "./processeddatasets", dem_filepath, dem_filename, "modelling-extent")
-write_rast_tagged(slope, "./processeddatasets", dem_filepath, slope_filename, "modelling-extent")
-write_rast_tagged(aspect, "./processeddatasets", dem_filepath, aspect_filename, "modelling-extent")
 write_rast_tagged(psssm_mean, "./processeddatasets", psssm_filepath, psssm_mean_filename, "modelling-extent")
 write_rast_tagged(psssm_sd, "./processeddatasets", psssm_filepath, psssm_sd_filename, "modelling-extent")
 write_rast_tagged(tsm_planting, "./processeddatasets", tsm_filepath, tsm_planting_filename, "modelling-extent")
