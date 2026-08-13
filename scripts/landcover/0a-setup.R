@@ -15,7 +15,6 @@ library(geodata)
 
 # check available space on different mount points and memory
 system("df -h")
-system("free -g")
 
 # set terra options for memory, temp directory, and progress bar
 terraOptions(memfrac = 0.8,
@@ -28,7 +27,7 @@ source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
 #--- Parameters ---
 # Resolution of rasters in m
-res <- 30
+res_m <- 30
 
 #--- File names ----
 # Study Area
