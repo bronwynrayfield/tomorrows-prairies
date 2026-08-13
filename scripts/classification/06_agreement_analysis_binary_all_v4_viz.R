@@ -18,6 +18,8 @@ library(ggplot2)
 library(pheatmap)
 library(igraph)
 library(ggraph)
+library(ape) # for PCoA
+library(ggrepel)
 
 ## ---- Load results ---- ##
 
@@ -25,7 +27,7 @@ library(ggraph)
 results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_binary_pairwise")
 
 # Results file
-results_file <- file.path(results_dir, "pairwise_binary_spatial_agreement_01Jun2026.csv")
+results_file <- file.path(results_dir, "results_1Jun2026/pairwise_binary_spatial_agreement_01Jun2026.csv")
 
 # Load results file
 pairwise_long <- read_csv(results_file, show_col_types = FALSE)
@@ -123,6 +125,102 @@ mat_sorensen[mat_sorensen == 1] <- NA
 mat_kappa[mat_kappa == 1]       <- NA
 mat_f1[mat_f1 == 1]             <- NA
 mat_mcc[mat_mcc == 1]           <- NA
+
+## ---- PCoA ---- ##
+# Remove datasets with incomplete comparisons
+keep <- complete.cases(mat_jaccard)
+mat_jaccard_clean <- mat_jaccard[keep, keep]
+
+pcoa_res <- pcoa(as.dist(mat_jaccard_clean))
+
+# Extract coordinates
+scores <- as.data.frame(pcoa_res$vectors[,1:2])
+scores$dataset <- rownames(scores)
+
+# Plot
+ggplot(scores,
+       aes(Axis.1, Axis.2, label = dataset)) +
+  geom_point(size = 3) +
+  geom_text(vjust = -0.5) +
+  theme_minimal() +
+  labs(
+    x = paste0(
+      "PCoA1 (",
+      round(pcoa_res$values$Relative_eig[1] * 100, 1),
+      "%)"),
+    y = paste0(
+      "PCoA2 (",
+      round(pcoa_res$values$Relative_eig[2] * 100, 1),
+      "%)"))
+
+# Or replace missing comparisons with the maximum observed distance
+mat_jaccard[is.na(mat_jaccard)] <- max(mat_jaccard, na.rm = TRUE)
+
+pcoa_res2 <- pcoa(as.dist(mat_jaccard))
+
+# Extract coordinates
+scores2 <- as.data.frame(pcoa_res2$vectors[,1:3])
+scores2$dataset <- rownames(scores2)
+
+# Plot
+ggplot(scores2,
+       aes(Axis.1, Axis.2, label = dataset)) +
+  geom_point(size = 3) +
+  #geom_text(vjust = -0.5) +
+  geom_text_repel(
+    size = 4,
+    max.overlaps = Inf,
+    box.padding = 0.4,
+    point.padding = 0,
+    segment.alpha = 0.5) +
+  theme_minimal() +
+  labs(
+    x = paste0(
+      "PCoA1 (",
+      round(pcoa_res2$values$Relative_eig[1] * 100, 1),
+      "%)"),
+    y = paste0(
+      "PCoA2 (",
+      round(pcoa_res2$values$Relative_eig[2] * 100, 1),
+      "%)"))
+
+# amount of variance explained
+pcoa_res2$values$Relative_eig[1:10]
+
+# look at 3rd axis
+ggplot(scores2,
+       aes(Axis.1, Axis.3, label = dataset)) +
+  geom_point() +
+  geom_text_repel()
+
+ggplot(scores2,
+       aes(Axis.2, Axis.3, label = dataset)) +
+  geom_point() +
+  geom_text_repel()
+
+# evaluate ordination quality
+# If the relationship is reasonably strong, the 2D plot is still useful
+ord_dist <- dist(scores2[,1:2])
+
+plot(
+  as.vector(as.dist(mat_jaccard)),
+  as.vector(ord_dist)
+)
+abline(0,1,col="red")
+
+# scree plot
+eig <- 100 * pcoa_res2$values$Relative_eig
+
+qplot(
+  seq_along(eig),
+  eig,
+  geom = c("line","point")
+) +
+  labs(
+    x = "PCoA Axis",
+    y = "% Variation Explained"
+  )
+
 
 ## ---- Heatmaps ---- ##
 pheatmap(mat_jaccard,

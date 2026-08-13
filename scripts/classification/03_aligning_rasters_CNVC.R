@@ -139,18 +139,30 @@ cats(r_cnvc_mask)
 #min value   :   G007 
 #max value   :  G9901 
 
+# check for missing ELCODE values
+cnvc_levels <- levels(r_cnvc_mask)[[1]]
+cnvc_levels %>%
+  filter(is.na(ELCODE) | ELCODE == "")
+
+#   Value ELCODE
+# 1   359       
+# 2   639       
+# 3   843       
+# 4  1215       
+# 5  1216 
+
 # Fix missing ELCODE
 stopifnot(length(levels(r_cnvc_mask)) > 0)
-names(cats)
-cnvc_levels <- levels(r_cnvc_mask)[[1]]
-cats$ELCODE[cats$Value == 359 & (is.na(cats$ELCODE) | cats$ELCODE == "")]  <- "G359"
-cats$ELCODE[cats$Value == 639 & (is.na(cats$ELCODE) | cats$ELCODE == "")]  <- "G639"
-cats$ELCODE[cats$Value == 843 & (is.na(cats$ELCODE) | cats$ELCODE == "")]  <- "G843"
-cats$ELCODE[cats$Value == 1215 & (is.na(cats$ELCODE) | cats$ELCODE == "")] <- "G1215"
-cats$ELCODE[cats$Value == 1216 & (is.na(cats$ELCODE) | cats$ELCODE == "")] <- "G1216"
+#names(cats)
+cnvc_levels$ELCODE[cnvc_levels$Value == 359 & (is.na(cnvc_levels$ELCODE) | cnvc_levels$ELCODE == "")]  <- "G359"
+cnvc_levels$ELCODE[cnvc_levels$Value == 639 & (is.na(cnvc_levels$ELCODE) | cnvc_levels$ELCODE == "")]  <- "G639"
+cnvc_levels$ELCODE[cnvc_levels$Value == 843 & (is.na(cnvc_levels$ELCODE) | cnvc_levels$ELCODE == "")]  <- "G843"
+cnvc_levels$ELCODE[cnvc_levels$Value == 1215 & (is.na(cnvc_levels$ELCODE) | cnvc_levels$ELCODE == "")] <- "G1215"
+cnvc_levels$ELCODE[cnvc_levels$Value == 1216 & (is.na(cnvc_levels$ELCODE) | cnvc_levels$ELCODE == "")] <- "G1216"
 levels(r_cnvc_mask) <- cnvc_levels
 
-sum(is.na(cats$ELCODE) | trimws(cats$ELCODE) == "")
+sum(is.na(cnvc_levels$ELCODE) | trimws(cnvc_levels$ELCODE) == "")
+cats(r_cnvc_mask)
 
 # Save the raster as 8-bit unsigned integer
 cnvc_crop_out_path <- file.path(cnvc_cropped_dir, "cnvc_crop_bbox.tif")
@@ -426,7 +438,7 @@ if (is.null(lev)) {
   stop("cnvc_algn does not have a levels table (RAT)")
 }
 
-# Peek at column names to find the correct join key in the RAT
+# Look at column names to find the correct join key in the RAT
 print(names(lev))
 # The join key in the RAT might be called "Value", "value", or similar.
 
@@ -444,12 +456,18 @@ cnvc_cat <- cnvc_cat %>%
         TRUE ~ ELCODE),
       ELCODE ))
 
-# Value 359 also missing a broad category - need to confirm with Don
+# Value 359 also missing a broad category 
+# Don confirmed it should be Other Native Upland Vegetation:
+# "We’ve never included Boreal Grasslands in your project, as technically, 
+# it falls outside the scope of your Temperate Grassland focus.  But if you 
+# want to include it at a categorical level like “Tallgrass Prairie” etc we 
+# could call it “Boreal Native Grassland.”  But maybe better to leave it as 
+# “Other Native Upland Vegetation.”?"
 cnvc_cat <- cnvc_cat %>%
   mutate(
     Broad_Cat = if_else(
       ELCODE == "G359",
-      "?",
+      "Other Native Upland Vegetation",
       Broad_Cat))
 
 # Harmonize a join key named "Value" in the RAT
@@ -491,7 +509,7 @@ bcat_to_bin <- function(bc) {
          "Rocky Mountain Montane Native Grassland"  = 1L,
          "Rocky Mountain Lowland Native Grassland"  = 1L,
          "Intermountain Steppe Native Grassland"    = 1L,
-         "?"                                        = 0L,
+         #"?"                                        = 0L,
          "Pacific Coastal Prairie Native Grassland" = 1L,
          "Atlantic Coastal Native Grassland"        = 1L,
          "Eastern Acidic Rocky Native Grassland"    = 1L,
@@ -556,7 +574,7 @@ bcat_to_nt <- function(bc) {
          "Rocky Mountain Montane Native Grassland"  = 2L,
          "Rocky Mountain Lowland Native Grassland"  = 2L,
          "Intermountain Steppe Native Grassland"    = 2L,
-         "?"                                        = 0L,
+         #"?"                                        = 0L,
          "Pacific Coastal Prairie Native Grassland" = 2L,
          "Atlantic Coastal Native Grassland"        = 2L,
          "Eastern Acidic Rocky Native Grassland"    = 2L,
@@ -567,12 +585,6 @@ bcat_to_nt <- function(bc) {
          { warning(sprintf("Unmapped Broad_Cat encountered: '%s' -> set to NA", bc)); NA_integer_ }
   )
 }
-
-# Build the lookup table: Value -> native vs. tame
-stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
-
-# Normalize spaces just in case (optional but helpful)
-cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
 
 # Vectorized mapping
 nt_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_nt, integer(1))
@@ -617,7 +629,7 @@ bcat_to_n <- function(bc) {
          "Rocky Mountain Montane Native Grassland"  = 1L,
          "Rocky Mountain Lowland Native Grassland"  = 1L,
          "Intermountain Steppe Native Grassland"    = 1L,
-         "?"                                        = 0L,
+         #"?"                                        = 0L,
          "Pacific Coastal Prairie Native Grassland" = 1L,
          "Atlantic Coastal Native Grassland"        = 1L,
          "Eastern Acidic Rocky Native Grassland"    = 1L,
@@ -628,12 +640,6 @@ bcat_to_n <- function(bc) {
          { warning(sprintf("Unmapped Broad_Cat encountered: '%s' -> set to NA", bc)); NA_integer_ }
   )
 }
-
-# Build the lookup table: Value -> native 
-stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
-
-# Normalize spaces just in case (optional but helpful)
-cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
 
 # Vectorized mapping
 n_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_n, integer(1))
@@ -678,7 +684,7 @@ bcat_to_rud <- function(bc) {
          "Rocky Mountain Montane Native Grassland"  = 0L,
          "Rocky Mountain Lowland Native Grassland"  = 0L,
          "Intermountain Steppe Native Grassland"    = 0L,
-         "?"                                        = 0L,
+         #"?"                                        = 0L,
          "Pacific Coastal Prairie Native Grassland" = 0L,
          "Atlantic Coastal Native Grassland"        = 0L,
          "Eastern Acidic Rocky Native Grassland"    = 0L,
@@ -691,10 +697,10 @@ bcat_to_rud <- function(bc) {
 }
 
 # Build the lookup table: Value -> ruderal
-stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
+#stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
 
 # Normalize spaces just in case (optional but helpful)
-cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
+#cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
 
 # Vectorized mapping
 rud_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_rud, integer(1))
@@ -725,46 +731,6 @@ writeRaster(cnvc_algn_ruderal, cnvc_rud_out_path, datatype = "INT1U",
 
 ################ isolate ag pasture/hay
 
-# load spreadsheet with broad categories
-cnvc_cat <- read_excel(cnvc_cat_file)
-head(cnvc_cat)
-
-# Inspect current levels (RAT)
-lev <- levels(cnvc_algn)[[1]]   # data.frame or NULL if not categorical
-if (is.null(lev)) {
-  stop("cnvc_algn does not have a levels table (RAT). Use Option B to ratify first.")
-}
-
-# Peek at column names to find the correct join key in the RAT
-print(names(lev))
-# The join key in the RAT might be called "Value", "value", or similar.
-
-# Harmonize a join key named "Value" in the RAT
-if (!"Value" %in% names(lev)) {
-  if ("value" %in% names(lev)) {
-    names(lev)[names(lev) == "value"] <- "Value"
-  } else if ("ID" %in% names(lev)) {
-    # In some rasters, the RAT only has ID and no explicit Value column.
-    # If your cnvc_cat maps ID -> Broad_Cat, you can join on ID instead.
-    # Otherwise you need Option B (ratify) to ensure the original values are recorded.
-    warning("No 'Value' column found in raster levels; found only 'ID'. If your cnvc_cat maps original pixel values, use Option B to ratify.")
-  }
-}
-
-# Join: keep all raster categories; attach Broad_Cat by matching Value
-lev_joined <- merge(
-  lev,
-  cnvc_cat[, c("Value", "Broad_Cat")],
-  by = "Value",
-  all.x = TRUE
-)
-
-# Write the joined table back to the raster
-levels(cnvc_algn)[[1]] <- lev_joined
-
-# check that new field is present
-cats(cnvc_algn)
-
 # Define the mapping from Broad_Cat -> ag pasture/hay
 bcat_to_past <- function(bc) {
   if (is.na(bc)) return(NA_integer_)  # keep NA as NA
@@ -779,7 +745,7 @@ bcat_to_past <- function(bc) {
          "Rocky Mountain Montane Native Grassland"  = 0L,
          "Rocky Mountain Lowland Native Grassland"  = 0L,
          "Intermountain Steppe Native Grassland"    = 0L,
-         "?"                                        = 0L,
+         #"?"                                        = 0L,
          "Pacific Coastal Prairie Native Grassland" = 0L,
          "Atlantic Coastal Native Grassland"        = 0L,
          "Eastern Acidic Rocky Native Grassland"    = 0L,
@@ -792,10 +758,10 @@ bcat_to_past <- function(bc) {
 }
 
 # Build the lookup table: Value -> ag pasture/hay
-stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
+#stopifnot(all(c("Value", "Broad_Cat") %in% names(cnvc_cat)))
 
 # Normalize spaces just in case (optional but helpful)
-cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
+#cnvc_cat$Broad_Cat <- trimws(cnvc_cat$Broad_Cat)
 
 # Vectorized mapping
 past_vec <- vapply(cnvc_cat$Broad_Cat, bcat_to_past, integer(1))

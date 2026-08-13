@@ -12,8 +12,6 @@
 ## Ran separate scripts for the two types of point data - will merge here and
 ## calculate metrics
 
-## NEED TO REMOVE MORE TRAINING DATA FOR ACI??
-
 ## Goal:
 ##   Assess the accuracy of multiple grassland rasters vs. ground-truth points
 ##   using time-aligned rules that depend on class (NATIVE or TAME).
@@ -60,6 +58,7 @@ out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/
 
 acc_cm_file <- file.path(acc_cm_dir, "27Jul2026/accuracy_assessment_data_binary_pli_sep_compiled_27Jul2026.csv")
 acc_ci_file <- file.path(acc_ci_dir, "23Jul2026/lenient/accuracy_assessment_data_binary_pli_sep_cropinsV2_lenient_23Jul2026.csv")
+#acc_ci_file <- file.path(acc_ci_dir, "23Jul2026/standard/accuracy_assessment_data_binary_pli_sep_cropinsV2_23Jul2026.csv")
 metadata_file <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_binary_pli_sep_noplow_aci2024and2025.csv"
 
 # ----------------------------
@@ -129,11 +128,11 @@ acc_ci <- acc_ci %>%
   filter(!(Ecds_ID %in% c(745, 830) & raster == "pli_mm"))
 
 # Make sure aci raster has same name for both
-acc_cm <- acc_cm %>%
-  mutate(raster = if_else(raster == "aci", "aci2024", raster))
+# acc_cm <- acc_cm %>%
+#   mutate(raster = if_else(raster == "aci", "aci2024", raster))
 
-acc_cm <- acc_cm %>%
-  mutate(raster_group = if_else(raster_group == "aci", "aci2024", raster_group))
+# acc_cm <- acc_cm %>%
+#   mutate(raster_group = if_else(raster_group == "aci", "aci2024", raster_group))
 
 # Reorder to match
 acc_ci <- acc_ci %>%
@@ -654,7 +653,117 @@ readr::write_csv(
 )
 
 # ----------------------------
-# 15) Diagnostics
+# 15) Bootstrapping 
+# ----------------------------
+# Define bootstrap function
+boot_f1 <- function(df, n_boot = 1000) {
+  
+  vals <- replicate(n_boot, {
+    
+    samp <- df[sample(
+      nrow(df),
+      replace = TRUE
+    ), ]
+    
+    counts <- compute_counts(samp)
+    
+    compute_metrics(
+      counts$TP,
+      counts$TN,
+      counts$FP,
+      counts$FN
+    )$F1_grass
+    
+  })
+  
+  vals <- vals[!is.na(vals)]
+  
+  if (length(vals) == 0) {
+    return(
+      tibble(
+        F1_boot = NA_real_,
+        F1_lwr = NA_real_,
+        F1_upr = NA_real_,
+        F1_width = NA_real_
+      )
+    )
+  }
+  
+  tibble(
+    F1_boot = mean(vals),
+    F1_lwr = quantile(vals, 0.025),
+    F1_upr = quantile(vals, 0.975),
+    F1_width = quantile(vals, 0.975) -
+      quantile(vals, 0.025)
+  )
+}
+
+# Create bootstrap dataset corresponding to the 
+# level actually used by each row
+boot_results <- accuracy_with_fallback_grouped %>%
+  select(
+    raster,
+    Ecds_ID,
+    Ecrgn_n,
+    Ecprv,
+    source_level
+  ) %>%
+  rowwise() %>%
+  mutate(
+    boot = list({
+      
+      if (source_level == "ecodistrict") {
+        
+        dat <- combined %>%
+          mutate(raster = raster_group) %>%
+          filter(
+            raster == cur_data()$raster,
+            Ecds_ID == cur_data()$Ecds_ID
+          )
+        
+      } else if (source_level == "ecoregion") {
+        
+        dat <- combined %>%
+          mutate(raster = raster_group) %>%
+          filter(
+            raster == cur_data()$raster,
+            Ecrgn_n == cur_data()$Ecrgn_n
+          )
+        
+      } else {
+        
+        dat <- combined %>%
+          mutate(raster = raster_group) %>%
+          filter(
+            raster == cur_data()$raster,
+            Ecprv == cur_data()$Ecprv
+          )
+        
+      }
+      
+      boot_f1(dat, n_boot = 1000)
+      
+    })
+  ) %>%
+  unnest_wider(boot)
+
+# Join results back to table
+accuracy_with_fallback_grouped <- accuracy_with_fallback_grouped %>%
+  left_join(
+    boot_results %>%
+      select(
+        raster,
+        Ecds_ID,
+        F1_boot,
+        F1_lwr,
+        F1_upr,
+        F1_width
+      ),
+    by = c("raster", "Ecds_ID")
+  )
+
+# ----------------------------
+# 16) Diagnostics
 # ----------------------------
 
 #-------- Count number of NAs in each metic --------#
@@ -680,6 +789,10 @@ fallback_joined_grouped %>%
 # n_rows MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA pct_MCC_ecoD_NA pct_MCC_ecoR_NA pct_MCC_ecoP_NA
 #   4015        1731        1149         998            43.1            28.6            24.9
 
+# exact match (not lenient):
+# n_rows MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA pct_MCC_ecoD_NA pct_MCC_ecoR_NA pct_MCC_ecoP_NA
+#   3213        1996        1431        1258            62.1            44.5            39.2
+
 fallback_joined_atomic %>%
   summarise(
     n_rows = n(),
@@ -698,6 +811,10 @@ fallback_joined_atomic %>%
 # with ACI2025:
 # n_rows MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA pct_MCC_ecoD_NA pct_MCC_ecoR_NA pct_MCC_ecoP_NA
 #   4015        1731        1149        1000            43.1            28.6            24.9
+
+# exact match (not lenient):
+# n_rows MCC_ecoD_NA MCC_ecoR_NA MCC_ecoP_NA pct_MCC_ecoD_NA pct_MCC_ecoR_NA pct_MCC_ecoP_NA
+#   3213        1996        1431        1285            62.1            44.5            40.0
 
 # How often is overall accuracy NA at each level?
 
@@ -719,6 +836,10 @@ fallback_joined_grouped %>%
 # with ACI2025:
 # n_rows OA_ecoD_NA OA_ecoR_NA OA_ecoP_NA pct_OA_ecoD_NA pct_OA_ecoR_NA pct_OA_ecoP_NA
 #   4015          0          0          0              0              0              0
+
+# exact match (not lenient):
+# n_rows OA_ecoD_NA OA_ecoR_NA OA_ecoP_NA pct_OA_ecoD_NA pct_OA_ecoR_NA pct_OA_ecoP_NA
+#   3213          0          0          0              0              0              0
 
 fallback_joined_atomic %>%
   summarise(
@@ -760,6 +881,10 @@ fallback_joined_grouped %>%
 # n_rows BA_ecoD_NA BA_ecoR_NA BA_ecoP_NA pct_BA_ecoD_NA pct_BA_ecoR_NA pct_BA_ecoP_NA
 #   4015       1515       1090        995           37.7           27.1           24.8
 
+# exact match (not lenient):
+# n_rows BA_ecoD_NA BA_ecoR_NA BA_ecoP_NA pct_BA_ecoD_NA pct_BA_ecoR_NA pct_BA_ecoP_NA
+#   3213       1801       1381       1258           56.1           43.0           39.2
+
 fallback_joined_atomic %>%
   summarise(
     n_rows = n(),
@@ -800,6 +925,10 @@ accuracy_with_fallback_grouped %>%
 # with ACI2025:
 # n_rows OA_NA OA_pct_NA F1_NA F1_pct_NA BA_NA BA_pct_NA MCC_NA MCC_pct_NA
 #   4015     0         0   423      10.5  1223      30.5   1421       35.4
+
+# exact match (not lenient):
+# n_rows OA_NA OA_pct_NA F1_NA F1_pct_NA BA_NA BA_pct_NA MCC_NA MCC_pct_NA
+#   3213     0         0   272      8.47  1575      49.0   1754       54.6
 
 accuracy_with_fallback_atomic %>%
   summarise(
@@ -959,6 +1088,26 @@ table(combined$raster_group, useNA = "ifany")
 #   lcr  luts10  luts30     mgi     ngi    pglc     pli    plvi    pudl 
 # 73879   73879   73879    7336   24479   50713   30587     602   37736 
 
+# exact matching (not lenient)
+# aci2024 aci2025     cec     cgr    cnvc      dw    eccc     esa    esri     gcc     glc     gpw     lcc 
+# 610     869   73879   28144   39733  263283   27340   29109    5850    1167   31153    5808   73879 
+# lcr  luts10  luts30     mgi     ngi    pglc     pli    plvi    pudl 
+# 73879   73879   73879    7336   24479   50713   23660     602   37736 
+
+# check atomic
+table(combined$raster, useNA = "ifany")
+
+# aci2024 aci2025     cec     cgr    cnvc      dw    eccc     esa    esri     gcc     glc     gpw     lcc 
+# 265807    5884   73879   28144   39733  268285   60363   62191  271016    1167   38724  270552   73879 
+# lcr  luts10  luts30     mgi     ngi    pglc  pli_ap  pli_cu  pli_mg  pli_mm    plvi    pudl 
+# 73879   73879   73879    7336   24479   50713     710     920   20638    8319     602   37736 
+
+# exact match:
+# aci2024 aci2025     cec     cgr    cnvc      dw    eccc     esa    esri     gcc     glc     gpw     lcc 
+# 610     869   73879   28144   39733  263283   27340   29109    5850    1167   31153    5808   73879 
+# lcr  luts10  luts30     mgi     ngi    pglc  pli_ap  pli_cu  pli_mg  pli_mm    plvi    pudl 
+# 73879   73879   73879    7336   24479   50713     710     920   13711    8319     602   37736 
+
 combined %>%
   count(raster_group) %>%
   ggplot(aes(x = reorder(raster_group, n), y = n)) +
@@ -1011,6 +1160,10 @@ accuracy_with_fallback_grouped %>%
 # with ACI2025:
 # no_grass no_notgrass no_positive_predictions no_negative_predictions BA_NA MCC_NA
 #      132        1091                    287                      19  1223   1421
+
+# exact match (not lenient):
+# no_grass no_notgrass no_positive_predictions no_negative_predictions BA_NA MCC_NA
+#       12        1563                     259                      28  1575   1754
 
 # Why different numbers in PLI grouped vs atomic? - this is fixed
 atomic_keys_grouped <- accuracy_by_ecodistrict_atomic %>%
@@ -1140,6 +1293,13 @@ accuracy_with_fallback_grouped %>%
 # F1_grass                 0.7075173         0.7481058 1.0000000 0.6261291
 # MCC                      0.6917296         0.8216997 0.6261291 1.0000000
 
+# exact match (not lenient):
+#                   Overall_Accuracy Balanced_Accuracy  F1_grass       MCC
+# Overall_Accuracy         1.0000000         0.6613476 0.8386212 0.6708037
+# Balanced_Accuracy        0.6613476         1.0000000 0.6780332 0.8011216
+# F1_grass                 0.8386212         0.6780332 1.0000000 0.5205585
+# MCC                      0.6708037         0.8011216 0.5205585 1.0000000
+
 #------ Check distribution of number of points ------#
 
 accuracy_with_fallback_grouped %>%
@@ -1153,8 +1313,8 @@ accuracy_with_fallback_grouped %>%
   ) +
   labs(
     title = "Distribution of Validation Sample Sizes",
-    x = "N evaluated",
-    y = "Count of ecological units"
+    x = "n evaluated",
+    y = "Count of ecodistricts"
   ) +
   theme_bw()
 
@@ -1165,8 +1325,8 @@ accuracy_with_fallback_grouped %>%
   scale_x_log10() +
   labs(
     title = "Distribution of Validation Sample Sizes",
-    x = "N evaluated (log10 scale)",
-    y = "Count of ecological units"
+    x = "n evaluated (log10 scale)",
+    y = "Count of ecodistricts"
   ) +
   theme_bw()
 
@@ -1184,6 +1344,10 @@ accuracy_with_fallback_grouped %>%
 # with ACI2025:
 # n_below_20 pct_below_20
 #         40        0.996
+
+# exact match (not lenient):
+# n_below_20 pct_below_20
+#         49         1.53
 
 accuracy_with_fallback_atomic %>%
   summarise(
@@ -1288,6 +1452,58 @@ accuracy_with_fallback_atomic %>%
 # 39 aci2025     618 Western~   9.1 ecoprovince           13    0.588           0.462      5     1     0     7
 # 40 aci2025     631 Western~   9.1 ecoprovince           13    0.588           0.462      5     1     0     7
 
+# exact match (not lenient):
+#   raster  Ecds_ID Ecrgn_n  Ecprv source_level N_evaluated F1_grass Overall_Accuracy    TP    TN    FP    FN
+# 1 aci2024     850 Lake Ma~  10.1 ecoprovince            1   NA               0          0     0     0     1
+# 2 aci2025     960 Cascade~  13.2 ecoprovince            1   NA               0          0     0     0     1
+# 3 esri        850 Lake Ma~  10.1 ecoprovince            1   NA               0          0     0     0     1
+# 4 gpw         850 Lake Ma~  10.1 ecoprovince            1    1               1          1     0     0     0
+# 5 gpw         960 Cascade~  13.2 ecoprovince            1   NA               0          0     0     0     1
+# 6 ngi         672 Mid-Bor~   9.3 ecoprovince            1   NA               0          0     0     0     1
+# 7 ngi         850 Lake Ma~  10.1 ecoprovince            1    1               1          1     0     0     0
+# 8 aci2024     960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 9 aci2024     982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 10 cec         960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 11 cec         982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 12 cnvc        960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 13 esa         960 Cascade~  13.2 ecoprovince            2    0.667           0.5        1     0     0     1
+# 14 esa         982 Fraser ~  14.1 ecoprovince            2    1               1          2     0     0     0
+# 15 esri        960 Cascade~  13.2 ecoprovince            2    1               1          2     0     0     0
+# 16 esri        982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 17 glc         960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 18 glc         982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 19 gpw         982 Fraser ~  14.1 ecoprovince            2    1               1          2     0     0     0
+# 20 lcc         960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 21 lcc         982 Fraser ~  14.1 ecoprovince            2    0.667           0.5        1     0     0     1
+# 22 lcr         960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 23 lcr         982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 24 luts10      960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 25 luts10      982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 26 luts30      960 Cascade~  13.2 ecoprovince            2   NA               0          0     0     0     2
+# 27 luts30      982 Fraser ~  14.1 ecoprovince            2   NA               0          0     0     0     2
+# 28 aci2025     591 Peace L~   9.2 ecoprovince            3   NA               0.667      0     2     1     0
+# 29 aci2025     617 Mid-Bor~   9.2 ecoprovince            3   NA               0.667      0     2     1     0
+# 30 aci2025     982 Fraser ~  14.1 ecoprovince            4   NA               0.25       0     1     3     0
+# 31 aci2025     727 Aspen P~  10.2 ecoprovince            6    0.8             0.667      4     0     0     2
+# 32 aci2025     739 Aspen P~  10.2 ecoprovince            6    0.8             0.667      4     0     0     2
+# 33 aci2025     750 Aspen P~  10.2 ecoprovince            6    0.8             0.667      4     0     0     2
+# 34 aci2025     757 Aspen P~  10.2 ecoprovince            6    0.8             0.667      4     0     0     2
+# 35 aci2025     955 Eastern~  13.1 ecoprovince            6   NA               1          0     6     0     0
+# 36 aci2025     956 Eastern~  13.1 ecoprovince            6   NA               1          0     6     0     0
+# 37 gcc        1015 Souther~  14.4 ecoprovince            6    1               1          6     0     0     0
+# 38 aci2025    1017 Norther~  14.4 ecoprovince            7    0.444           0.286      2     0     0     5
+# 39 aci2025    1018 Norther~  14.4 ecoprovince            7    0.444           0.286      2     0     0     5
+# 40 cgr         375 Lake of~   6.5 ecoprovince           11    0.167           0.0909     1     0     0    10
+# 41 cgr         687 Boreal ~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 42 cgr         688 Boreal ~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 43 cgr         695 Boreal ~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 44 cgr         701 Boreal ~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 45 cgr         709 Boreal ~   9.2 ecoprovince           11   NA               0          0     0     0    11
+# 46 pudl        375 Lake of~   6.5 ecoprovince           11    0.533           0.364      4     0     0     7
+# 47 aci2025     618 Western~   9.1 ecoprovince           13    0.588           0.462      5     1     0     7
+# 48 aci2025     631 Western~   9.1 ecoprovince           13    0.588           0.462      5     1     0     7
+# 49 gpw         631 Western~   9.1 ecoprovince           17    0.692           0.529      9     0     0     8
+
 # More info on rows with only 1 or 2 points (grouped)
 accuracy_with_fallback_grouped %>%
   filter(N_evaluated %in% c(1, 2)) %>%
@@ -1345,6 +1561,36 @@ accuracy_with_fallback_grouped %>%
 # 17 luts10      982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
 # 18 luts30      960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
 # 19 luts30      982 Fraser Basin         14.1 ecoprovince            2   NA                  0 
+
+# exact match (not lenient):
+#   raster  Ecds_ID Ecrgn_n             Ecprv source_level N_evaluated F1_grass Overall_Accuracy
+# 1 aci2024     850 Lake Manitoba Plain  10.1 ecoprovince            1   NA                  0  
+# 2 aci2025     960 Cascade Ranges       13.2 ecoprovince            1   NA                  0  
+# 3 esri        850 Lake Manitoba Plain  10.1 ecoprovince            1   NA                  0  
+# 4 gpw         850 Lake Manitoba Plain  10.1 ecoprovince            1    1                  1  
+# 5 gpw         960 Cascade Ranges       13.2 ecoprovince            1   NA                  0  
+# 6 ngi         672 Mid-Boreal Lowland    9.3 ecoprovince            1   NA                  0  
+# 7 ngi         850 Lake Manitoba Plain  10.1 ecoprovince            1    1                  1  
+# 8 aci2024     960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 9 aci2024     982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 10 cec         960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 11 cec         982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 12 cnvc        960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 13 esa         960 Cascade Ranges       13.2 ecoprovince            2    0.667              0.5
+# 14 esa         982 Fraser Basin         14.1 ecoprovince            2    1                  1  
+# 15 esri        960 Cascade Ranges       13.2 ecoprovince            2    1                  1  
+# 16 esri        982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 17 glc         960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 18 glc         982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 19 gpw         982 Fraser Basin         14.1 ecoprovince            2    1                  1  
+# 20 lcc         960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 21 lcc         982 Fraser Basin         14.1 ecoprovince            2    0.667              0.5
+# 22 lcr         960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 23 lcr         982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 24 luts10      960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 25 luts10      982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
+# 26 luts30      960 Cascade Ranges       13.2 ecoprovince            2   NA                  0  
+# 27 luts30      982 Fraser Basin         14.1 ecoprovince            2   NA                  0  
 
 accuracy_with_fallback_atomic %>%
   filter(N_evaluated %in% c(1, 2)) %>%
@@ -1410,6 +1656,11 @@ accuracy_with_fallback_grouped_cons %>%
 # 1     0    62
 # 2     1    29
 
+# exact match (not lenient):
+#     acc     n
+# 1     0    77
+# 2     1     4
+
 accuracy_with_fallback_atomic_cons <- accuracy_with_fallback_atomic %>%
   mutate(
     acc = coalesce(F1_grass, Overall_Accuracy),
@@ -1451,6 +1702,10 @@ accuracy_with_fallback_grouped_cons %>%
 # with ACI2025:
 #  n min_n median_n max_n
 # 91     1       40   329
+
+# exact match (not lenient):
+#   n min_n median_n max_n
+#  81     1       27   247
 
 accuracy_with_fallback_grouped_cons %>%
   filter(
@@ -1547,6 +1802,41 @@ accuracy_with_fallback_grouped_cons %>%
 # 40         187     1
 # 41         211     1
 # 42         329     1
+
+# exact match (not lenient):
+#   N_evaluated     n
+# 1           2    15
+# 2         133     9
+# 3          40     7
+# 4           1     5
+# 5          11     5
+# 6          23     4
+# 7          27     4
+# 8          25     3
+# 9           6     2
+# 10          29     2
+# 11          35     2
+# 12         134     2
+# 13         168     2
+# 14          20     1
+# 15          21     1
+# 16          22     1
+# 17          28     1
+# 18          31     1
+# 19          32     1
+# 20          34     1
+# 21          38     1
+# 22          41     1
+# 23          43     1
+# 24          51     1
+# 25          65     1
+# 26          67     1
+# 27          98     1
+# 28         114     1
+# 29         127     1
+# 30         135     1
+# 31         161     1
+# 32         247     1
 
 accuracy_with_fallback_grouped_cons %>%
   filter(
@@ -1754,6 +2044,90 @@ accuracy_with_fallback_grouped_cons %>%
 # 90 glc         374 Lac Seul Upland     6.2 ecoprovince            1     1 Overall_A~     0     1     0     0
 # 91 ngi         672 Mid-Boreal Lowla~   9.3 ecoprovince            1     0 Overall_A~     0     0     0     1
 
+# exact match (not lenient):
+#   raster  Ecds_ID Ecrgn_n           Ecprv source_level N_evaluated   acc acc_source    TP    TN    FP    FN
+# 1 glc        1006 Thompson-Okanaga~  14.3 ecodistrict          247     0 Overall_A~     0     0     0   247
+# 2 glc        1002 Interior Transit~  14.3 ecoregion            168     0 Overall_A~     0     0     0   168
+# 3 glc        1003 Interior Transit~  14.3 ecoregion            168     0 Overall_A~     0     0     0   168
+# 4 glc        1001 Interior Transit~  14.3 ecodistrict          161     0 Overall_A~     0     0     0   161
+# 5 dw          607 Wabasca Lowland     9.2 ecodistrict          135     1 Overall_A~     0   135     0     0
+# 6 ngi        1017 Northern Contine~  14.4 ecoregion            134     0 Overall_A~     0     0     0   134
+# 7 ngi        1019 Northern Contine~  14.4 ecoregion            134     0 Overall_A~     0     0     0   134
+# 8 glc         587 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 9 glc         588 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 10 glc         590 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 11 glc         592 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 12 glc         594 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 13 glc         596 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 14 glc         597 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 15 glc         598 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 16 glc         600 Peace Lowland       9.2 ecoregion            133     0 Overall_A~     0     0     0   133
+# 17 esri        567 Lake Erie Lowland   8.2 ecodistrict          127     0 Overall_A~     0     0     0   127
+# 18 glc         979 Fraser Plateau     14.2 ecodistrict          114     0 Overall_A~     0     0     0   114
+# 19 ngi        1018 Northern Contine~  14.4 ecodistrict           98     0 Overall_A~     0     0     0    98
+# 20 glc         623 Western Alberta ~   9.1 ecodistrict           67     0 Overall_A~     0     0     0    67
+# 21 esri        568 Lake Erie Lowland   8.2 ecodistrict           65     0 Overall_A~     0     0     0    65
+# 22 pudl        727 Aspen Parkland     10.2 ecodistrict           51     0 Overall_A~     0     0     0    51
+# 23 pudl        684 Boreal Transition   9.2 ecodistrict           43     0 Overall_A~     0     0     0    43
+# 24 esri        570 Lake Erie Lowland   8.2 ecodistrict           41     0 Overall_A~     0     0     0    41
+# 25 cnvc        622 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 26 cnvc        623 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 27 cnvc        628 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 28 cnvc        629 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 29 cnvc        630 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 30 cnvc        631 Western Alberta ~   9.1 ecoregion             40     0 Overall_A~     0     0     0    40
+# 31 dw          601 Mid-Boreal Uplan~   9.2 ecodistrict           40     1 Overall_A~     0    40     0     0
+# 32 eccc       1017 Northern Contine~  14.4 ecodistrict           38     0 Overall_A~     0     0     0    38
+# 33 glc         686 Boreal Transition   9.2 ecodistrict           35     0 Overall_A~     0     0     0    35
+# 34 ngi         631 Western Alberta ~   9.1 ecodistrict           35     0 Overall_A~     0     0     0    35
+# 35 glc         978 Fraser Plateau     14.2 ecodistrict           34     0 Overall_A~     0     0     0    34
+# 36 glc         591 Peace Lowland       9.2 ecodistrict           32     0 Overall_A~     0     0     0    32
+# 37 pudl        692 Boreal Transition   9.2 ecodistrict           31     0 Overall_A~     0     0     0    31
+# 38 glc         692 Boreal Transition   9.2 ecodistrict           29     0 Overall_A~     0     0     0    29
+# 39 ngi        1016 Northern Contine~  14.4 ecodistrict           29     0 Overall_A~     0     0     0    29
+# 40 ngi         686 Boreal Transition   9.2 ecodistrict           28     0 Overall_A~     0     0     0    28
+# 41 cnvc        678 Boreal Transition   9.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 42 glc         586 Peace Lowland       9.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 43 ngi         703 Boreal Transition   9.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 44 pudl        755 Aspen Parkland     10.2 ecodistrict           27     0 Overall_A~     0     0     0    27
+# 45 lcr         586 Peace Lowland       9.2 ecodistrict           25     0 Overall_A~     0     0     0    25
+# 46 luts10      586 Peace Lowland       9.2 ecodistrict           25     0 Overall_A~     0     0     0    25
+# 47 luts30      586 Peace Lowland       9.2 ecodistrict           25     0 Overall_A~     0     0     0    25
+# 48 glc         593 Peace Lowland       9.2 ecodistrict           23     0 Overall_A~     0     0     0    23
+# 49 glc         988 Columbia Mountai~  14.4 ecoregion             23     0 Overall_A~     0     0     0    23
+# 50 glc         990 Columbia Mountai~  14.4 ecoregion             23     0 Overall_A~     0     0     0    23
+# 51 glc         991 Columbia Mountai~  14.4 ecoregion             23     0 Overall_A~     0     0     0    23
+# 52 cnvc        684 Boreal Transition   9.2 ecodistrict           22     0 Overall_A~     0     0     0    22
+# 53 pudl        590 Peace Lowland       9.2 ecodistrict           21     0 Overall_A~     0     0     0    21
+# 54 pudl        839 Aspen Parkland     10.2 ecodistrict           20     0 Overall_A~     0     0     0    20
+# 55 cgr         687 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 56 cgr         688 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 57 cgr         695 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 58 cgr         701 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 59 cgr         709 Boreal Transition   9.2 ecoprovince           11     0 Overall_A~     0     0     0    11
+# 60 aci2025     955 Eastern Vancouve~  13.1 ecoprovince            6     1 Overall_A~     0     6     0     0
+# 61 aci2025     956 Eastern Vancouve~  13.1 ecoprovince            6     1 Overall_A~     0     6     0     0
+# 62 aci2024     960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 63 aci2024     982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 64 cec         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 65 cec         982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 66 cnvc        960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 67 esri        982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 68 glc         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 69 glc         982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 70 lcc         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 71 lcr         960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 72 lcr         982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 73 luts10      960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 74 luts10      982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 75 luts30      960 Cascade Ranges     13.2 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 76 luts30      982 Fraser Basin       14.1 ecoprovince            2     0 Overall_A~     0     0     0     2
+# 77 aci2024     850 Lake Manitoba Pl~  10.1 ecoprovince            1     0 Overall_A~     0     0     0     1
+# 78 aci2025     960 Cascade Ranges     13.2 ecoprovince            1     0 Overall_A~     0     0     0     1
+# 79 esri        850 Lake Manitoba Pl~  10.1 ecoprovince            1     0 Overall_A~     0     0     0     1
+# 80 gpw         960 Cascade Ranges     13.2 ecoprovince            1     0 Overall_A~     0     0     0     1
+# 81 ngi         672 Mid-Boreal Lowla~   9.3 ecoprovince            1     0 Overall_A~     0     0     0     1
+
 # ----------------------------
 # 16) Export file for consensus mapping
 # ----------------------------
@@ -1829,3 +2203,46 @@ accuracy_with_fallback_grouped_cons %>%
     title = "Accuracy by dataset (grass vs non-grass)"
   ) +
   theme_bw()
+
+# with number of points
+# Accuracy values
+acc_df <- accuracy_with_fallback_grouped_cons %>%
+  group_by(raster) %>%
+  summarise(acc = mean(acc, na.rm = TRUE), .groups = "drop")
+
+# Validation point counts
+count_df <- combined %>%
+  count(raster_group, name = "n") %>%
+  rename(raster = raster_group)
+
+# Join counts to accuracy table
+plot_df <- acc_df %>%
+  left_join(count_df, by = "raster")
+
+p <- ggplot(plot_df,
+       aes(x = reorder(raster, acc), y = acc)) +
+  geom_col() +
+  geom_text(
+    aes(y = acc * 0.75, 
+        label = paste0(scales::percent(acc, accuracy = 0.1),
+                       " (n=", scales::comma(n), ")")),
+    color = "white",
+    size = 4
+  ) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_percent()) +
+  labs(
+    x = "Dataset",
+    y = "Accuracy (%)",
+    title = "Accuracy by dataset (grass vs non-grass)"
+  ) +
+  theme_bw()
+
+p
+
+ggsave(file.path(out_dir, "accuracy_by_dataset_binary.png"),
+  plot = p,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
