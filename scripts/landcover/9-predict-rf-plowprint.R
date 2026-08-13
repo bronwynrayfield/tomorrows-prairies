@@ -130,4 +130,11 @@ hist(values(pred), breaks = 50)
 obs_msk <- subst(rast(mask_file) & !is.na(crop(rast(resp_file), rast(mask_file), snap = "out")), FALSE, NA)
 obs <- mask(crop(rast(resp_file), obs_msk, snap = "out"), obs_msk)
 cat("observed base rate :", round(global(obs, "mean", na.rm = TRUE)[[1]], 3), "\n")
-# observed base rate : 0.713 
+# observed base rate : 0.713
+
+oob_p    <- fit$predictions[, "1"]
+oob_acc  <- mean((oob_p > 0.5) == (d$plowed == 1))
+base_acc <- max(mean(d$plowed == 1), 1 - mean(d$plowed == 1))
+cat("OOB accuracy (0.5)      :", round(oob_acc, 3),
+    sprintf("(no-skill floor %.3f, Brier %.3f)\n", base_acc, fit$prediction.error))
+# OOB accuracy (0.5)      : 0.916 (no-skill floor 0.712, Brier 0.062)
