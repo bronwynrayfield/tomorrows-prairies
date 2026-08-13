@@ -18,6 +18,8 @@ library(ggplot2)
 library(pheatmap)
 library(igraph)
 library(ggraph)
+library(ape)
+library(ggrepel)
 
 ## ---- Load results ---- ##
 
@@ -41,6 +43,11 @@ pairwise_clean <- pairwise_long %>%
 # Filter out pairs with very little overlapping data (PLI subsections)
 pairwise_clean <- pairwise_clean %>%
   filter(N > 3400)
+
+# Filter out HFI
+pairwise_clean <- pairwise_clean %>%
+  filter(raster_i != "hfi",
+         raster_j != "hfi")
 
 ## ---- Helper: convert to matrix ---- ##
 to_matrix <- function(df, value_col) {
@@ -105,6 +112,54 @@ mat_acc        <- to_matrix(pairwise_clean, "accuracy")
 #mat_sorensen[mat_sorensen == 1] <- NA
 #mat_kappa[mat_kappa == 1]       <- NA
 
+## ---- PCoa ---- ##
+dist_mat <- as.matrix(1 - mat_mcc)
+
+dist_mat[!is.finite(dist_mat)] <-
+  max(dist_mat, na.rm = TRUE)
+
+pcoa_res <- pcoa(as.dist(dist_mat))
+
+# Keep only datasets with complete pairwise comparisons
+# keep <- complete.cases(mat_mcc_pcoa)
+# mat_mcc_pcoa <- mat_mcc_pcoa[keep, keep]
+
+# Extract scores
+scores <- as.data.frame(pcoa_res$vectors[, 1:2])
+scores$dataset <- rownames(scores)
+
+# Plot
+p <- ggplot(
+  scores,
+  aes(Axis.1, Axis.2, label = dataset)
+) +
+  geom_point(size = 3) +
+  geom_text_repel(
+    size = 4,
+    max.overlaps = Inf,
+    box.padding = 0.5,
+    point.padding = 0,
+    segment.alpha = 0.5,
+    seed = 123
+  ) +
+  theme_bw() +
+  labs(
+    title = "PCoA of Triclass Dataset Agreement (MCC)",
+    x = paste0(
+      "PCoA 1 (",
+      round(100 * pcoa_res$values$Relative_eig[1], 1),
+      "%)"
+    ),
+    y = paste0(
+      "PCoA 2 (",
+      round(100 * pcoa_res$values$Relative_eig[2], 1),
+      "%)"
+    )
+  )
+
+p
+
+
 ## ---- Heatmaps ---- ##
 pheatmap(mat_kappa,
          main = "Cohen's Kappa",
@@ -118,7 +173,7 @@ mat_mcc_nohfi <- mat_mcc[rownames(mat_mcc) != "hfi",
 
 pheatmap(mat_mcc_nohfi,
          main = "Multi-class MCC",
-         color = colorRampPalette(c("blue","white","red"))(50),
+         color = colorRampPalette(c("red","white","blue"))(50),
          na_col = "black",
          filename = file.path(results_dir, "heatmap_mcc.png"))
 
@@ -220,11 +275,11 @@ ggraph(g, layout = "fr") +
 ggsave(file.path(results_dir, "network_mcc_050.png"),
        width = 8, height = 6, dpi = 300)
 
-# For Kappa
-threshold <- 0.6
+# For macro Jaccard
+threshold <- 0.5
 
 edges <- pairwise_clean %>%
-  filter(kappa > threshold)
+  filter(jaccard_macro > threshold)
 
 g <- graph_from_data_frame(edges, directed = FALSE)
 
@@ -233,9 +288,9 @@ ggraph(g, layout = "fr") +
   geom_node_point(size = 5) +
   geom_node_text(aes(label = name), repel = TRUE) +
   theme_void() +
-  ggtitle(paste("Network (Kappa >", threshold, ")"))
+  ggtitle(paste("Network (Macro Jaccard >", threshold, ")"))
 
-ggsave(file.path(results_dir, "network_kappa_060.png"),
+ggsave(file.path(results_dir, "network_macrojaccard_050.png"),
        width = 8, height = 6, dpi = 300)
 
 ## ---- Class driving disagreement ---- ##

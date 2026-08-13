@@ -152,6 +152,17 @@ writeRaster(aci_merged_reproj_algn, aci_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+# Per Emily Lindsay:
+# “Undifferentiated is Class 120 and the basic landcover level. 
+# Cropland is Class 121 and is the next level of Ag division along with Class 122 (pasture/forage). 
+# Cropland gets subdivided into all the various non-122 crop types.”
+# So I think the distinction is for when they do the classification itself – which is split into 
+# two parts, they classify land cover first, and all cropland is 120; and then the run the cropland 
+# classification on everything that is 120 (which is split again into 121 vs 122 (forage) and then 
+# 121 is classified into all the annual crop classes. 
+# Let me know if you have any other Q’s – I don’t think there should be an abundance of pixels in 
+# 120 or 121 – but technically 120 could have forage in it, but 121 should not. 
+                                                                                                
 # reclassify to binary (0 = not grass, 1 = grass)
 aci_algn_binary <- classify(aci_merged_reproj_algn, 
                             rcl = matrix(c(
@@ -218,7 +229,7 @@ aci_algn_binary <- classify(aci_merged_reproj_algn,
                               189, 0, # other fruits
                               190, 0, # vineyards
                               191, 0, # hops
-                              192, 0, # sod - should be 1
+                              192, 0, # sod 
                               193, 0, # herbs
                               194, 0, # nursery
                               195, 0, # buckwheat
@@ -322,7 +333,7 @@ aci_algn_nattam <- classify(aci_merged_reproj_algn,
                               189, 0, # other fruits
                               190, 0, # vineyards
                               191, 0, # hops
-                              192, 0, # sod - should be 1
+                              192, 0, # sod 
                               193, 0, # herbs
                               194, 0, # nursery
                               195, 0, # buckwheat
