@@ -1,38 +1,26 @@
 # =============================================================================
-# 3-crop-data.R
+# 3a-crop-data.R
 # =============================================================================
 #
 # Purpose:
 #   Crops and masks all datasets to the modelling extent.
-#   Also derives topographic layers (slope, aspect) from the DEM.
 #   All outputs are saved to processeddatasets/ with "modelling-extent" tag.
+#   Also creates binary land cover rasters from AAFC LUTS
 #
 # Inputs:
 #   - Modelling extent (shapefile and raster template)
-#   - Pilot area shapefile
-#   - All reprojected datasets from 2-project-data.R:
-#       AAFC LUTS 2000, 2010, 2015, 2020
-#       ECCC most recent change layers (grass, improved pasture, 
-#         unimproved pasture, crop, built-up)
-#       Olimb & Robinson 2019 cropland suitability
-#       Census subdivisions
-#       National ecological framework (ecozones, ecoregions, ecodistricts)
-#       Protected areas (CPCAD 2024)
-#       Soil (OC, BD, clay, sand, silt, pH)
-#       DEM (NRCan MRDEM 30m)
+#   - All reprojected datasets from 2-project-data.R
 #
 # Outputs:
 #   - All datasets cropped/masked to modelling extent
-#   - All datasets cropped/masked to pilot area (AAFC LUTS only)
-#   - Slope and aspect derived from DEM
+#   - Binary land cover rasters derived from AAFC LUTS
 #
 # Notes:
-#   - Roads processing incomplete — rasterization pending
 #   - pa uses st_crop() to bounding box rather than st_intersection()
 #     for speed; NA handling deferred to rasterization step
 #
 # Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
+#   - 0a-setup.R (parameters, file paths, functions)
 #   - 2-project-data.R outputs
 # =============================================================================
 
@@ -124,12 +112,6 @@ nr_cdd_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, n
 # Socio-economic
 canfax_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea"))
 
-#--- Crop and mask to pilot area ----
-# LULC - AAFC LUTS
-lulc2020_pilot <- mask(crop(lulc2020_prairies_reproj, pilot), pilot)
-lulc2015_pilot <- mask(crop(lulc2015_prairies_reproj, pilot), pilot)
-crop_suit_pilot <- mask(crop(crop_suit_reproj, pilot), pilot)
-
 #--- Crop and mask to modelling extent ----
 # Census subdivisions
 census <- st_intersection(census_reproj, me)
@@ -211,13 +193,6 @@ nr_cdd_fut <- mask(crop(nr_cdd_fut_reproj, me_r), me_r)
 canfax <- st_intersection(canfax_reproj, me)
 
 #--- Write to disk ----
-# Pilot area
-write_rast_tagged(lulc2020_pilot, "./processeddatasets", "landcover/aafc/cropped", aafc2020_filename, "pilot")
-write_rast_tagged(lulc2015_pilot, "./processeddatasets", "landcover/aafc/cropped", aafc2015_filename, "pilot")
-write_rast_tagged(crop_suit_pilot, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "pilot")
-
-
-# Modelling extent
 write_sf_tagged(census, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "modelling-extent")
 write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_filename, "modelling-extent")
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
@@ -273,28 +248,31 @@ write_sf_tagged(canfax, "./processeddatasets", canfax_filepath, canfax_filename,
 #st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
 
 
-dist_to_road_m <- distance(roads)
+#--- Create binary layers from AAFC LUTS rasters ----
+lulc <- list(
+  `2010` = rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2010_filename, "modelling-extent")),
+  `2015` = rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2015_filename, "modelling-extent")),
+  `2020` = rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent"))
+)
 
+classes <- list(
+  `2010` = c("native", "tame&crop", "settlement", "forest", "water"),
+  `2015` = c("native", "tame", "crop", "settlement", "forest", "water"),
+  `2020` = c("native", "tame", "crop", "settlement", "forest", "water")
+)
 
-#--- Extra ----
+#--- LULC binary layers ----
+bin_layers <- list()
 
-# Pilot raster template
-pilot_r <- crop(pilot_r_prairies, pilot)
-pilot_r <- mask(pilot_r, pilot)
-
-
-# Protected areas
-# This didn't work so I had to run an intersection manually in QGIS
-# pa <- st_intersection(pa_reproj, pilot)
-# gnp <- pa[pa$NAME_E == "Grasslands National Park Of Canada", ]
-
-#--- Pad the pilot area for use with some spatial predictors 
-# Pad the pilot extent by 20 cells
-pad <- res(pilot_r) * 120
-pilot_v <- vect(st_transform(pilot, crs(pilot)))
-pilot_pad <- buffer(pilot_v, width = pad)
-pilot_sf <- st_as_sf(pilot)
-pilot_pad_sf <- st_as_sf(pilot_pad)
-# Plot both padded and un-padded together
-plot(st_geometry(pilot_pad_sf), col = NA, border = "red", lwd = 2)
-plot(st_geometry(pilot_sf), col = NA, border = "blue", lwd = 2, add = TRUE)
+# Reclass to binary layer and save result to disk
+for (yr in names(lulc)) {
+  bin_layers[[yr]] <- list()
+  for (cls in classes[[yr]]) {
+    r <- reclass_aafc(lulc[[yr]], scheme = "binary", binary_class = cls, check = TRUE)
+    writeRaster(
+      r, file.path(out_dir, sprintf("AAFC%s_%s.tif", yr, cls)),
+      overwrite = TRUE, gdal = c("COMPRESS=DEFLATE", "PREDICTOR=2")
+    )
+    bin_layers[[yr]][[cls]] <- r
+  }
+}
