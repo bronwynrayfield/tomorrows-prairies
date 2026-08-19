@@ -124,7 +124,7 @@ meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
-acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_ecoregprovfallback_atomic_combinedCIandCM_28Jul2026.csv"
+acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_atomic_combinedCIandCM_forconsensus_28Jul2026.csv"
 acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_atomic_combinedCIandCM_forconsensus_29Jul2026_final.csv"
 
 ## ---- Message log ---- ##
@@ -338,6 +338,44 @@ nt_local  <- download_files(nt_files)
 
 log_msg("All rasters downloaded locally")
 
+# ----------------------------------
+# Remove rasters with no pilot-area data
+# ----------------------------------
+
+has_data <- function(f) {
+  r <- rast(f)
+  global(!is.na(r), "sum", na.rm = TRUE)[1,1] > 0
+}
+
+bin_keep <- vapply(bin_local, has_data, logical(1))
+nt_keep  <- vapply(nt_local, has_data, logical(1))
+
+if (any(!bin_keep)) {
+  log_msg(
+    "Removing empty binary rasters: ",
+    paste(names(bin_local)[!bin_keep], collapse = ", ")
+  )
+}
+
+if (any(!nt_keep)) {
+  log_msg(
+    "Removing empty tri-class rasters: ",
+    paste(names(nt_local)[!nt_keep], collapse = ", ")
+  )
+}
+
+bin_local <- bin_local[bin_keep]
+nt_local  <- nt_local[nt_keep]
+
+bin_meta <- bin_meta %>%
+  filter(raster_id %in% names(bin_local))
+
+nt_meta <- nt_meta %>%
+  filter(raster_id %in% names(nt_local))
+
+log_msg("Binary rasters retained: ", length(bin_local))
+log_msg("Tri-class rasters retained: ", length(nt_local))
+
 ## ---- Confirm raster alignment ---- ##
 message("Checking alignment...")
 log_msg("Checking raster alignment")
@@ -488,7 +526,7 @@ acc_nt <- aws.s3::s3read_using(
 ## ---- Validate binary accuracy table ---- ##
 log_msg("Binary accuracy rows loaded: ", nrow(acc_bin))
 
-req_cols <- c(
+req_cols_bin <- c(
   "raster_name",
   "Ecds_ID",
   "acc"
@@ -497,7 +535,7 @@ req_cols <- c(
 if (!all(req_cols %in% names(acc_bin))) {
   stop(
     "Missing required columns in binary accuracy table: ",
-    paste(setdiff(req_cols, names(acc_bin)), collapse = ", ")
+    paste(setdiff(req_cols_bin, names(acc_bin)), collapse = ", ")
   )
 }
 
@@ -516,13 +554,28 @@ if (nrow(dup_check) > 0) {
   )
 }
 
-missing_bin_names <- setdiff(
+extra_bin_names <- setdiff(
   unique(acc_bin$raster_name),
   meta$raster_id
 )
 
-if(length(missing_bin_names) > 0)
-  stop("Raster names do not match")
+if (length(extra_bin_names) > 0) {
+  
+  warning(
+    "Accuracy table contains unused rasters: ",
+    paste(extra_bin_names, collapse = ", ")
+  )
+  
+  acc_bin <- acc_bin %>%
+    filter(!raster_name %in% extra_bin_names)
+  
+  log_msg(
+    "Removed ",
+    length(extra_bin_names),
+    " unused raster(s) from acc_bin"
+  )
+  
+}
 
 ## ---- Validate tri-class accuracy table ---- ##
 log_msg("Tri-class accuracy rows loaded: ", nrow(acc_nt))
@@ -530,7 +583,7 @@ log_msg("Tri-class accuracy rows loaded: ", nrow(acc_nt))
 req_cols_nt <- c(
   "raster_name",
   "Ecds_ID",
-  "acc",
+  #"acc",
   "native_metric",
   "tame_metric",
   "not_metric"
@@ -562,13 +615,28 @@ if (nrow(dup_check_nt) > 0) {
   )
 }
 
-missing_nt_names <- setdiff(
+extra_nt_names <- setdiff(
   unique(acc_nt$raster_name),
   meta$raster_id
 )
 
-if(length(missing_nt_names) > 0)
-  stop("Raster names do not match")
+if (length(extra_nt_names) > 0) {
+  
+  warning(
+    "Accuracy table contains unused rasters: ",
+    paste(extra_nt_names, collapse = ", ")
+  )
+  
+  acc_nt <- acc_nt %>%
+    filter(!raster_name %in% extra_nt_names)
+  
+  log_msg(
+    "Removed ",
+    length(extra_nt_names),
+    " unused raster(s) from acc_nt"
+  )
+  
+}
 
 ## ---- Add temporal weighting ---- ##
 log_msg("Applying accuracy + temporal weighting")
@@ -583,8 +651,16 @@ if (any(acc_bin$acc < 0 | acc_bin$acc > 1, na.rm = TRUE)) {
   stop("acc_bin contains values outside [0,1]")
 }
 
-if (any(acc_nt$acc < 0 | acc_nt$acc > 1, na.rm = TRUE)) {
-  stop("acc_nt contains values outside [0,1]")
+for (col in c("native_metric", "tame_metric", "not_metric")) {
+  
+  if (any(acc_nt[[col]] < 0 | acc_nt[[col]] > 1, na.rm = TRUE)) {
+    
+    stop(
+      sprintf("acc_nt$%s contains values outside [0,1]", col)
+    )
+    
+  }
+  
 }
 
 acc_to_weight <- function(x) {
@@ -687,48 +763,16 @@ if(any(is.na(acc_nt$not_metric)))
 
 acc_nt <- acc_nt %>%
   mutate(
-    
-    # native_metric =
-    #   coalesce(
-    #     F1_2,
-    #     Macro_F1,
-    #     Balanced_Accuracy
-    #   ),
-    # 
-    # tame_metric =
-    #   coalesce(
-    #     F1_1,
-    #     Macro_F1,
-    #     Balanced_Accuracy
-    #   ),
-    # 
-    # not_metric =
-    #   coalesce(
-    #     F1_0,
-    #     Macro_F1,
-    #     Balanced_Accuracy
-    #   ),
+    w_time = time_decay(
+      year,
+      target_year,
+      lambda
+    ),
     
     W_native = native_metric * w_time,
     W_tame   = tame_metric * w_time,
     W_not    = not_metric   * w_time
   )
-
-# acc_nt <- acc_nt %>%
-#   mutate(
-#     
-#     w_time = time_decay(
-#       year,
-#       target_year,
-#       lambda
-#     ),
-#     
-#     # class-specific weights
-#     W_tame   = pmax(F1_1, 1e-4) * w_time,
-#     W_native = pmax(F1_2, 1e-4) * w_time,
-#     W_not    = pmax(Macro_F1, 1e-4) * w_time # must decide whether to use Macro_F1 or F1_0
-#   )                                   # Macro_F1 = balanced class influence, prevents nongrass from dominating
-#                                       # F1_0 = statistically pure, nongrass will receive larger weights
 
 ## ---- Validate tri-class raster coverage ---- ##
 
@@ -955,17 +999,6 @@ stopifnot(
   )
 )
 
-
-#mcc_bin_stack    <- rast("mcc_bin.tif")
-#mcc_tame_stack   <- rast("mcc_tame.tif")
-#mcc_native_stack <- rast("mcc_native.tif")
-
-#penalty_bin_stack <- rast("penalty_bin.tif")
-#penalty_nt_stack  <- rast("penalty_nt.tif")
-
-#out_dir <- "tiles_out"
-#dir.create(out_dir, showWarnings = FALSE)
-
 # Confirm weights are within expected bounds
 tmp_chk1 <- global(acc_bin_stack, c("min","max"), na.rm=TRUE)
 log_msg(capture.output(tmp_chk1))
@@ -983,9 +1016,11 @@ log_msg(capture.output(tmp_chk4))
 # TILE GRID
 # =========================
 # ~2000–5000 tiles is ideal, 500-1500 for single node
-tiles <- makeTiles(pilot, n = 10, overlap = 0) # for sa, make n = 1000
+#tiles <- makeTiles(pilot, n = 10) # for sa, make n = 1000
 
-log_msg("Tile count: ", length(tiles))
+tiles <- getTileExtents(pilot,c(500, 500))
+
+log_msg("Tile count: ", nrow(tiles))
 
 # Save tiles for reproducibility
 writeVector(vect(tiles), "tile_index.gpkg", overwrite=TRUE)
@@ -1001,7 +1036,7 @@ max_entropy <- log(3)
 
 process_tile <- function(i) {
   
-  tile <- tiles[[i]]
+  tile <- ext(tiles[i, ])
   
   out_file <- file.path(tile_dir, sprintf("tile_%05d.tif", i))
   if (file.exists(out_file)) return(out_file)
@@ -1138,6 +1173,11 @@ process_tile <- function(i) {
   )
   
   names(max_class_ratio) <- "max_class_ratio"
+  
+  cat("nlyr(ratio_not_dataset) =", nlyr(ratio_not_dataset), "\n")
+  cat("nlyr(ratio_native_dataset) =", nlyr(ratio_native_dataset), "\n")
+  cat("nlyr(ratio_tame_dataset) =", nlyr(ratio_tame_dataset), "\n")
+  cat("nlyr(max_class_ratio) =", nlyr(max_class_ratio), "\n")
   
   # ----------------------
   # DATASET COUNTS
@@ -1490,7 +1530,21 @@ process_tile <- function(i) {
 # =========================
 # MOSAIC AND EXPORT
 # =========================
-results <- lapply(seq_along(tiles), process_tile)
+results <- lapply(seq_len(nrow(tiles)), process_tile)
+
+for (i in seq_len(nrow(tiles))) {
+  
+  cat("\n--- TILE", i, "---\n")
+  
+  tryCatch(
+    process_tile(i),
+    error = function(e) {
+      cat("FAILED TILE:", i, "\n")
+      print(e)
+      stop(e)
+    }
+  )
+}
 
 print("All tiles completed.")
 
@@ -1819,7 +1873,7 @@ dir.create(temp_tile_dir, showWarnings = FALSE)
 # Tile processor
 process_temporal_tile <- function(i, temporal_stack) {
   
-  tile <- tiles[[i]]
+  tile <- ext(tiles[i, ])
   
   out_file <- file.path(
     temp_tile_dir,
@@ -2055,7 +2109,7 @@ names(native_stack) <- paste0("y", nt_years)
 # Tiled triclass temporal processor
 process_triclass_temporal_tile <- function(i) {
   
-  tile <- tiles[[i]]
+  tile <- ext(tiles[i, ])
   
   out_file <- file.path(
     temp_tile_dir,
