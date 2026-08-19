@@ -110,19 +110,22 @@ FORCE_REBUILD <- TRUE
 
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/consensus_map"
 log_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
+
 terra_dir    <- file.path(tmp_root, "terra")
 local_dir    <- file.path(tmp_root, "data")
 stack_dir    <- file.path(tmp_root, "stacks")
+diag_dir     <- file.path(tmp_root, "diagnostics")
+dir.create(diag_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(local_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(stack_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(terra_dir, recursive = TRUE, showWarnings = FALSE)
 
-meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_nohfi.csv"
+meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_nattam_with_path_withaci2024_nohfi_cec_luts10_aci2025_pglc_nodups.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
-acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_by_ecodistrict_atomic_combinedCIandCM_23Jun2026.csv"
-acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_by_ecodistrict_atomic_lenient_23Jun2026.csv"
+acc_bin_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/binary_accuracy_ecoregprovfallback_atomic_combinedCIandCM_28Jul2026.csv"
+acc_nt_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/accuracy_metrics/nattam_accuracy_atomic_combinedCIandCM_forconsensus_29Jul2026_final.csv"
 
 ## ---- Message log ---- ##
 run_ts <- format(Sys.time(), "%Y%m%d_%H%M%S")
@@ -145,6 +148,41 @@ on.exit({
     )
   }
 }, add = TRUE)
+
+log_msg("---- SESSION INFO ----")
+
+script_name <- tryCatch({
+  cmd_args <- commandArgs(trailingOnly = FALSE)
+  sub("^--file=", "", cmd_args[grep("^--file=", cmd_args)])
+}, error = function(e) NA_character_)
+
+log_msg("Script name: ", script_name)
+
+session_lines <- capture.output(sessionInfo())
+
+for (ln in session_lines) {
+  log_msg(ln)
+}
+
+log_msg("R version: ", R.version.string)
+log_msg("Platform: ", R.version$platform)
+log_msg("Working directory: ", getwd())
+log_msg("terra version: ", as.character(packageVersion("terra")))
+log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
+log_msg("aws.s3 version: ", packageVersion("aws.s3"))
+log_msg("readr version: ", packageVersion("readr"))
+log_msg("Temp root: ", tmp_root)
+log_msg("GDAL_CACHEMAX: ", Sys.getenv("GDAL_CACHEMAX"))
+log_msg("FORCE_REBUILD: ", FORCE_REBUILD)
+log_msg("Sys.info: ",
+        paste(names(Sys.info()), Sys.info(), collapse = "; "))
+log_msg("terra options:")
+capture.output(print(terraOptions())) |>
+  lapply(log_msg)
+gc_out <- capture.output(gc())
+log_msg(paste(gc_out, collapse = " | "))
+
+log_msg("---- END SESSION INFO ----")
 
 log_msg("Starting consensus mapping analysis")
 
@@ -262,9 +300,15 @@ download_files <- function(files_named) {
       
       # crop + mask to pilot
       r <- rast(raw_file)
-      
+
       r <- crop(r, pilot)
       r <- mask(r, pilot)
+      
+      # crop + mask to study area
+      # r <- rast(raw_file)
+      # 
+      # r <- crop(r, sa)
+      # r <- mask(r, sa)
       
       writeRaster(
         r,
@@ -707,6 +751,9 @@ ecodist_r <- rast(ecodist_file)
 ecodist_r <- crop(ecodist_r, pilot)
 ecodist_r <- mask(ecodist_r, pilot)
 
+# ecodist_r <- crop(ecodist_r, sa)
+# ecodist_r <- mask(ecodist_r, sa)
+
 ecodist_r <- as.int(ecodist_r)
 
 if (!compareGeom(ecodist_r, bin_stack, stopOnError=FALSE)) {
@@ -916,29 +963,20 @@ stopifnot(
 #dir.create(out_dir, showWarnings = FALSE)
 
 # Confirm weights are within expected bounds
-global(
-  acc_bin_stack,
-  c("min","max"),
-  na.rm = TRUE
-)
+tmp_chk1 <- global(acc_bin_stack, c("min","max"), na.rm=TRUE)
+log_msg(capture.output(tmp_chk1))
 
-global(
-  metric_tame_stack,
-  c("min","max"),
-  na.rm = TRUE
-)
+tmp_chk2 <- global(metric_tame_stack, c("min","max"), na.rm = TRUE)
+log_msg(capture.output(tmp_chk2))
 
-global(
-  metric_native_stack,
-  c("min","max"),
-  na.rm = TRUE
-)
+tmp_chk3 <- global(metric_native_stack, c("min","max"), na.rm = TRUE)
+log_msg(capture.output(tmp_chk3))
 
 # =========================
 # TILE GRID
 # =========================
 # ~2000–5000 tiles is ideal, 500-1500 for single node
-tiles <- makeTiles(sa, n = 1000, overlap = 0)
+tiles <- makeTiles(pilot, n = 10, overlap = 0) # for sa, make n = 1000
 
 log_msg("Tile count: ", length(tiles))
 
@@ -988,17 +1026,21 @@ process_tile <- function(i) {
   #nt_w_tame   <- rt * pnt * time_nt
   #nt_w_native <- rn * pnt * time_nt
   
-  present <- !is.na(b)
+  bin_present <- !is.na(b)
   
   bin_w_eff <- rbin # * pbin
   
-  bin_w_eff_present <- bin_w_eff * present
+  bin_w_eff_present <- bin_w_eff * bin_present
   
-  #for (j in seq_len(nlyr(bin_w_eff))) {
+    #for (j in seq_len(nlyr(bin_w_eff))) {
   #  bin_w_eff[[j]] <- bin_w_eff[[j]] * bin_time[j]
   #}
   
   nt_present <- !is.na(nt)
+  
+  nt_w_dataset <- (rt + rn + rnot) / 3
+  
+  all_weights <- c(bin_w_eff_present, nt_w_dataset * nt_present)
   
   nt_w_tame <- rt # * pnt
   nt_w_native <- rn # * pnt
@@ -1008,30 +1050,31 @@ process_tile <- function(i) {
   
   nt_not_present <- rnot * nt_present
   
-  #for (j in seq_len(nlyr(nt_w_tame))) {
-  #  nt_w_tame[[j]] <- nt_w_tame[[j]] * nt_time[j]
-  #  nt_w_native[[j]] <- nt_w_native[[j]] * nt_time[j]
-  #}
+  # ----------------------
+  # DATASET COUNTS
+  # ----------------------
+  num_bin_sources <- app(bin_present, sum, na.rm = TRUE)
+  names(num_bin_sources) <- "num_bin_sources"
   
-  #NEG_HALF <- 0.5
+  num_nt_sources <- app(nt_present, sum, na.rm = TRUE)
+  names(num_nt_sources) <- "num_nt_sources"
   
   # ----------------------
-  # EFFECTIVE SAMPLE SIZE (effective weighted support - does not use redundancy adjustment)
+  # EFFECTIVE SAMPLE SIZE (average class-specific reliability + temporal weighting)
   # ----------------------
   
-  # Sum of weights - use only binary rasters so those with native vs tame don't get double counted
-  w_sum <- app(
-    bin_w_eff_present,
-    sum,
-    na.rm = TRUE
-  )
+  # Sum of weights - binary only
+  #w_sum <- app(bin_w_eff_present, sum, na.rm = TRUE)
+  
+  # Sum of weights
+  w_sum <- app(all_weights, sum, na.rm = TRUE)
+  
+  # total effective weight contributing to the pixel (for export)
+  sum_weight_present <- w_sum
+  names(sum_weight_present) <- "sum_weight_present"
   
   # Sum of squared weights
-  w_sum_sq <- app(
-    bin_w_eff_present^2,
-    sum,
-    na.rm = TRUE
-  )
+  w_sum_sq <- app(all_weights^2, sum, na.rm = TRUE)
   
   # Effective sample size
   ess <- w_sum^2 / w_sum_sq
@@ -1087,17 +1130,8 @@ process_tile <- function(i) {
   # ----------------------
   
   # Binary evidence
-  E_bin_grass <- app(
-    bin_w_norm * (b == 1),
-    sum,
-    na.rm = TRUE
-  )
-  
-  E_bin_not <- app(
-    bin_w_norm * (b == 0),
-    sum,
-    na.rm = TRUE
-  )
+  E_bin_grass <- app(bin_w_norm * (b == 1), sum, na.rm = TRUE)
+  E_bin_not   <- app(bin_w_norm * (b == 0), sum, na.rm = TRUE)
   
   # ----------------------
   # Triclass class-specific evidence
@@ -1105,48 +1139,20 @@ process_tile <- function(i) {
   
   #nt_not_present <- metric_not_stack * nt_present
   
-  nt_not_sum <- app(
-    nt_not_present,
-    sum,
-    na.rm = TRUE
-  )
+  nt_not_sum  <- app(nt_not_present, sum, na.rm = TRUE)
+  nt_not_norm <- ifel(nt_not_sum > 0, nt_not_present / nt_not_sum, 0)
   
-  nt_not_norm <- ifel(
-    nt_not_sum > 0,
-    nt_not_present / nt_not_sum,
-    0
-  )
-  
-  E_not_tri <- app(
-    nt_not_norm * (nt == 0),
-    sum,
-    na.rm = TRUE
-  )
-  
-  E_tame_tri <- app(
-    nt_w_tame_norm * (nt == 1),
-    sum,
-    na.rm = TRUE
-  )
-  
-  E_native_tri <- app(
-    nt_w_native_norm * (nt == 2),
-    sum,
-    na.rm = TRUE
-  )
+  E_not_tri    <- app(nt_not_norm * (nt == 0), sum, na.rm = TRUE)
+  E_tame_tri   <- app(nt_w_tame_norm * (nt == 1), sum, na.rm = TRUE)
+  E_native_tri <- app(nt_w_native_norm * (nt == 2), sum, na.rm = TRUE)
   
   # ----------------------
   # Grass vs nongrass
   # ----------------------
   
-  Grass_support <-
-    E_bin_grass +
-    E_tame_tri +
-    E_native_tri
+  Grass_support <- E_bin_grass + E_tame_tri + E_native_tri
   
-  Not_support <-
-    E_bin_not +
-    E_not_tri
+  Not_support <- E_bin_not + E_not_tri
   
   grass_total <- Grass_support + Not_support
   
@@ -1160,9 +1166,7 @@ process_tile <- function(i) {
   # Native vs tame within grass
   # ----------------------
   
-  grass_type_total <-
-    E_tame_tri +
-    E_native_tri
+  grass_type_total <- E_tame_tri + E_native_tri
   
   # Pixels with grass evidence but no native/tame evidence
   #native_tame_missing <- ifel(grass_type_total == 0, 1, 0)
@@ -1171,11 +1175,8 @@ process_tile <- function(i) {
   names(native_tame_missing) <- "native_tame_missing"
   
   # Shares
-  share_native <-
-    E_native_tri / grass_type_total
-  
-  share_tame <-
-    E_tame_tri / grass_type_total
+  share_native <- E_native_tri / grass_type_total
+  share_tame   <- E_tame_tri / grass_type_total
   
   # If no native/tame evidence exists
   share_native <- ifel(grass_type_total > 0, share_native, NA)
@@ -1203,6 +1204,132 @@ process_tile <- function(i) {
   p_native <- p_native / prob_sum
   
   # ----------------------
+  # BINARY VOTE COUNTS
+  # ----------------------
+  
+  num_positive <- app(bin_present * (b == 1), sum, na.rm = TRUE)
+  names(num_positive) <- "num_positive"
+  
+  num_negative <- app(bin_present * (b == 0), sum, na.rm = TRUE)
+  names(num_negative) <- "num_negative"
+  
+  vote_total <- num_positive + num_negative
+  
+  vote_margin <- ifel(
+    vote_total > 0,
+    abs(num_positive - num_negative) / vote_total,
+    NA
+  )
+  
+  names(vote_margin) <- "vote_margin"
+  
+  weighted_vote_total <- Grass_support + Not_support
+  
+  weighted_vote_margin <- ifel(
+    weighted_vote_total > 0,
+    abs(Grass_support - Not_support) /
+      weighted_vote_total,
+    NA
+  )
+  
+  names(weighted_vote_margin) <- "weighted_vote_margin"
+  
+  # ----------------------
+  # TRICLASS VOTE COUNTS
+  # ----------------------
+  
+  num_not_votes <- app(
+    nt_present * (nt == 0),
+    sum,
+    na.rm = TRUE
+  )
+  names(num_not_votes) <- "num_not_votes"
+  
+  num_tame_votes <- app(
+    nt_present * (nt == 1),
+    sum,
+    na.rm = TRUE
+  )
+  names(num_tame_votes) <- "num_tame_votes"
+  
+  num_native_votes <- app(
+    nt_present * (nt == 2),
+    sum,
+    na.rm = TRUE
+  )
+  names(num_native_votes) <- "num_native_votes"
+  
+  # votes
+  vote_stack <- c(
+    num_not_votes,
+    num_tame_votes,
+    num_native_votes
+  )
+  
+  max_votes <- app(
+    vote_stack,
+    max
+  )
+  
+  total_votes <-
+    num_not_votes +
+    num_tame_votes +
+    num_native_votes
+  
+  triclass_agreement <- ifel(
+    total_votes > 0,
+    max_votes / total_votes,
+    NA
+  )
+  
+  names(triclass_agreement) <- "triclass_agreement"
+  
+  vote_margin_tri <- app(
+    c(
+      num_not_votes,
+      num_tame_votes,
+      num_native_votes
+    ),
+    fun = function(x) {
+      
+      x <- sort(x, decreasing = TRUE)
+      
+      total <- sum(x)
+      
+      if (total == 0)
+        return(NA)
+      
+      (x[1] - x[2]) / total
+    }
+  )
+  
+  names(vote_margin_tri) <- "vote_margin_tri"
+  
+  tri_support <- c(
+    E_not_tri,
+    E_tame_tri,
+    E_native_tri
+  )
+  
+  max_support <- app(
+    tri_support,
+    max
+  )
+  
+  total_support <-
+    E_not_tri +
+    E_tame_tri +
+    E_native_tri
+  
+  weighted_agreement_tri <- ifel(
+    total_support > 0,
+    max_support / total_support,
+    NA
+  )
+  
+  names(weighted_agreement_tri) <- "weighted_agreement_tri"
+  
+  # ----------------------
   # Entropy
   # ----------------------
   
@@ -1222,10 +1349,17 @@ process_tile <- function(i) {
   
   # stack outputs
   out <- c(p_not, p_tame, p_native, entropy, entropy_norm, ess, ess_uncertainty, support_score,
-           support_uncertainty, native_tame_missing)
+           support_uncertainty, native_tame_missing, num_bin_sources, num_nt_sources,
+           sum_weight_present, num_positive, num_negative, vote_margin, weighted_vote_margin,
+           num_not_votes, num_tame_votes, num_native_votes, triclass_agreement, vote_margin_tri, 
+           weighted_agreement_tri)
+  
   names(out) <- c("p_not", "p_tame", "p_native", "entropy", "entropy_norm",
                   "ess", "ess_uncertainty", "support_score", "support_uncertainty",
-                  "native_tame_missing")
+                  "native_tame_missing", "num_bin_sources", "num_nt_sources",
+                  "sum_weight_present", "num_positive", "num_negative", "vote_margin", 
+                  "weighted_vote_margin", "num_not_votes", "num_tame_votes", "num_native_votes", 
+                  "triclass_agreement", "vote_margin_tri", "weighted_agreement_tri")
   
   writeRaster(out, out_file, overwrite=TRUE)
   
@@ -1257,7 +1391,7 @@ cat("Mosaicking", length(files), "tiles...\n")
 
 # Check layer consistency - make sure correct number of layers
 #stopifnot(all(sapply(files, function(f) nlyr(rast(f)) == 4)))
-stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 10, logical(1))))
+stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 23, logical(1))))
 
 # Mosaic all tiles together
 mosaic_out <- mosaic(rast(files), fun="first")
@@ -1267,7 +1401,10 @@ mosaic_out <- mosaic(rast(files), fun="first")
 # Set names
 names(mosaic_out) <- c("p_not", "p_tame", "p_native", "entropy", "entropy_norm",
                        "ess", "ess_uncertainty", "support_score", "support_uncertainty",
-                       "native_tame_missing")
+                       "native_tame_missing", "num_bin_sources", "num_nt_sources",
+                       "sum_weight_present", "num_positive", "num_negative", "vote_margin", 
+                       "weighted_vote_margin", "num_not_votes", "num_tame_votes", "num_native_votes", 
+                       "triclass_agreement", "vote_margin_tri", "weighted_agreement_tri")
 
 #------ Derived layers ------#
 # Probability stack
@@ -1280,6 +1417,27 @@ support_uncertainty <- mosaic_out[["support_uncertainty"]]
 
 # Missing
 native_tame_missing <- mosaic_out[["native_tame_missing"]]
+
+# number of sources and votes
+num_bin_sources <- mosaic_out[["num_bin_sources"]]
+num_nt_sources  <- mosaic_out[["num_nt_sources"]]
+
+sum_weight_present <- mosaic_out[["sum_weight_present"]]
+
+num_positive <- mosaic_out[["num_positive"]]
+num_negative <- mosaic_out[["num_negative"]]
+
+vote_margin <- mosaic_out[["vote_margin"]]
+weighted_vote_margin <- mosaic_out[["weighted_vote_margin"]]
+
+num_not_votes <- mosaic_out[["num_not_votes"]]
+num_tame_votes <- mosaic_out[["num_tame_votes"]]
+num_native_votes <- mosaic_out[["num_native_votes"]] 
+
+triclass_agreement <- mosaic_out[["triclass_agreement"]]
+
+vote_margin_tri <- mosaic_out[["vote_margin_tri"]]
+weighted_agreement_tri <- mosaic_out[["weighted_agreement_tri"]]
 
 # Check
 hist(values(support_score))
@@ -1297,15 +1455,11 @@ print(stats)
 log_msg(capture.output(stats))
 
 # check drivers of masking
-global(
-  entropy,
-  c("min","max","mean"),
-  na.rm = TRUE)
+tmp_chk4 <- global(entropy, c("min","max","mean"), na.rm = TRUE)
+log_msg(capture.output(tmp_chk4))
 
-global(
-  support_score,
-  c("min","max","mean"),
-  na.rm = TRUE)
+tmp_chk5 <- global(support_score, c("min","max","mean"), na.rm = TRUE)
+log_msg(capture.output(tmp_chk5))
 
 # Convert confidence to uncertainty
 confidence_uncertainty <- 1 - confidence
@@ -1313,7 +1467,7 @@ confidence_uncertainty <- 1 - confidence
 names(confidence_uncertainty) <- "confidence_uncertainty"
 
 # adjusted confidence
-confidence <- app(prob_stack, max)
+#confidence <- app(prob_stack, max)
 
 confidence_adj <- confidence * support_score
 names(confidence_adj) <- "confidence_adjusted"
@@ -1339,7 +1493,6 @@ uncertainty_total_w <- (
 )
 
 names(uncertainty_total_w) <- "uncertainty_total_weighted"
-
 
 #------ Hard classification ------#
 hard_class <- which.max(prob_stack)
@@ -1789,7 +1942,7 @@ colnames(vals) <- c("confidence_adj", "entropy")
 # Thresholds appear as: blue line: confidence = 0.6, red line: entropy = 0.8
 library(ggplot2)
 
-ggplot(vals, aes(x = confidence_adj, y = entropy)) +
+p1 <- ggplot(vals, aes(x = confidence_adj, y = entropy)) +
   stat_binhex(bins = 60) +
   scale_fill_viridis_c(trans = "log10") +
   geom_vline(xintercept = 0.4, color = "blue", linetype = "dashed") +
@@ -1802,8 +1955,16 @@ ggplot(vals, aes(x = confidence_adj, y = entropy)) +
   ) +
   theme_minimal()
 
+ggsave(
+  file.path(diag_dir, "confidence_vs_entropy.png"),
+  p1,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
 # Density plot (smooth view)
-ggplot(vals, aes(x = confidence_adj, y = entropy)) +
+p2 <- ggplot(vals, aes(x = confidence_adj, y = entropy)) +
   geom_density_2d_filled() +
   geom_vline(xintercept = 0.4, color = "blue", linetype = "dashed") +
   geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
@@ -1812,38 +1973,124 @@ ggplot(vals, aes(x = confidence_adj, y = entropy)) +
   ) +
   theme_minimal()
 
+ggsave(
+  file.path(diag_dir, "confidence_vs_entropy_density.png"),
+  p2,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
 # Confidence distribution
 # If most points cluster around confidence > 0.5 then threshold is appropriate
-ggplot(vals, aes(x = confidence_adj)) +
+p3 <- ggplot(vals, aes(x = confidence_adj)) +
   geom_histogram(bins = 50, fill = "steelblue") +
   geom_vline(xintercept = 0.4, color = "red", linetype = "dashed") +
   labs(title = "Confidence distribution") +
   theme_minimal()
 
+ggsave(
+  file.path(diag_dir, "confidence_dist.png"),
+  p3,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
 # Entropy distribution
 # If most points cluster around entropy < 0.6 then threshold is appropriate
-ggplot(vals, aes(x = entropy)) +
+p4 <- ggplot(vals, aes(x = entropy)) +
   geom_histogram(bins = 50, fill = "darkgreen") +
   geom_vline(xintercept = 0.8, color = "red", linetype = "dashed") +
   labs(title = "Entropy distribution") +
   theme_minimal()
 
+ggsave(
+  file.path(diag_dir, "entropy_dist.png"),
+  p4,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+log_msg("---- FINAL DIAGNOSTICS ----")
+
+log_msg("Probability sum check:")
+log_msg(capture.output(
+  global(check, c("min","max","mean"), na.rm=TRUE)
+))
+
+log_msg("ESS:")
+log_msg(capture.output(
+  global(ess, c("min","max","mean"), na.rm=TRUE)
+))
+
+log_msg("Support score:")
+log_msg(capture.output(
+  global(support_score, c("min","max","mean"), na.rm=TRUE)
+))
+
+log_msg("Confidence adjusted:")
+log_msg(capture.output(
+  global(confidence_adj, c("min","max","mean"), na.rm=TRUE)
+))
+
+log_msg("Entropy:")
+log_msg(capture.output(
+  global(entropy, c("min","max","mean"), na.rm=TRUE)
+))
+
+log_msg("Coverage:")
+log_msg(round(100 * coverage[1,1], 1), "%")
+
+log_msg("Year counts:")
+log_msg(capture.output(print(year_counts)))
+
+for (r in list(
+  num_bin_sources,
+  num_nt_sources,
+  sum_weight_present,
+  vote_margin,
+  weighted_vote_margin
+)) {
+  log_msg(capture.output(
+    global(r, c("min","max","mean"), na.rm=TRUE)
+  ))
+}
+
 #------ Mapping results ------#
 
 # Map of entropy
+png(
+  file.path(diag_dir, "entropy_map.png"),
+  width = 2400,
+  height = 1600,
+  res = 300
+)
+
 plot(
   entropy,
   main = "Entropy (Uncertainty)",
   col = rev(terrain.colors(100))
 )
 
+dev.off()
 
 # Map of confidence
+png(
+  file.path(diag_dir, "confidence_map.png"),
+  width = 2400,
+  height = 1600,
+  res = 300
+)
+
 plot(
   confidence_adj,
   main = "Confidence (Max Probability)",
   col = viridis::viridis(100)
 )
+
+dev.off()
 
 # Binary "uncertain areas" map
 uncertain_mask <- ifel(
@@ -1854,6 +2101,13 @@ uncertain_mask <- ifel(
 
 names(uncertain_mask) <- "uncertain"
 
+png(
+  file.path(diag_dir, "binary_uncertain_areas_map.png"),
+  width = 2400,
+  height = 1600,
+  res = 300
+)
+
 plot(
   uncertain_mask,
   main = "Uncertain Areas",
@@ -1861,7 +2115,16 @@ plot(
   legend = FALSE
 )
 
+dev.off()
+
 # Overlay uncertainty on classification
+png(
+  file.path(diag_dir, "binary_uncertain_areas_hardclasss_map.png"),
+  width = 2400,
+  height = 1600,
+  res = 300
+)
+
 plot(hard_class, main="Classification with Uncertainty Overlay")
 
 plot(
@@ -1870,15 +2133,33 @@ plot(
   add = TRUE
 )
 
+dev.off()
+
 # Continuous uncertainty "hotspot" map
+png(
+  file.path(diag_dir, "continuous_uncertainty_hotspots_map.png"),
+  width = 2400,
+  height = 1600,
+  res = 300
+)
+
 plot(
   uncertainty_total,
   main = "Uncertainty Hotspots",
   col = hcl.colors(100, "Reds")
 )
 
+dev.off()
+
 # Mask only uncertain areas
 uncertain_only <- mask(entropy, uncertain_mask, maskvalues = 0)
+
+png(
+  file.path(diag_dir, "entropy_uncertain_areas_map.png"),
+  width = 2400,
+  height = 1600,
+  res = 300
+)
 
 plot(
   uncertain_only,
@@ -1886,203 +2167,146 @@ plot(
   col = rev(heat.colors(100))
 )
 
+dev.off()
 
-#------ Write outputs ------#
+#------- Write outputs to S3 ----------#
+log_msg("Writing outputs")
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "confidence_vs_entropy.png"),
+  object = paste0(out_dir, "/diagnostics/confidence_vs_entropy.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "confidence_vs_entropy_density.png"),
+  object = paste0(out_dir, "/diagnostics/confidence_vs_entropy_density.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "confidence_dist.png"),
+  object = paste0(out_dir, "/diagnostics/confidence_dist.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "entropy_dist.png"),
+  object = paste0(out_dir, "/diagnostics/entropy_dist.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "entropy_map.png"),
+  object = paste0(out_dir, "/diagnostics/entropy_map.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "confidence_map.png"),
+  object = paste0(out_dir, "/diagnostics/confidence_map.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "binary_uncertain_areas_map.png"),
+  object = paste0(out_dir, "/diagnostics/binary_uncertain_areas_map.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "binary_uncertain_areas_hardclasss_map.png"),
+  object = paste0(out_dir, "/diagnostics/binary_uncertain_areas_hardclasss_map.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "continuous_uncertainty_hotspots_map.png"),
+  object = paste0(out_dir, "/diagnostics/continuous_uncertainty_hotspots_map.png"))
+
+aws.s3::put_object(
+  file = file.path(diag_dir, "entropy_uncertain_areas_map.png"),
+  object = paste0(out_dir, "/diagnostics/entropy_uncertain_areas_map.png"))
+
+# Define wopt
+wopt       <- list(datatype="FLT4S", gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES"))
+wopt_int   <- list(datatype="INT2U", gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES"))
+wopt_class <- list(datatype="INT1U", gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES"))
 
 ess <- mosaic_out[["ess"]]
 ess_uncertainty <- mosaic_out[["ess_uncertainty"]]
 
-# Combined raster 
-final_stack <- c(mosaic_out, 
-                 confidence, confidence_adj, hard_class, high_conf_class,
-                 uncertainty_total, uncertainty_total_w,
-                 temporal_sd, temporal_entropy, temporal_range) #, temporal_slope)
-
-names(final_stack) <- c(
-  "p_not",
-  "p_tame",
-  "p_native",
-  "entropy",
-  "entropy_norm",
-  "ess",
-  "ess_uncertainty",
-  "support_score",
-  "support_uncertainty",
-  "native_tame_missing",
-  "confidence",
-  "confidence_adj",
-  "class",
-  "high_conf_class",
-  "uncertainty_total",
-  "uncertainty_total_w",
-  "temporal_sd",
-  "temporal_entropy",
-  "temporal_range"#,
-  #  "temporal_slope"
+# Write locally first, then save to S3
+outputs <- list(
+  list(raster = p_native, local = "p_native.tif", s3 = "p_native.tif", wopt = wopt),
+  list(raster = p_tame, local = "p_tame.tif", s3 = "p_tame.tif", wopt = wopt),
+  list(raster = p_not, local = "p_not_grass.tif", s3 = "p_not_grass.tif", wopt = wopt),
+  list(raster = entropy, local = "entropy.tif", s3 = "entropy.tif", wopt = wopt),
+  list(raster = entropy_norm, local = "entropy_norm.tif", s3 = "entropy_norm.tif", wopt = wopt),
+  list(raster = ess, local = "ess.tif", s3 = "ess.tif", wopt = wopt),
+  list(raster = ess_uncertainty, local = "ess_uncertainty.tif", s3 = "ess_uncertainty.tif", wopt = wopt),
+  list(raster = support_score, local = "support_score.tif", s3 = "support_score.tif", wopt = wopt),
+  list(raster = support_uncertainty, local = "support_uncertainty.tif", s3 = "support_uncertainty.tif", wopt = wopt),
+  list(raster = native_tame_missing, local = "native_tame_missing.tif", s3 = "native_tame_missing.tif", wopt = wopt),
+  list(raster = confidence, local = "confidence.tif", s3 = "confidence.tif", wopt = wopt),
+  list(raster = confidence_adj, local = "confidence_adj.tif", s3 = "confidence_adj.tif", wopt = wopt),
+  list(raster = hard_class, local = "hard_class.tif", s3 = "hard_class.tif", wopt = wopt_class),
+  list(raster = high_conf_class, local = "high_conf_class.tif", s3 = "high_conf_class.tif", wopt = wopt_class),
+  list(raster = uncertainty_total, local = "uncertainty_total.tif", s3 = "uncertainty_total.tif", wopt = wopt),
+  list(raster = uncertainty_total_w, local = "uncertainty_total_w.tif", s3 = "uncertainty_total_w.tif", wopt = wopt),
+  list(raster = temporal_sd, local = "temporal_sd.tif", s3 = "temporal_sd.tif", wopt = wopt),
+  list(raster = temporal_entropy, local = "temporal_entropy.tif", s3 = "temporal_entropy.tif", wopt = wopt),
+  list(raster = temporal_range, local = "temporal_range.tif", s3 = "temporal_range.tif", wopt = wopt),
+  list(raster = num_bin_sources, local = "num_bin_sources.tif", s3 = "num_bin_sources.tif", wopt = wopt_int),
+  list(raster = num_nt_sources, local = "num_nt_sources.tif", s3 = "num_nt_sources.tif", wopt = wopt_int),
+  list(raster = num_positive, local = "num_positive.tif", s3 = "num_positive.tif", wopt = wopt_int),
+  list(raster = num_negative, local = "num_negative.tif", s3 = "num_negative.tif", wopt = wopt_int),
+  list(raster = sum_weight_present, local = "sum_weight_present.tif", s3 = "sum_weight_present.tif", wopt = wopt),
+  list(raster = vote_margin, local = "vote_margin.tif", s3 = "vote_margin.tif", wopt = wopt),
+  list(raster = weighted_vote_margin, local = "weighted_vote_margin.tif", s3 = "weighted_vote_margin.tif", wopt = wopt),
+  list(raster = num_not_votes, local = "num_not_votes.tif", s3 = "num_not_votes.tif", wopt = wopt_int),
+  list(raster = num_tame_votes, local = "num_tame_votes.tif", s3 = "num_tame_votes.tif", wopt = wopt_int),
+  list(raster = num_native_votes, local = "num_native_votes.tif", s3 = "num_native_votes.tif", wopt = wopt_int),
+  list(raster = triclass_agreement, local = "triclass_agreement.tif", s3 = "triclass_agreement.tif", wopt = wopt),
+  list(raster = vote_margin_tri, local = "vote_margin_tri.tif", s3 = "vote_margin_tri.tif", wopt = wopt),
+  list(raster = weighted_agreement_tri, local = "weighted_agreement_tri.tif", s3 = "weighted_agreement_tri.tif", wopt = wopt)
 )
 
-stopifnot(nlyr(final_stack) == length(names(final_stack)))
+write_and_collect <- function(spec) {
+  local_path <- file.path(tmp_root, spec$local)
+  writeRaster(spec$raster, local_path, overwrite = TRUE, wopt = spec$wopt)
+  spec$local_path <- local_path
+  spec
+}
 
-final_out <- "/mnt/tmp/joint_full_stack.tif"
+outputs <- lapply(outputs, write_and_collect)
+log_msg("All output rasters written locally; beginning S3 upload")
 
-writeRaster(
-  final_stack,
-  final_out,
-  overwrite=TRUE,
-  wopt=list(
-    datatype="FLT4S",   # classification will still store fine
-    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
-  )
+rm(
+  bin_stack,
+  nt_stack
 )
 
-aws.s3::put_object(
-  file   = final_out,
-  object = paste0(out_dir, "/joint_full_stack.tif")
-)
+gc()
 
-# upload log to S3
+upload_results <- lapply(outputs, function(spec) {
+  s3_object <- paste0(out_dir, "/", spec$s3)
+  ok <- tryCatch({
+    aws.s3::put_object(file = spec$local_path, object = s3_object)
+    TRUE
+  }, error = function(e) {
+    log_msg("FAILED to upload ", spec$s3, ": ", conditionMessage(e), level = "ERROR")
+    FALSE
+  })
+  if (ok) log_msg("Uploaded: ", s3_object)
+  data.frame(file = spec$s3, uploaded = ok)
+})
+
+upload_summary <- do.call(rbind, upload_results)
+n_failed <- sum(!upload_summary$uploaded)
+
+if (n_failed > 0) {
+  log_msg("WARNING: ", n_failed, " of ", nrow(upload_summary),
+          " output uploads failed: ",
+          paste(upload_summary$file[!upload_summary$uploaded], collapse = ", "),
+          level = "ERROR")
+} else {
+  log_msg("All ", nrow(upload_summary), " output rasters uploaded successfully")
+}
+
+log_msg("Analysis complete")
+
+# Upload log to S3
 aws.s3::put_object(
   file = log_file_local,
-  object = log_file
+  object = paste0(
+    "alison-long/tomorrows-prairies/logs/",
+    basename(log_file_local)
+  ),
+  bucket = "sagemaker-gst-stage.sharing"
 )
 
-# -----------------------------------
-# Optional: separate outputs
-# -----------------------------------
-
-# Probability raster
-prob_out <- "/mnt/tmp/joint_prob_full.tif"
-
-writeRaster(
-  mosaic_out,
-  prob_out,
-  overwrite=TRUE,
-  wopt=list(
-    datatype="FLT4S",
-    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
-  )
-)
-
-aws.s3::put_object(
-  file   = prob_out,
-  object = paste0(out_dir, "/joint_prob_full.tif")
-)
-
-# Confidence raster
-conf_out <- "/mnt/tmp/joint_confidence.tif"
-
-writeRaster(
-  confidence,
-  conf_out,
-  overwrite=TRUE,
-  wopt=list(
-    datatype="FLT4S",
-    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
-  )
-)
-
-aws.s3::put_object(
-  file   = conf_out,
-  object = paste0(out_dir, "/joint_confidence.tif")
-)
-
-# Classification raster
-hard_out <- "/mnt/tmp/joint_hard_class.tif"
-
-writeRaster(
-  hard_class,
-  hard_out,
-  overwrite=TRUE,
-  wopt=list(
-    datatype="INT1U",
-    gdal=c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
-  )
-)
-
-aws.s3::put_object(
-  file   = hard_out,
-  object = paste0(out_dir, "/joint_hard_class.tif")
-)
-
-# High-confidence raster
-high_conf_out <- "/mnt/tmp/joint_high_conf_class.tif"
-
-writeRaster(
-  high_conf_class,
-  high_conf_out,
-  overwrite = TRUE,
-  wopt = list(
-    datatype = "INT1U",
-    gdal = c("COMPRESS=ZSTD","TILED=YES","BIGTIFF=YES")
-  )
-)
-
-aws.s3::put_object(
-  file   = high_conf_out,
-  object = paste0(out_dir, "/joint_high_conf_class.tif")
-)
-
-# Temporal SD
-writeRaster(
-  temporal_sd,
-  "/mnt/tmp/temporal_sd.tif",
-  overwrite = TRUE,
-  wopt = list(
-    datatype = "FLT4S",
-    gdal = c(
-      "COMPRESS=ZSTD",
-      "TILED=YES",
-      "BIGTIFF=YES"
-    )
-  )
-)
-
-aws.s3::put_object(
-  file = "/mnt/tmp/temporal_sd.tif",
-  object = paste0(out_dir, "/temporal_sd.tif")
-)
-
-# Temporal entropy
-writeRaster(
-  temporal_entropy,
-  "/mnt/tmp/temporal_entropy.tif",
-  overwrite = TRUE,
-  wopt = list(
-    datatype = "FLT4S",
-    gdal = c(
-      "COMPRESS=ZSTD",
-      "TILED=YES",
-      "BIGTIFF=YES"
-    )
-  )
-)
-
-aws.s3::put_object(
-  file = "/mnt/tmp/temporal_entropy.tif",
-  object = paste0(out_dir, "/temporal_entropy.tif")
-)
-
-# Temporal range
-writeRaster(
-  temporal_range,
-  "/mnt/tmp/temporal_range.tif",
-  overwrite = TRUE,
-  wopt = list(
-    datatype = "FLT4S",
-    gdal = c(
-      "COMPRESS=ZSTD",
-      "TILED=YES",
-      "BIGTIFF=YES"
-    )
-  )
-)
-
-aws.s3::put_object(
-  file = "/mnt/tmp/temporal_range.tif",
-  object = paste0(out_dir, "/temporal_range.tif")
-)
-
-#--------- Possible next steps (examples) ---------------
-
-# Thresholding - high confidence native grass
-p_native > 0.8 & entropy < 0.3
