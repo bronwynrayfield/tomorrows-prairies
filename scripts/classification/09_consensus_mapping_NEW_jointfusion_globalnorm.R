@@ -3,13 +3,15 @@
 ##                     GRASSLAND CONSENSUS MAPPING ANALYSIS                      ##
 ###################################################################################
 
-##----------------------- Alison Long - July 2026 -------------------------
+##----------------------- Alison Long - August 2026 -------------------------
 
 # step 9: use data fusion techniques to create a consensus grassland map 
 #         to serve as baseline for modelling
 
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER
 # Next optimization to try: build stacks directly from S3 using GDAL VRT (zero downloads)
+
+# RAN PILOT USING ml.m5d.4xlarge
 
 # Strengths
 #   Accuracy-weighted
@@ -213,8 +215,22 @@ if (any(is.na(meta$file)) || any(meta$file == "")) {
 }
 
 ## ---- Temporal settings ---- ##
-target_year <- 2025 # use newest dataset or policy-relevant year
-lambda <- 6  # temporal decay scale in years; larger values retain influence from older datasets longer
+target_year <- 2025 # year represented by modelling baseline
+
+# sensitivity analysis for lambda
+# temporal decay scale in years; larger values retain influence from older datasets longer
+# with lambda = 6, weight by years away from 2025:
+# 0 years = 1, 1 year = 0.846, 2 years = 0.717, 3 years = 0.607, etc.
+lambda_values <- c(5, 6, 7, 10)
+yrs_l <- 2015:2025
+
+plot(yrs_l,exp(-(2025-yrs_l)/5), type = "l", ylim = c(0,1))
+lines(yrs_l, exp(-(2025-yrs_l)/6), col = 2)
+lines(yrs_l, exp(-(2025-yrs_l)/7), col = 3)
+lines(yrs_l, exp(-(2025-yrs_l)/10), col = 4)
+
+# choose lambda
+lambda <- 6  
 
 # time decay function
 time_decay <- function(year, target_year, lambda) {
@@ -234,7 +250,6 @@ bin_meta <- meta %>% filter(stack_type == "binary")
 nt_meta  <- meta %>% filter(stack_type == "nt")
 
 ## ---- Named file vectors ---- ##
-#rfiles_s3 <- setNames(meta$file,     meta$raster_id)
 bin_files <- setNames(bin_meta$file, bin_meta$raster_id)
 nt_files  <- setNames(nt_meta$file,  nt_meta$raster_id)
 
@@ -272,16 +287,6 @@ log_msg("Study area loaded")
 ## ---- Download rasters locally ---- ##
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
-
-#download_files <- function(files_named) {
-#  sapply(names(files_named), function(nm) {
-#    dest <- file.path(local_dir, paste0(nm, ".tif"))
-#    if (!file.exists(dest)) {
-#      aws.s3::save_object(files_named[[nm]], file = dest)
-#    }
-#    dest
-#  }, USE.NAMES = TRUE)
-#}
 
 download_files <- function(files_named) {
   
@@ -447,54 +452,6 @@ has_nt <- !is.null(nt_stack)
 if (!has_nt) {
   stop("No tri-class rasters available")
 }
-
-## ---- Create temporal-weight stacks ----##
-
-#bin_time <- bin_meta$time_weight
-#names(bin_time) <- names(bin_local)
-
-#stopifnot(
-#  identical(
-#    names(bin_time),
-#    names(bin_stack)
-#  )
-#)
-
-#time_bin_stack <- rast(
-#  lapply(bin_local, function(f) {
-#    r <- rast(f)
-#    values(r) <- bin_time[which(bin_local == f)]
-#    r
-#  })
-#)
-
-#nt_time <- nt_meta$time_weight
-#names(nt_time) <- names(nt_local)
-
-#stopifnot(
-#  identical(
-#    names(nt_time),
-#    names(nt_stack)
-#  )
-#)
-
-#time_nt_stack <- rast(
-#  lapply(nt_local, function(f) {
-#    r <- rast(f)
-#    values(r) <- nt_time[which(nt_local == f)]
-#    r
-#  })
-#)
-
-# =========================
-# GLOBAL OPTIONS
-# =========================
-#terraOptions(
-#  memfrac = 0.8,
-#  tempdir = "/mnt/tmp", # use fast scratch disk
-#  progress = 1
-#)
-
 # =========================
 # INTEGRATE ACCURACY DATA
 # =========================
@@ -532,7 +489,7 @@ req_cols_bin <- c(
   "acc"
 )
 
-if (!all(req_cols %in% names(acc_bin))) {
+if (!all(req_cols_bin %in% names(acc_bin))) {
   stop(
     "Missing required columns in binary accuracy table: ",
     paste(setdiff(req_cols_bin, names(acc_bin)), collapse = ", ")
@@ -641,12 +598,6 @@ if (length(extra_nt_names) > 0) {
 ## ---- Add temporal weighting ---- ##
 log_msg("Applying accuracy + temporal weighting")
 
-# acc_to_weight <- function(x) {
-#   w <- (x + 1) / 2
-#   w[!is.finite(w)] <- NA
-#   pmax(w, 1e-4)
-# }
-
 if (any(acc_bin$acc < 0 | acc_bin$acc > 1, na.rm = TRUE)) {
   stop("acc_bin contains values outside [0,1]")
 }
@@ -668,10 +619,6 @@ acc_to_weight <- function(x) {
   w[!is.finite(w)] <- NA
   pmax(w, 1e-4)
 }
-
-#time_decay <- function(year, target_year, lambda) {
-#  exp(-lambda * abs(year - target_year))
-#}
 
 acc_bin <- acc_bin %>%
   left_join(
@@ -718,26 +665,6 @@ acc_nt <- acc_nt %>%
 if (any(is.na(acc_nt$year))) {
   stop("Missing year information in acc_nt")
 }
-
-# make sure F1 scores are between 0 and 1
-# stopifnot(
-#   all(acc_nt$F1_1 >= 0 & acc_nt$F1_1 <= 1),
-#   all(acc_nt$F1_2 >= 0 & acc_nt$F1_2 <= 1)
-# )
-
-# acc_nt <- acc_nt %>%
-#   mutate(
-#     w_acc = acc_to_weight(acc),
-#     
-#     w_time = time_decay(
-#       year,
-#       target_year,
-#       lambda
-#     ),
-#     
-#     W_tame   = w_acc * w_time,
-#     W_native = w_acc * w_time
-#   )
 
 # validate class-specific F1s
 if (any(acc_nt$native_metric < 0 | acc_nt$native_metric > 1, na.rm = TRUE)) {
@@ -893,11 +820,6 @@ build_weight_stack <- function(
       if (!file.exists(out) ||
           FORCE_REBUILD) {
         
-        #w <- classify(
-        #  ecodist_r,
-        #  rcl = lookup
-        #)
-        
         w <- subst(
           ecodist_r,
           from = lookup[,1],
@@ -1012,6 +934,83 @@ log_msg(capture.output(tmp_chk3))
 tmp_chk4 <- global(metric_not_stack, c("min","max"), na.rm = TRUE)
 log_msg(capture.output(tmp_chk4))
 
+# --------------------------------------------
+# GLOBAL NATIVE/TAME FALLBACK RATIOS
+# --------------------------------------------
+# When evidence is missing, allocate probability according to observed native/tame prevalence
+log_msg("Computing global native/tame fallback ratios")
+
+global_native_freq <- global(
+  app(nt_stack == 2, mean, na.rm = TRUE),
+  "mean",
+  na.rm = TRUE
+)[1,1]
+
+global_tame_freq <- global(
+  app(nt_stack == 1, mean, na.rm = TRUE),
+  "mean",
+  na.rm = TRUE
+)[1,1]
+
+fallback_native_global <-
+  global_native_freq /
+  (global_native_freq + global_tame_freq)
+
+fallback_tame_global <-
+  global_tame_freq /
+  (global_native_freq + global_tame_freq)
+
+# global_native_freq <- global(
+#   app(nt_stack == 2, mean, na.rm = TRUE),
+#   "mean",
+#   na.rm = TRUE
+# )[1,1]
+# 
+# global_tame_freq <- global(
+#   app(nt_stack == 1, mean, na.rm = TRUE),
+#   "mean",
+#   na.rm = TRUE
+# )[1,1]
+# 
+# fallback_native_global <-
+#   global_native_freq /
+#   (global_native_freq + global_tame_freq)
+# 
+# fallback_tame_global <-
+#   global_tame_freq /
+#   (global_native_freq + global_tame_freq)
+
+if (!is.finite(fallback_native_global) ||
+    !is.finite(fallback_tame_global)) {
+  stop("Global fallback ratios could not be computed")
+}
+
+log_msg(
+  sprintf(
+    "Global fallback ratios: native=%.4f tame=%.4f",
+    fallback_native_global,
+    fallback_tame_global
+  )
+)
+
+# should always be exactly 1:
+log_msg(
+  sprintf(
+    "Fallback sum = %.6f",
+    fallback_native_global +
+      fallback_tame_global
+  )
+)
+
+if (
+  abs(
+    fallback_native_global +
+    fallback_tame_global - 1
+  ) > 1e-6
+) {
+  stop("Fallback ratios do not sum to 1")
+}
+
 # =========================
 # TILE GRID
 # =========================
@@ -1028,8 +1027,8 @@ writeVector(vect(tiles), "tile_index.gpkg", overwrite=TRUE)
 # =========================
 # PROCESS FUNCTION
 # =========================
-tile_dir <- "/mnt/tmp/tiles"
-dir.create(tile_dir, showWarnings=FALSE)
+tile_dir <- file.path(tmp_root, "tiles")
+dir.create(tile_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Define maximum entropy
 max_entropy <- log(3)
@@ -1045,15 +1044,18 @@ process_tile <- function(i) {
   b   <- crop(bin_stack, tile)
   
   # skip empty tiles
-  if (is.na(global(b[[1]], "max")[[1]])) {
+  has_cells <- global(
+    !is.na(b[[1]]),
+    "sum",
+    na.rm = TRUE
+  )[1,1]
+  
+  if (has_cells == 0) {
     log_msg(sprintf("Tile %d skipped (no data)", i))
     return(NULL)
   }
   
   nt  <- crop(nt_stack, tile)
-  
-  #time_bin <- crop(time_bin_stack, tile)
-  #time_nt  <- crop(time_nt_stack, tile)
   
   rbin <- crop(acc_bin_stack, tile)
   rt   <- crop(metric_tame_stack, tile)
@@ -1097,7 +1099,7 @@ process_tile <- function(i) {
   # ----------------------
   # GLOBAL NORMALIZATION
   # ----------------------
-  # create global denominators - counts nt 3 times
+  # create global denominators (counts nt 3 times)
   #global_weight_sum <- app(c(bin_w_eff_present, nt_w_tame_present,
   #    nt_w_native_present, nt_not_present), sum, na.rm = TRUE)
   
@@ -1140,23 +1142,48 @@ process_tile <- function(i) {
   # TRICLASS WEIGHT RATIOS
   # ----------------------
   
-  ratio_not_dataset <- ifel(
-    nt_dataset_weight > 0,
-    rnot / nt_dataset_weight,
-    NA
+  # take mean or will have one layer per dataset
+  ratio_not_dataset <- app(
+    ifel(nt_dataset_weight > 0,
+         rnot / nt_dataset_weight,
+         NA),
+    mean,
+    na.rm = TRUE
   )
   
-  ratio_native_dataset <- ifel(
-    nt_dataset_weight > 0,
-    rn / nt_dataset_weight,
-    NA
+  ratio_native_dataset <- app(
+    ifel(nt_dataset_weight > 0,
+         rn / nt_dataset_weight,
+         NA),
+    mean,
+    na.rm = TRUE
   )
   
-  ratio_tame_dataset <- ifel(
-    nt_dataset_weight > 0,
-    rt / nt_dataset_weight,
-    NA
+  ratio_tame_dataset <- app(
+    ifel(nt_dataset_weight > 0,
+         rt / nt_dataset_weight,
+         NA),
+    mean,
+    na.rm = TRUE
   )
+  
+  # ratio_not_dataset <- ifel(
+  #   nt_dataset_weight > 0,
+  #   rnot / nt_dataset_weight,
+  #   NA
+  # )
+  # 
+  # ratio_native_dataset <- ifel(
+  #   nt_dataset_weight > 0,
+  #   rn / nt_dataset_weight,
+  #   NA
+  # )
+  # 
+  # ratio_tame_dataset <- ifel(
+  #   nt_dataset_weight > 0,
+  #   rt / nt_dataset_weight,
+  #   NA
+  # )
   
   names(ratio_not_dataset)    <- "ratio_not_dataset"
   names(ratio_native_dataset) <- "ratio_native_dataset"
@@ -1173,11 +1200,6 @@ process_tile <- function(i) {
   )
   
   names(max_class_ratio) <- "max_class_ratio"
-  
-  cat("nlyr(ratio_not_dataset) =", nlyr(ratio_not_dataset), "\n")
-  cat("nlyr(ratio_native_dataset) =", nlyr(ratio_native_dataset), "\n")
-  cat("nlyr(ratio_tame_dataset) =", nlyr(ratio_tame_dataset), "\n")
-  cat("nlyr(max_class_ratio) =", nlyr(max_class_ratio), "\n")
   
   # ----------------------
   # DATASET COUNTS
@@ -1214,11 +1236,9 @@ process_tile <- function(i) {
   names(ess) <- "ess"
   
   # support score - uses ESS and total weight
-  support_score <- (
-    ess / (ess + 3)
-  ) * (
-    w_sum / (w_sum + 1)
-  )
+  K_ESS <- 3
+  K_WEIGHT <- 1
+  support_score <- (ess / (ess + K_ESS)) * (w_sum / (w_sum + K_WEIGHT))
   
   names(support_score) <- "support_score"
   
@@ -1264,7 +1284,7 @@ process_tile <- function(i) {
   names(fraction_binary_support)   <- "fraction_binary_support"
   names(fraction_triclass_support) <- "fraction_triclass_support"
   
-  # ----------------------
+    # ----------------------
   # EVIDENCE COMPUTATION
   # ----------------------
   
@@ -1336,12 +1356,18 @@ process_tile <- function(i) {
   share_native <- ifel(grass_type_total > 0, share_native, NA)
   share_tame   <- ifel(grass_type_total > 0, share_tame, NA)
   
-  # Optional neutral fallback
-  neutral <- p_grass * 0 + 0.5
+  # neutral fallback
+  # neutral <- p_grass * 0 + 0.5
+  # share_native <- cover(share_native, neutral)
+  # share_tame <- cover(share_tame, neutral)
   
-  share_native <- cover(share_native, neutral)
+  # use global fallbacks calculated before tiling 
+  fallback_native <- fallback_native_global
+  fallback_tame   <- fallback_tame_global
   
-  share_tame <- cover(share_tame, neutral)
+  # use fallback that reflects observed landscape instead of neutral value
+  share_native <- cover(share_native, fallback_native)
+  share_tame   <- cover(share_tame, fallback_tame)
   
   # ----------------------
   # Final class probabilities
@@ -1532,27 +1558,14 @@ process_tile <- function(i) {
 # =========================
 results <- lapply(seq_len(nrow(tiles)), process_tile)
 
-for (i in seq_len(nrow(tiles))) {
-  
-  cat("\n--- TILE", i, "---\n")
-  
-  tryCatch(
-    process_tile(i),
-    error = function(e) {
-      cat("FAILED TILE:", i, "\n")
-      print(e)
-      stop(e)
-    }
-  )
-}
-
 print("All tiles completed.")
 
 # Get tile outputs
-files <- Filter(Negate(is.null), results)
+#files <- unlist(results)
+files <- unlist(Filter(Negate(is.null), results))
 
 if (length(files) == 0) {
-  files <- list.files("/mnt/tmp/tiles", full.names=TRUE, pattern="\\.tif$")
+  files <- list.files(tile_dir, full.names=TRUE, pattern="\\.tif$")
 }
 
 # Ensure files exist
@@ -1562,6 +1575,11 @@ if (length(files) == 0) {
   stop("No tile files found for mosaicking")
 }
 
+# QA
+cat("Tile files found:", length(files), "\n")
+print(basename(files))
+sapply(files, function(f) nlyr(rast(f)))
+
 cat("Mosaicking", length(files), "tiles...\n")
 
 # Check layer consistency - make sure correct number of layers
@@ -1569,7 +1587,9 @@ cat("Mosaicking", length(files), "tiles...\n")
 stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 29, logical(1))))
 
 # Mosaic all tiles together
-mosaic_out <- mosaic(rast(files), fun="first")
+mosaic_out <- do.call(merge, lapply(files, rast))
+
+#mosaic_out <- mosaic(rast(files), fun="first")
 # or can try
 #mosaic_out <- do.call(mosaic, c(lapply(files, rast), list(fun="mean")))
 
@@ -1634,6 +1654,19 @@ fraction_binary_support <- mosaic_out[["fraction_binary_support"]]
 fraction_triclass_support <- mosaic_out[["fraction_triclass_support"]]
 
 # Check
+tmp_fraction <- fraction_binary_support +
+  fraction_triclass_support
+
+tmp_stats <- global(
+  tmp_fraction,
+  c("min","max","mean"),
+  na.rm = TRUE
+)
+
+print(tmp_stats) # should be ~1 everywhere
+
+#---------- calibrate support_score ----------------#
+# Check distribution
 #hist(values(support_score))
 vals_support <- spatSample(
   support_score,
@@ -1642,7 +1675,7 @@ vals_support <- spatSample(
   values = TRUE
 )
 
-quantile(vals_support)
+quantile(vals_support$support_score)
 
 png(
   file.path(diag_dir, "support_score_hist.png"),
@@ -1651,15 +1684,79 @@ png(
   res = 300
 )
 
-hist(vals_support,
-  main = "Support Score Distribution",
-  xlab = "Support Score"
+hist(vals_support$support_score,
+     main = "Support Score Distribution",
+     xlab = "Support Score"
 )
 
 dev.off()
 #hist(spatSample(support_score, size = 1e6, na.rm = TRUE, values = TRUE))
 #quantile(values(spatSample(support_score, 1e6, na.rm = TRUE)))
 
+calc_support <- function(ess, w_sum, k_ess, k_w) {
+  
+  (ess / (ess + k_ess)) *
+    (w_sum / (w_sum + k_w))
+  
+}
+
+support_k1 <- calc_support(
+  ess,
+  sum_weight_present,
+  k_ess = 1,
+  k_w = 1
+)
+
+support_k3 <- calc_support(
+  ess,
+  sum_weight_present,
+  k_ess = 3,
+  k_w = 1
+)
+
+support_k5 <- calc_support(
+  ess,
+  sum_weight_present,
+  k_ess = 5,
+  k_w = 1
+)
+
+# compare distributions
+global(
+  c(
+    support_k1,
+    support_k3,
+    support_k5
+  ),
+  c("min","max","mean"),
+  na.rm = TRUE
+)
+
+# Evaluate behavior versus source counts
+# Support scores should increase when evidence increases
+n_sources <- num_bin_sources + num_nt_sources
+
+# mean support by source count
+# support function should show more sources = higher support with diminishing returns
+df <- spatSample(
+  c(
+    n_sources,
+    support_score
+  ),
+  size = 1e6,
+  na.rm = TRUE,
+  as.df = TRUE
+)
+
+aggregate(
+  support_score ~ n_sources,
+  data = df,
+  mean
+)
+
+# MAKE DECISION RE CALIBRATION
+
+#--------------- Confidence --------------------#
 # Confidence = max probability
 confidence <- app(prob_stack, max)
 names(confidence) <- "confidence"
@@ -1691,10 +1788,49 @@ log_msg(capture.output(tmp_chk8))
 tmp_chk9 <- global(p_native, c("min","max","mean"), na.rm = TRUE)
 log_msg(capture.output(tmp_chk9))
 
+# check ESS more
+global(ess, c("min","max","mean"), na.rm = TRUE)
+vals_ess <- spatSample(
+  ess,
+  size = 1e6,
+  na.rm = TRUE,
+  values = TRUE
+)
+
+quantile(vals_ess[[1]])
+
+# check weight support
+global(sum_weight_present,
+       c("min","max","mean"),
+       na.rm = TRUE)
+
+quantile(
+  spatSample(
+    sum_weight_present,
+    size = 1e6,
+    na.rm = TRUE,
+    values = TRUE
+  )[[1]]
+)
+
+global(num_bin_sources, c("min","max"))
+global(num_nt_sources, c("min","max"))
+
+global(num_bin_sources, c("min","max","mean"), na.rm=TRUE)
+global(num_nt_sources, c("min","max","mean"), na.rm=TRUE)
+
+freq(num_bin_sources)
+freq(num_nt_sources)
+
 # Convert confidence to uncertainty
 confidence_uncertainty <- 1 - confidence
 
 names(confidence_uncertainty) <- "confidence_uncertainty"
+
+# DECISION SCORE
+# A pixel should only receive a high final score if both the class prediction is 
+# confident AND there is strong support behind that prediction
+# NOTE: decision score can never exceed the smaller term (scale can be compressed)
 
 # adjusted confidence
 #confidence <- app(prob_stack, max)
@@ -1703,12 +1839,30 @@ decision_score <- confidence * support_score
 names(decision_score) <- "decision_score"
 
 # Build a combined uncertainty layer
+
 # Equal weighting: classifcation confidence, class ambiguity, amount of supporting eveidence
-uncertainty_total <- (
-  confidence_uncertainty +
-    entropy_norm +
+uncertainty_total <- (confidence_uncertainty + entropy_norm + support_uncertainty) / 3
+
+# data-driven weighting:
+# standardize inputs
+z_conf <- scale(confidence_uncertainty)
+z_ent  <- scale(entropy_norm)
+z_sup  <- scale(support_uncertainty)
+
+# examine correlations
+# if two layers are highly redundant (r > 0.8), don't give equal weight
+tmp <- spatSample(
+  c(
+    confidence_uncertainty,
+    entropy_norm,
     support_uncertainty
-) / 3
+  ),
+  size = 1e6,
+  as.df = TRUE,
+  na.rm = TRUE
+)
+
+cor(tmp)
 
 names(uncertainty_total) <- "uncertainty_total"
 
@@ -1724,7 +1878,16 @@ names(uncertainty_total_w) <- "uncertainty_total_weighted"
 #------ Hard classification ------#
 hard_class <- which.max(prob_stack)
 
-# Check to finetune confidence threshold
+names(hard_class) <- "hard_class"
+
+# Optional labeling (may not persist in GeoTIFF)
+levels(hard_class) <- data.frame(
+  value = 1:3,
+  class = c("non_grass", "tame", "native")
+)
+
+#------ High-confidence-only classification ------#
+# Check to calibrate confidence threshold
 vals_conf <- spatSample(
   decision_score,
   size = 1e6,
@@ -1739,12 +1902,123 @@ png(
 )
 
 hist(
-  vals_conf,
+  vals_conf$decision_score,
   main = "Decision Score Distribution",
   xlab = "Decision Score"
 )
 
 dev.off()
+
+summary(vals_conf$decision_score)
+
+decision_q <- quantile(
+  vals_conf$decision_score,
+  probs = c(
+    0,
+    0.01,
+    0.05,
+    0.10,
+    0.25,
+    0.50,
+    0.75,
+    0.90,
+    0.95,
+    0.99,
+    1
+  )
+)
+
+
+log_msg("Quantiles for decision_score:")
+print(decision_q)
+
+# generate several candidate maps
+# allows choice of coverage rather than arbitrary score -
+# use instead of "decision_score < 0.4" in hard_class
+thr_candidates <- c(
+  decision_q[["10%"]], # 90% coverage
+  decision_q[["25%"]], # 75% coverage
+  decision_q[["50%"]]  # 50% coverage
+)
+
+coverage_tbl <- data.frame()
+
+for (thr in thr_candidates) {
+  
+  tmp <- ifel(decision_score < thr, NA, 1)
+  
+  cov <- global(
+    !is.na(tmp),
+    "mean",
+    na.rm = TRUE
+  )[1,1]
+  
+  coverage_tbl <- rbind(
+    coverage_tbl,
+    data.frame(
+      threshold = thr,
+      coverage = cov
+    )
+  )
+}
+
+coverage_tbl
+
+# do same for entropy
+vals_entropy <- spatSample(
+  entropy,
+  size = 1e6,
+  na.rm = TRUE,
+  values = TRUE
+)[[1]]
+
+entropy_q <- quantile(
+  vals_entropy,
+  probs = c(
+    .50,
+    .75,
+    .90,
+    .95
+  )
+)
+
+entropy_q
+
+log_msg("Quantiles for entropy:")
+print(entropy_q)
+
+# generate several candidate maps
+# allows choice of coverage rather than arbitrary threshold -
+# use instead of "entropy > 0.8" in hard_class
+# goal is retain low entropy, remove high entropy
+thr_candidates_e <- c(
+  entropy_q[["75%"]], 
+  entropy_q[["90%"]], 
+  entropy_q[["95%"]]  
+)
+
+coverage_tbl_e <- data.frame()
+
+for (thr in thr_candidates_e) {
+  
+  tmp <- ifel(entropy > thr, NA, 1) # make sure this is correct sign
+  
+  cov <- global(
+    !is.na(tmp),
+    "mean",
+    na.rm = TRUE
+  )[1,1]
+  
+  coverage_tbl_e <- rbind(
+    coverage_tbl_e,
+    data.frame(
+      threshold = thr,
+      coverage = cov
+    )
+  )
+}
+
+coverage_tbl_e
 
 # hard classification (1=not, 2=tame, 3=native)
 # mask low-confidence or high-uncertainty pixels
@@ -1755,38 +2029,84 @@ dev.off()
 # could auto-calibrate thresholds based on data distribution instead of fixed values
 # goal: keep coverage high, penalize low-support areas smoothly instead of abruptly, 
 # and prevent a large number of tiny-weight rasters from producing deceptively good ESS values
+decision_threshold <- decision_q[["25%"]]
+entropy_threshold  <- entropy_q[["90%"]]
+
 hard_class <- ifel(
-  (decision_score < 0.4) | (entropy > 0.8),
+  (decision_score < decision_threshold) |
+    (entropy > entropy_threshold),
   NA,
   hard_class
 )
 
+# hard_class <- ifel(
+#   (decision_score < 0.4) | (entropy > 0.8),
+#   NA,
+#   hard_class
+# )
+
 # could add rule for how to deal with ties
 # currently slightly biased toward “non_grass” in rare tie case
-
-names(hard_class) <- "class"
-
-# Optional labeling (may not persist in GeoTIFF)
-levels(hard_class) <- data.frame(
-  value = 1:3,
-  class = c("non_grass", "tame", "native")
-)
-
-#------ High-confidence-only classification ------#
 # Conservative/strict: confidence ≥ 0.8, entropy ≤ 0.5
 # Balanced: confidence ≥ 0.75, entropy ≤ 0.6
 # Inclusive: confidence ≥ 0.7, entropy ≤ 0.7
-high_conf_class <- ifel(
-  (decision_score >= 0.75) & (entropy <= 0.6),
-  hard_class,
-  NA)
+# high_conf_class <- ifel(
+#   (decision_score >= 0.75) & (entropy <= 0.6),
+#   hard_class,
+#   NA)
 
-names(high_conf_class) <- "high_conf_class"
+#------------- Confidence zones -------------#
+# use quantile values to define:
+# Zone 1 = Very low confidence (cutoff is 10% value)
+# Zone 2 = Low confidence (cutoffs are 10 & 25% values)
+# Zone 3 = Moderate confidence (cutoffs are 25 & 50% values)
+# Zone 4 = High confidence (cutoff is 50% but max value reached at 90%)
+# confidence_zone <- classify(
+#   decision_score,
+#   matrix(
+#     c(
+#       -Inf, 0.36, 1,  # very low
+#       0.36, 0.50, 2,  # low
+#       0.50, 0.62, 3,  # moderate
+#       0.62, Inf,  4   # high
+#     ),
+#     ncol = 3,
+#     byrow = TRUE
+#   )
+# )
 
-# optional labeling
-levels(high_conf_class) <- data.frame(
-  value = 1:3,
-  class = c("non_grass", "tame", "native"))
+q10 <- decision_q[["10%"]]
+q25 <- decision_q[["25%"]]
+q50 <- decision_q[["50%"]]
+
+confidence_zone <- classify(
+  decision_score,
+  matrix(c(
+    -Inf,q10,1,
+    q10,q25,2,
+    q25,q50,3,
+    q50,Inf,4
+  ), ncol = 3,
+  byrow = TRUE)
+)
+
+names(confidence_zone) <- "confidence_zone"
+plot(confidence_zone)
+
+# combine class and decision score
+# 11 = Not grass, very low confidence
+# 14 = Not grass, high confidence
+# 
+# 21 = Tame, very low confidence
+# 24 = Tame, high confidence
+# 
+# 31 = Native, very low confidence
+# 34 = Native, high confidence
+combined <- hard_class * 10 + confidence_zone
+names(combined) <- "combined"
+
+freq(combined)
+plot(combined)
 
 ###################################################
 
@@ -1814,6 +2134,9 @@ bin_meta_pd <- bin_meta %>%
       TRUE         ~ "2024_2025"
     )
   )
+
+log_msg("Rasters per period:")
+print(table(bin_meta_pd$period))
 
 # Build annual stack
 years <- sort(unique(bin_meta$year))
@@ -1867,8 +2190,8 @@ temporal_stack <- if (USE_PERIODS) {
 }
 
 # Create temporary tile directory
-temp_tile_dir <- "/mnt/tmp/temporal_tiles"
-dir.create(temp_tile_dir, showWarnings = FALSE)
+temporal_tile_dir <- file.path(tmp_root, "temporal_tiles")
+dir.create(temporal_tile_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Tile processor
 process_temporal_tile <- function(i, temporal_stack) {
@@ -1876,7 +2199,7 @@ process_temporal_tile <- function(i, temporal_stack) {
   tile <- ext(tiles[i, ])
   
   out_file <- file.path(
-    temp_tile_dir,
+    temporal_tile_dir,
     sprintf("temporal_%05d.tif", i)
   )
   
@@ -1886,7 +2209,9 @@ process_temporal_tile <- function(i, temporal_stack) {
   
   ys <- crop(temporal_stack, tile)
   
-  if (is.na(global(ys[[1]], "max")[[1]])) {
+  has_cells <- global(!is.na(ys[[1]]), "sum", na.rm = TRUE)[1,1]
+  
+  if (has_cells == 0) {
     return(NULL)
   }
   
@@ -1896,8 +2221,16 @@ process_temporal_tile <- function(i, temporal_stack) {
   
   temporal_var <- app(
     ys,
-    var,
-    na.rm = TRUE
+    function(x) {
+      
+      x <- x[!is.na(x)]
+      
+      if (length(x) < 2) {
+        return(NA)
+      }
+      
+      var(x)
+    }
   )
   
   temporal_sd <- sqrt(temporal_var)
@@ -1930,6 +2263,11 @@ process_temporal_tile <- function(i, temporal_stack) {
   temporal_range <- app(
     ys,
     function(x) {
+      
+      if (all(is.na(x))) {
+        return(NA)
+      }
+      
       max(x, na.rm = TRUE) -
         min(x, na.rm = TRUE)
     }
@@ -2000,34 +2338,45 @@ process_temporal_tile <- function(i, temporal_stack) {
 }
 
 # Run tiled temporal processing
-temporal_files <- lapply(
-  seq_along(tiles),
-  process_temporal_tile,
-  temporal_stack = temporal_stack
+temporal_files <- lapply(seq_len(nrow(tiles)), process_temporal_tile, temporal_stack = temporal_stack)
+temporal_files <- unlist(Filter(Negate(is.null), temporal_files))
+temporal_files <- temporal_files[file.exists(temporal_files)]
+
+length(temporal_files)
+
+rast(temporal_files[1])
+
+tmp <- rast(temporal_files[1])
+
+names(tmp)
+
+temporal_range <- tmp[["temporal_range"]]
+
+global(
+  temporal_range,
+  c("min", "max", "mean"),
+  na.rm = TRUE
 )
 
-temporal_files <- Filter(
-  Negate(is.null),
-  temporal_files
+global(temporal_range,
+       c("min","max","mean"),
+       na.rm = TRUE)
+
+freq(is.infinite(temporal_range))
+
+sapply(
+  temporal_files,
+  function(f) nlyr(rast(f))
 )
 
-temporal_files <- temporal_files[
-  file.exists(temporal_files)
-]
 
 # Mosaic temporal outputs
-cat(
-  "Mosaicking",
-  length(temporal_files),
-  "temporal tiles...\n"
-)
+cat("Mosaicking", length(temporal_files), "temporal tiles...\n")
 
-temporal_out <- mosaic(
-  rast(temporal_files),
-  fun = "mean"
-)
+temporal_bin_out <- do.call(merge,lapply(temporal_files, rast))
+#temporal_out <- mosaic(rast(temporal_files), fun = "mean")
 
-names(temporal_out) <- c(
+names(temporal_bin_out) <- c(
   "temporal_sd",
   "temporal_entropy",
   "temporal_range"#,
@@ -2035,42 +2384,127 @@ names(temporal_out) <- c(
 )
 
 # Extract layers
-temporal_sd <- temporal_out[["temporal_sd"]]
-
-temporal_entropy <- temporal_out[["temporal_entropy"]]
-
-temporal_range <- temporal_out[["temporal_range"]]
+temporal_sd <- temporal_bin_out[["temporal_sd"]]
+temporal_entropy <- temporal_bin_out[["temporal_entropy"]]
+temporal_range <- temporal_bin_out[["temporal_range"]]
 
 #temporal_slope <- temporal_out[["temporal_slope"]]
 
 #------ Tiled temporal workflow (native vs tame vs nongrass) ------#
 
-# Build annual/period triclass stacks
-nt_years <- sort(unique(nt_meta$year))
+year_counts_nt <- table(nt_meta$year)
 
-# nt_year_rasters <- lapply(nt_years, function(y) {
+log_msg("Rasters per year:")
+print(year_counts_nt)
+
+# Aggregate if some years only have 1-2 rasters
+nt_meta_pd <- nt_meta %>%
+  mutate(
+    period = case_when(
+      year <= 2017 ~ "2015_2017",
+      year <= 2020 ~ "2018_2020",
+      year <= 2023 ~ "2021_2023",
+      TRUE         ~ "2024_2025"
+    )
+  )
+
+log_msg("Rasters per period:")
+print(table(nt_meta_pd$period))
+
+# Build annual stack
+years_nt <- sort(unique(nt_meta$year))
+
+year_rasters_nt <- lapply(years_nt, function(y) {
+  
+  idx <- which(nt_meta$year == y)
+  
+  if (length(idx) == 1) {
+    rast(nt_local[idx])
+  } else {
+    app(
+      rast(nt_local[idx]),
+      mean,
+      na.rm = TRUE
+    )
+  }
+})
+
+year_stack_nt <- rast(year_rasters_nt)
+
+names(year_stack_nt) <- paste0("y", years_nt)
+
+# OR aggregated periods stack
+periods_nt <- sort(unique(nt_meta_pd$period))
+
+period_rasters_nt <- lapply(periods_nt, function(p) {
+  
+  idx <- which(nt_meta_pd$period == p)
+  
+  app(
+    rast(nt_local[idx]),
+    mean,
+    na.rm = TRUE
+  )
+})
+
+year_stack_pds_nt <- rast(period_rasters_nt)
+
+names(year_stack_pds_nt) <- periods_nt
+
+# CHOOSE WHETHER TO AGGREGATE YEARS OR NOT
+USE_PERIODS_nt <- TRUE
+
+temporal_stack_nt <- if (USE_PERIODS_nt) {
+  log_msg("Using period-aggregated temporal stack (triclass)")
+  year_stack_pds_nt
+} else {
+  log_msg("Using annual temporal stack (triclass)")
+  year_stack_nt
+}
+
+# Create yearly class frequencies
+# nt_year_probs <- lapply(nt_years, function(y) {
 #   
 #   idx <- which(nt_meta$year == y)
 #   
 #   s <- rast(nt_local[idx])
 #   
-#   if (length(idx) == 1) {
-#     
-#     r <- s
-#     
-#   } else {
-#     
-#     # average class code NOT appropriate
-#     # instead build class proportions
-#     
-#     stop("Need proportion workflow below")
-#   }
+#   p_not <- app(s == 0, mean, na.rm = TRUE)
+#   p_tame <- app(s == 1, mean, na.rm = TRUE)
+#   p_native <- app(s == 2, mean, na.rm = TRUE)
+#   
+#   names(p_not) <- paste0("not_", y)
+#   names(p_tame) <- paste0("tame_", y)
+#   names(p_native) <- paste0("native_", y)
+#   
+#   list(
+#     p_not = p_not,
+#     p_tame = p_tame,
+#     p_native = p_native
+#   )
 # })
 
-# Create yearly class frequencies
-nt_year_probs <- lapply(nt_years, function(y) {
+# Build time series stacks for each class
+# not_stack <- rast(
+#   lapply(nt_year_probs, function(x) x$p_not)
+# )
+# 
+# tame_stack <- rast(
+#   lapply(nt_year_probs, function(x) x$p_tame)
+# )
+# 
+# native_stack <- rast(
+#   lapply(nt_year_probs, function(x) x$p_native)
+# )
+# 
+# names(not_stack) <- paste0("y", nt_years)
+# names(tame_stack) <- paste0("y", nt_years)
+# names(native_stack) <- paste0("y", nt_years)
+
+# Create period class frequencies
+nt_period_probs <- lapply(periods_nt, function(p) {
   
-  idx <- which(nt_meta$year == y)
+  idx <- which(nt_meta_pd$period == p)
   
   s <- rast(nt_local[idx])
   
@@ -2078,9 +2512,9 @@ nt_year_probs <- lapply(nt_years, function(y) {
   p_tame <- app(s == 1, mean, na.rm = TRUE)
   p_native <- app(s == 2, mean, na.rm = TRUE)
   
-  names(p_not) <- paste0("not_", y)
-  names(p_tame) <- paste0("tame_", y)
-  names(p_native) <- paste0("native_", y)
+  names(p_not) <- paste0("not_", p)
+  names(p_tame) <- paste0("tame_", p)
+  names(p_native) <- paste0("native_", p)
   
   list(
     p_not = p_not,
@@ -2089,22 +2523,34 @@ nt_year_probs <- lapply(nt_years, function(y) {
   )
 })
 
-# Build time series stacks for each class
+# Build period stacks
 not_stack <- rast(
-  lapply(nt_year_probs, function(x) x$p_not)
+  lapply(nt_period_probs, function(x) x$p_not)
 )
 
 tame_stack <- rast(
-  lapply(nt_year_probs, function(x) x$p_tame)
+  lapply(nt_period_probs, function(x) x$p_tame)
 )
 
 native_stack <- rast(
-  lapply(nt_year_probs, function(x) x$p_native)
+  lapply(nt_period_probs, function(x) x$p_native)
 )
 
-names(not_stack) <- paste0("y", nt_years)
-names(tame_stack) <- paste0("y", nt_years)
-names(native_stack) <- paste0("y", nt_years)
+names(not_stack) <- periods_nt
+names(tame_stack) <- periods_nt
+names(native_stack) <- periods_nt
+
+log_msg("Periods used in triclass temporal analysis:")
+log_msg(paste(periods_nt, collapse = ", "))
+
+log_msg("Layers in not_stack:")
+log_msg(nlyr(not_stack))
+
+log_msg("Layers in tame_stack:")
+log_msg(nlyr(tame_stack))
+
+log_msg("Layers in native_stack:")
+log_msg(nlyr(native_stack))
 
 # Tiled triclass temporal processor
 process_triclass_temporal_tile <- function(i) {
@@ -2112,7 +2558,7 @@ process_triclass_temporal_tile <- function(i) {
   tile <- ext(tiles[i, ])
   
   out_file <- file.path(
-    temp_tile_dir,
+    temporal_tile_dir,
     sprintf("triclass_temporal_%05d.tif", i)
   )
   
@@ -2124,7 +2570,13 @@ process_triclass_temporal_tile <- function(i) {
   tame_y <- crop(tame_stack, tile)
   native_y <- crop(native_stack, tile)
   
-  if (is.na(global(not_y[[1]], "max")[[1]])) {
+  has_cells <- global(
+    !is.na(not_y[[1]]),
+    "sum",
+    na.rm = TRUE
+  )[1,1]
+  
+  if (has_cells == 0) {
     return(NULL)
   }
   
@@ -2160,7 +2612,7 @@ process_triclass_temporal_tile <- function(i) {
   mean_tame <- app(tame_y, mean, na.rm = TRUE)
   mean_native <- app(native_y, mean, na.rm = TRUE)
   
-  dominant_class <- as.int(
+  dominant_class <- app(
     c(mean_not, mean_tame, mean_native),
     which.max
   )
@@ -2210,24 +2662,14 @@ process_triclass_temporal_tile <- function(i) {
 }
 
 # Run
-triclass_temporal_files <- lapply(
-  seq_along(tiles),
-  process_triclass_temporal_tile
-)
+triclass_temporal_files <- lapply(seq_len(nrow(tiles)), process_triclass_temporal_tile)
+triclass_temporal_files <- unlist(Filter(Negate(is.null), triclass_temporal_files))
+triclass_temporal_files <- triclass_temporal_files[file.exists(triclass_temporal_files)]
 
-triclass_temporal_files <- Filter(
-  Negate(is.null),
-  triclass_temporal_files
-)
+# Mosaic temporal outputs
+cat("Mosaicking", length(triclass_temporal_files), "temporal tiles...\n")
 
-triclass_temporal_files <- triclass_temporal_files[
-  file.exists(triclass_temporal_files)
-]
-
-triclass_temporal_out <- mosaic(
-  rast(triclass_temporal_files),
-  fun = "first"
-)
+triclass_temporal_out <- do.call(merge,lapply(triclass_temporal_files, rast))
 
 names(triclass_temporal_out) <- c(
   "sd_not",
@@ -2250,6 +2692,8 @@ dominant_class <- as.int(dominant_class)
 
 class_entropy <- triclass_temporal_out[["class_entropy"]]
 
+plot(class_entropy)
+
 #------ Diagnostics ------#
 
 # summary statistics
@@ -2264,6 +2708,29 @@ global(
   na.rm = TRUE
 )
 
+tmp_chk10 <- global(
+  c(
+    support_score,
+    confidence,
+    decision_score
+  ),
+  c("min", "max", "mean"),
+  na.rm = TRUE
+)
+
+for (i in seq_len(nrow(tmp_chk10))) {
+  
+  log_msg(
+    sprintf(
+      "%s: min=%.4f max=%.4f mean=%.4f",
+      rownames(tmp_chk10)[i],
+      tmp_chk10[i, "min"],
+      tmp_chk10[i, "max"],
+      tmp_chk10[i, "mean"]
+    )
+  )
+}
+
 # calculate coverage after masking
 coverage <- global(
   !is.na(hard_class),
@@ -2276,11 +2743,6 @@ log_msg(
   round(100 * coverage[1,1], 1),
   "%"
 )
-
-# check confidence to inform calibration
-global(decision_score,
-       c("min","max","mean"),
-       na.rm = TRUE)
 
 # Visualize confidence vs entropy
 # to understand whether masking rules are too strict/loose
@@ -2308,18 +2770,18 @@ library(ggplot2)
 p1 <- ggplot(vals, aes(x = decision_score, y = entropy)) +
   stat_binhex(bins = 60) +
   scale_fill_viridis_c(trans = "log10") +
-  geom_vline(xintercept = 0.4, color = "blue", linetype = "dashed") +
-  geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
+  geom_vline(xintercept = decision_threshold, color = "blue", linetype = "dashed") +
+  geom_hline(yintercept = entropy_threshold, color = "red", linetype = "dashed") +
   labs(
-    title = "Confidence vs Entropy",
-    x = "Confidence (max probability)",
+    title = "Decision score vs Entropy",
+    x = "Decision score",
     y = "Entropy",
     fill = "Pixel count"
   ) +
   theme_minimal()
 
 ggsave(
-  file.path(diag_dir, "confidence_vs_entropy.png"),
+  file.path(diag_dir, "decisionscore_vs_entropy.png"),
   p1,
   width = 8,
   height = 6,
@@ -2329,15 +2791,15 @@ ggsave(
 # Density plot (smooth view)
 p2 <- ggplot(vals, aes(x = decision_score, y = entropy)) +
   geom_density_2d_filled() +
-  geom_vline(xintercept = 0.4, color = "blue", linetype = "dashed") +
-  geom_hline(yintercept = 0.8, color = "red", linetype = "dashed") +
+  geom_vline(xintercept = decision_threshold, color = "blue", linetype = "dashed") +
+  geom_hline(yintercept = entropy_threshold, color = "red", linetype = "dashed") +
   labs(
-    title = "Density of Confidence vs Entropy"
+    title = "Density of decision score vs Entropy"
   ) +
   theme_minimal()
 
 ggsave(
-  file.path(diag_dir, "confidence_vs_entropy_density.png"),
+  file.path(diag_dir, "decisionscore_vs_entropy_density.png"),
   p2,
   width = 8,
   height = 6,
@@ -2348,12 +2810,12 @@ ggsave(
 # If most points cluster around confidence > 0.5 then threshold is appropriate
 p3 <- ggplot(vals, aes(x = decision_score)) +
   geom_histogram(bins = 50, fill = "steelblue") +
-  geom_vline(xintercept = 0.4, color = "red", linetype = "dashed") +
-  labs(title = "Confidence distribution") +
+  geom_vline(xintercept = decision_threshold, color = "red", linetype = "dashed") +
+  labs(title = "Decision score distribution") +
   theme_minimal()
 
 ggsave(
-  file.path(diag_dir, "confidence_dist.png"),
+  file.path(diag_dir, "decisionscore_dist.png"),
   p3,
   width = 8,
   height = 6,
@@ -2364,7 +2826,7 @@ ggsave(
 # If most points cluster around entropy < 0.6 then threshold is appropriate
 p4 <- ggplot(vals, aes(x = entropy)) +
   geom_histogram(bins = 50, fill = "darkgreen") +
-  geom_vline(xintercept = 0.8, color = "red", linetype = "dashed") +
+  geom_vline(xintercept = entropy_threshold, color = "red", linetype = "dashed") +
   labs(title = "Entropy distribution") +
   theme_minimal()
 
@@ -2393,7 +2855,7 @@ log_msg(capture.output(
   global(support_score, c("min","max","mean"), na.rm=TRUE)
 ))
 
-log_msg("Confidence adjusted:")
+log_msg("Decision score:")
 log_msg(capture.output(
   global(decision_score, c("min","max","mean"), na.rm=TRUE)
 ))
@@ -2449,7 +2911,7 @@ png(
 
 plot(
   decision_score,
-  main = "Confidence (Max Probability)",
+  main = "Decision score",
   col = viridis::viridis(100)
 )
 
@@ -2457,7 +2919,7 @@ dev.off()
 
 # Binary "uncertain areas" map
 uncertain_mask <- ifel(
-  (decision_score < 0.4) | (entropy > 0.8),
+  (decision_score < decision_threshold) | (entropy > entropy_threshold),
   1,
   0
 )
@@ -2544,16 +3006,16 @@ aws.s3::put_object(
   object = paste0(out_dir, "/diagnostics/decision_score_hist.png"))
 
 aws.s3::put_object(
-  file = file.path(diag_dir, "confidence_vs_entropy.png"),
-  object = paste0(out_dir, "/diagnostics/confidence_vs_entropy.png"))
+  file = file.path(diag_dir, "decisionscore_vs_entropy.png"),
+  object = paste0(out_dir, "/diagnostics/decisionscore_vs_entropy.png"))
 
 aws.s3::put_object(
-  file = file.path(diag_dir, "confidence_vs_entropy_density.png"),
-  object = paste0(out_dir, "/diagnostics/confidence_vs_entropy_density.png"))
+  file = file.path(diag_dir, "decisionscore_vs_entropy_density.png"),
+  object = paste0(out_dir, "/diagnostics/decisionscore_vs_entropy_density.png"))
 
 aws.s3::put_object(
-  file = file.path(diag_dir, "confidence_dist.png"),
-  object = paste0(out_dir, "/diagnostics/confidence_dist.png"))
+  file = file.path(diag_dir, "decisionscore_dist.png"),
+  object = paste0(out_dir, "/diagnostics/decisionscore_dist.png"))
 
 aws.s3::put_object(
   file = file.path(diag_dir, "entropy_dist.png"),
@@ -2608,7 +3070,8 @@ outputs <- list(
   list(raster = confidence, local = "confidence.tif", s3 = "confidence.tif", wopt = wopt),
   list(raster = decision_score, local = "decision_score.tif", s3 = "decision_score.tif", wopt = wopt),
   list(raster = hard_class, local = "hard_class.tif", s3 = "hard_class.tif", wopt = wopt_class),
-  list(raster = high_conf_class, local = "high_conf_class.tif", s3 = "high_conf_class.tif", wopt = wopt_class),
+  list(raster = confidence_zone, local = "confidence_zone.tif", s3 = "confidence_zone.tif", wopt = wopt_class),
+  list(raster = combined, local = "combined.tif", s3 = "combined.tif", wopt = wopt_class),
   list(raster = uncertainty_total, local = "uncertainty_total.tif", s3 = "uncertainty_total.tif", wopt = wopt),
   list(raster = uncertainty_total_w, local = "uncertainty_total_w.tif", s3 = "uncertainty_total_w.tif", wopt = wopt),
   list(raster = temporal_sd, local = "temporal_sd.tif", s3 = "temporal_sd_bin.tif", wopt = wopt),
