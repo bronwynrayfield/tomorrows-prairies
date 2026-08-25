@@ -44,9 +44,9 @@
 source(file.path("scripts/landcover", "0a-setup.R"))
 
 #--- Load files ----
-
 # Study area & Modelling extent
 sa <- st_read(file.path(sa_filepath, sa_filename))
+me <- st_read(file.path(sa_filepath, me_filename))
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
 
 # Cropland
@@ -61,6 +61,15 @@ ecozones_raw <- st_read(file.path("./existingdatasets", capitalize_first(ecozone
 #Note that ecoregions and ecodistrics were preprocessed manually to deal with misalignment
 ecoregions_raw <- st_read(file.path("./processeddatasets", ecoregions_filepath, ecoregions_filename))
 ecodistricts_raw <- st_read(file.path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename))
+
+# Protected Areas
+pa_raw <- st_read(file.path("./existingdatasets", capitalize_first(pa_filepath), paste0(pa_filename, ".gdb")), layer = pa_filename)
+
+# Land tenure
+ncc_gdb <- file.path("./existingdatasets", capitalize_first(ncc_easement_filepath), paste0(ncc_easement_filename, ".gdb"))
+lyr_names <- st_layers(ncc_gdb)$name
+ncc_list <- lapply(lyr_names, \(x) st_read(ncc_gdb, layer = x, quiet = TRUE))
+# lapply(ncc_list, names)  # check names to make sure the layers all have the same schema (they do! but their crs are different)
 
 # LULC
 lulc2020_prairies_raw <- rast(file.path("./processeddatasets", capitalize_first(aafc_filepath), "merged", aafc2020_filename))
@@ -81,13 +90,6 @@ crop_gain_class_raw <- rast(file.path("./existingdatasets", capitalize_first(cro
 crop_gain_year_raw <- rast(file.path("./existingdatasets", capitalize_first(crop_gain_filepath), crop_gain_year_filename))  
 builtup_gain_class_raw <- rast(file.path("./existingdatasets", capitalize_first(builtup_gain_filepath), builtup_gain_class_filename))
 builtup_gain_year_raw <- rast(file.path("./existingdatasets", capitalize_first(builtup_gain_filepath), builtup_gain_year_filename))  
-
-# Protected Areas
-pa_raw <- st_read(file.path("./existingdatasets", capitalize_first(pa_filepath), paste0(pa_filename, ".gdb")), layer = pa_filename)
-ncc_gdb <- file.path("./existingdatasets", capitalize_first(ncc_easement_filepath), paste0(ncc_easement_filename, ".gdb"))
-lyr_names <- st_layers(ncc_gdb)$name
-ncc_list <- lapply(lyr_names, \(x) st_read(ncc_gdb, layer = x, quiet = TRUE))
-# lapply(ncc_list, names)  # check names to make sure the layers all have the same schema (they do! but their crs are different)
 
 # Soil
 oc_raw <- rast(file.path("./existingdatasets", capitalize_first(soil_filepath), oc_filename))
@@ -120,21 +122,20 @@ tx_mean_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate
 nr_cdd_hist_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), nr_cdd_hist_filename))
 nr_cdd_fut_raw <- rast(file.path("./existingdatasets", capitalize_first(climate_filepath), nr_cdd_fut_filename))
 
-# # Roads
-# # Merged road layer is huge so only read in the portion within the modelling extent bounding box
-# # read just the layer definition/CRS without loading everything
-# roads_crs <- st_crs(st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename),
-#                             layer="roads_merge", quiet=TRUE, query="SELECT * FROM roads_merge LIMIT 1"))
-# 
-# bb_poly <- st_as_sfc(st_bbox(me))
-# bb_poly_roads <- st_transform(bb_poly, roads_crs)
-# 
-# roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename), 
-#                              layer="roads_merge",
-#                              wkt_filter = st_as_text(bb_poly_roads),
-#                              quiet=TRUE)
-#roads_raw <-st_read(road_file, layer = "NRN_SK_14_0_ROADSEG")
-#roads_raw <-st_read(file.path("./existingdatasets", capitalize_first(road_filepath), road_filename), layer = "NRN_SK_14_0_ROADSEG")
+# Socio-economic
+# Roads
+# Merged road layer is huge so only read in the portion within the modelling extent bounding box
+# read just the layer definition/CRS without loading everything
+roads_crs <- st_crs(st_read(file.path("./existingdatasets", capitalize_first(road_filepath), paste0(road_filename, ".gdb")),
+                            layer="roads_merge", quiet=TRUE, query="SELECT * FROM roads_merge LIMIT 1"))
+
+bb_poly <- st_as_sfc(st_bbox(me))
+bb_poly_roads <- st_transform(bb_poly, roads_crs)
+
+roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filepath), paste0(road_filename, ".gdb")),
+                             layer="roads_merge",
+                             wkt_filter = st_as_text(bb_poly_roads),
+                             quiet=TRUE)
 
 # Canfax net returns
 canfax_raw <- st_read(file.path("./existingdatasets", capitalize_first(canfax_filepath), canfax_filename))
@@ -190,16 +191,6 @@ census_reproj <- st_transform(census_raw, st_crs(sa))
 ecozones_reproj <- st_transform(ecozones_raw, st_crs(sa))
 ecoregions_reproj <- st_transform(ecoregions_raw, st_crs(sa))
 ecodistricts_reproj <- st_transform(ecodistricts_raw, st_crs(sa))
-#
-# roads_reproj <- st_transform(roads_raw, st_crs(sa))
-# #write_sf_tagged(roads_reproj, "./processeddatasets", road_filepath, road_filename, "proj-naaea")
-#
-# roads_r <- rasterize(
-#   roads_reproj, me_r,
-#   field = 1,
-#   background = NA,
-#   touches = TRUE
-# )
 
 grass_loss_class_reproj <- project(grass_loss_class_raw, me_r, method = "near")
 grass_loss_year_reproj <- project(grass_loss_year_raw, me_r, method = "near")
@@ -236,9 +227,17 @@ tx_mean_hist_reproj <- project(tx_mean_hist_raw, me_r, method = "bilinear")
 tx_mean_fut_reproj <- project(tx_mean_fut_raw, me_r, method = "bilinear")
 nr_cdd_hist_reproj <- project(nr_cdd_hist_raw, me_r, method = "bilinear")
 nr_cdd_fut_reproj <- project(nr_cdd_fut_raw, me_r, method = "bilinear")
-# #roads_reproj <- st_transform(roads_raw, st_crs(sa))
 pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
 canfax_reproj <- st_transform(canfax_raw, st_crs(sa))
+
+
+roads_reproj <- st_transform(roads_raw, st_crs(sa))
+roads_r <- rasterize(
+  roads_reproj, me_r,
+  field = 1,
+  background = NA,
+  touches = TRUE
+)
 
 #--- Write to disk ----
 write_rast_tagged(crop_suit_reproj, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "proj-naaea")
@@ -249,8 +248,8 @@ write_sf_tagged(ecoregions_reproj, "./processeddatasets", ecoregions_filepath, e
 write_sf_tagged(ecodistricts_reproj, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea")
 write_sf_tagged(pa_reproj, "./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG")
 write_sf_tagged(ncc_all, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "proj-naaea", driver = "GPKG")
-# #write_sf_tagged(roads_reproj, "./processeddatasets", road_filepath, road_filename, "proj-naaea", layer = "roads_merge")
-# write_rast_tagged(roads_r, "./processeddatasets", road_filepath, "roads.tif", "proj-naaea")
+#write_sf_tagged(roads_reproj, "./processeddatasets", road_filepath, road_filename, "proj-naaea", layer = "roads_merge") #skip and write raster instead
+write_rast_tagged(roads_r, "./processeddatasets", road_filepath, paste0(road_filename, ".tif"), "proj-naaea")
 write_rast_tagged(lulc2020_prairies_reproj, file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2020_filename, "proj-naaea")
 write_rast_tagged(lulc2015_prairies_reproj, file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2015_filename, "proj-naaea")
 write_rast_tagged(lulc2010_prairies_reproj, file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2010_filename, "proj-naaea")
@@ -278,7 +277,6 @@ write_rast_tagged(psssm_mean_reproj, "./processeddatasets", psssm_filepath, psss
 write_rast_tagged(psssm_sd_reproj, "./processeddatasets", psssm_filepath, psssm_sd_filename, "proj-naaea")
 write_rast_tagged(tsm_planting_reproj, "./processeddatasets", tsm_filepath, tsm_planting_filename, "proj-naaea")
 write_rast_tagged(tsm_growing_reproj, "./processeddatasets", tsm_filepath, tsm_growing_filename, "proj-naaea")
-#st_write(roads_reproj, file.path("./processeddatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
 write_rast_tagged(gddgrow_5_hist_reproj, "./processeddatasets", climate_filepath, gddgrow_5_hist_filename, "proj-naaea")
 write_rast_tagged(gddgrow_5_fut_reproj, "./processeddatasets", climate_filepath, gddgrow_5_fut_filename, "proj-naaea")
 write_rast_tagged(hddheat_18_hist_reproj, "./processeddatasets", climate_filepath, hddheat_18_hist_filename, "proj-naaea")

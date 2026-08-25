@@ -45,7 +45,7 @@ ecoregions_reproj <- st_read(tagged_path("./processeddatasets", ecoregions_filep
 ecodistricts_reproj <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea"))
 
 # Roads
-roads_reproj <-st_read(file.path("./processeddatasets", road_filepath, road_filename), layer = "NRN_SK_14_0_ROADSEG")
+roads_reproj <-rast(tagged_path("./processeddatasets", road_filepath, paste0(road_filename, ".tif"), "proj-naaea"))
 
 # LULC - AAFC LUTS
 lulc2020_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2020_filename, "proj-naaea"))
@@ -129,9 +129,7 @@ pa <- st_crop(pa_reproj, st_bbox(me_r))
 ncc <- st_crop(ncc_reproj, st_bbox(me_r))
 
 # Roads
-roads <- st_intersection(roads_reproj, me)
-plot(roads["ROADCLASS"], main = "Roads by Class", key.pos = 4)
-roads <- mask(crop(roads_r, me), me)
+roads <- mask(crop(roads_reproj, me), me)
 
 # Cropland
 crop_suit <- mask(crop(crop_suit_reproj, me_r), me_r)
@@ -199,8 +197,7 @@ write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregio
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
 write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
 write_sf_tagged(ncc, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "modelling-extent", driver = "GPKG")
-#write_sf_tagged(roads, "./processeddatasets", road_filepath, road_filename, "modelling-extent", layer = "roads_merge")
-#write_rast_tagged(roads, "./processeddatasets", road_filepath, "roads.tif", "modelling-extent")
+write_rast_tagged(roads, "./processeddatasets", road_filepath, paste0(road_filename, ".tif"), "modelling-extent")
 write_rast_tagged(crop_suit, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent")
 write_rast_tagged(plowprint, "./processeddatasets", plowprint_filepath, plowprint_filename, "modelling-extent")
 write_rast_tagged(lulc2020, file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent")
