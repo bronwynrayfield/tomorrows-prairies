@@ -25,7 +25,7 @@ terraOptions(memfrac = 0.8,
 source(file.path("scripts/landcover/functions", "functions-general.R"))
 source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 
-#--- Parameters ---
+#--- Parameters ----
 # Resolution of rasters in m
 res_m <- 30
 
@@ -49,8 +49,8 @@ aafc2020_filename <- "AAFC2020_merged.tif"
 aafc2015_filename <- "AAFC2015_merged.tif"
 aafc2010_filename <- "AAFC2010_merged.tif"
 aafc2000_filename <- "AAFC2000_merged.tif"
-#road_filename <- "NRN_SK_14_0_GPKG_en.gpkg"
-road_filename <- "roads.gdb"
+road_filename <- "roads"
+rail_filename <- "rails"
 grass_loss_class_filename <- "recentchange_2022_loss_c05_grass_b01_class.tif"
 grass_loss_year_filename <- "recentchange_2022_loss_c05_grass_b03_year.tif"
 ipast_loss_class_filename <- "recentchange_2022_loss_c10_ipast_b01_class.tif"
@@ -141,6 +141,7 @@ census_subdivision_filepath <- "boundaries/census-subdivisions"
 aafc_filepath <- "landcover/AAFC LUTS 30m"
 #road_filepath <- "landcover/National Road Network/NRN_RRN_SK_GPKG"
 road_filepath <- "landcover/Roads - Poley et al 2021"
+rail_filepath <- "landcover/National Railway Network"
 grass_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/loss/c05_grass"
 ipast_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/loss/c10_ipast"
 upast_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/loss/c04_upast"
@@ -186,3 +187,19 @@ clay_nodata <- 255
 sand_nodata <- 255
 silt_nodata <- 255
 ph_nodata <- 255
+
+#--- LULC class codes ----
+# Class scheme (identical in both years, so the maps cross-tabulate):
+#   1 = native grassland   2 = tame grassland   3 = annual cropland
+#   4 = settlement         5 = other            NA = outside modelling extent
+cls_native <- 1
+cls_tame   <- 2
+cls_annual <- 3
+cls_settlement <- 4
+cls_other  <- 5
+
+lulc_levels <- data.frame(
+  value = c(cls_native, cls_tame, cls_annual, cls_settlement, cls_other),
+  class = c("native grassland", "tame grassland", "annual cropland",
+            "settlement", "other")
+)
