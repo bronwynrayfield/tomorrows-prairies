@@ -1284,7 +1284,7 @@ process_tile <- function(i) {
   names(fraction_binary_support)   <- "fraction_binary_support"
   names(fraction_triclass_support) <- "fraction_triclass_support"
   
-    # ----------------------
+  # ----------------------
   # EVIDENCE COMPUTATION
   # ----------------------
   
@@ -3157,3 +3157,4 @@ aws.s3::put_object(
   ),
   bucket = "sagemaker-gst-stage.sharing"
 )
+
