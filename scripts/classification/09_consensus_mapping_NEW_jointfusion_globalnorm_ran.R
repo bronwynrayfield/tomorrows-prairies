@@ -2283,6 +2283,12 @@ aws.s3::put_object(
 confidence <- app(prob_stack, max)
 names(confidence) <- "confidence"
 
+plot(confidence)
+
+writeRaster(confidence, file.path(checkpoint_dir, "confidence.tif"),
+            overwrite = TRUE, wopt = list(datatype = "FLT4S",
+                                          gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
 # Check probabilities sum to ~1
 check <- app(prob_stack, sum)
 stats <- global(check, c("min", "max", "mean"), na.rm=TRUE)
@@ -2404,6 +2410,12 @@ names(confidence_uncertainty) <- "confidence_uncertainty"
 decision_score <- confidence * support_score
 names(decision_score) <- "decision_score"
 
+plot(decision_score)
+
+writeRaster(decision_score, file.path(checkpoint_dir, "decision_score.tif"),
+            overwrite = TRUE, wopt = list(datatype = "FLT4S",
+                                          gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
 # Build a combined uncertainty layer
 
 # Equal weighting: classifcation confidence, class ambiguity, amount of supporting eveidence
@@ -2445,6 +2457,12 @@ cor(tmp)
 # confidence_uncertainty and entropy_norm are highly correlated (0.97) - only use one
 uncertainty_total <- (entropy_norm + support_uncertainty) / 2
 names(uncertainty_total) <- "uncertainty_total"
+
+plot(uncertainty_total)
+
+writeRaster(uncertainty_total, file.path(checkpoint_dir, "uncertainty_total.tif"),
+            overwrite = TRUE, wopt = list(datatype = "FLT4S",
+                                          gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
 
 # Weight entropy and confidence more than support:
 uncertainty_total_w <- (
