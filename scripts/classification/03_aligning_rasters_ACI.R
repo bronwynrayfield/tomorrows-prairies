@@ -257,7 +257,122 @@ aci_algn_binary
 #max value   :              1
 
 # Save the raster as 8-bit unsigned integer
-aci_binary_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_binary_noshrub.tif")
+aci_binary_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_binary_withshrub.tif")
+writeRaster(aci_algn_binary, aci_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+####### with shrub
+aci_file <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn.tif")
+aci_merged_reproj_algn <- rast(aci_file)
+
+# Per Emily Lindsay:
+# “Undifferentiated is Class 120 and the basic landcover level. 
+# Cropland is Class 121 and is the next level of Ag division along with Class 122 (pasture/forage). 
+# Cropland gets subdivided into all the various non-122 crop types.”
+# So I think the distinction is for when they do the classification itself – which is split into 
+# two parts, they classify land cover first, and all cropland is 120; and then the run the cropland 
+# classification on everything that is 120 (which is split again into 121 vs 122 (forage) and then 
+# 121 is classified into all the annual crop classes. 
+# Let me know if you have any other Q’s – I don’t think there should be an abundance of pixels in 
+# 120 or 121 – but technically 120 could have forage in it, but 121 should not. 
+
+# reclassify to binary (0 = not grass, 1 = grass)
+aci_algn_binary <- classify(aci_merged_reproj_algn, 
+                            rcl = matrix(c(
+                              10, 0, # cloud
+                              20, 0, # water
+                              30, 0, # exposed/barren land
+                              34, 0, # urban/developed
+                              35, 0, # greenhouses
+                              50, 1, # shrubland
+                              60, 0, # forest fire/burnt area
+                              80, 0, # wetland
+                              85, 0, # peatland
+                              110, 1, # grassland
+                              120, 0, # agriculture (undifferentiated)
+                              121, 0, # cropland
+                              122, 1, # pasture/forages
+                              130, 0, # too wet to be seeded
+                              131, 0, # fallow
+                              132, 0, # cereals
+                              133, 0, # barley
+                              134, 0, # other grains
+                              135, 0, # millet
+                              136, 0, # oats
+                              137, 0, # rye
+                              138, 0, # spelt
+                              139, 0, # triticale
+                              140, 0, # wheat
+                              141, 0, # switchgrass
+                              142, 0, # sorghum
+                              143, 0, # quinoa
+                              145, 0, # winter wheat
+                              146, 0, # spring wheat
+                              147, 0, # corn for grain
+                              148, 0, # tobacco
+                              149, 0, # ginseng
+                              150, 0, # oilseeds
+                              151, 0, # borage
+                              152, 0, # camelina
+                              153, 0, # canola/rapeseed
+                              154, 0, # flaxseed
+                              155, 0, # mustard
+                              156, 0, # safflower
+                              157, 0, # sunflower
+                              158, 0, # soybeans
+                              159, 0, # other oilseeds
+                              160, 0, # pulses
+                              161, 0, # other pulses
+                              162, 0, # peas
+                              163, 0, # chickpeas
+                              167, 0, # beans
+                              168, 0, # fababeans
+                              174, 0, # lentils
+                              175, 0, # vegetables
+                              176, 0, # tomatoes
+                              177, 0, # potatoes
+                              178, 0, # sugarbeets
+                              179, 0, # other vegetables
+                              180, 0, # fruits
+                              181, 0, # berries
+                              182, 0, # blueberry
+                              183, 0, # cranberry
+                              185, 0, # other berries
+                              188, 0, # orchards
+                              189, 0, # other fruits
+                              190, 0, # vineyards
+                              191, 0, # hops
+                              192, 0, # sod 
+                              193, 0, # herbs
+                              194, 0, # nursery
+                              195, 0, # buckwheat
+                              196, 0, # canaryseed
+                              197, 0, # hemp
+                              198, 0, # vetch
+                              199, 0, # other crops
+                              200, 0, # forest (undifferentiated)
+                              210, 0, # coniferous
+                              220, 0, # broadleaf
+                              230, 0), # mixedwood
+                              ncol = 2, byrow = TRUE))
+
+aci_algn_binary
+
+#class       : SpatRaster
+#size        : 86539, 130223, 1  (nrow, ncol, nlyr)
+#resolution  : 30, 30  (x, y)
+#extent      : -2321003, 1585687, 270327.4, 2866497  (xmin, xmax, ymin, ymax)
+#coord. ref. : North_America_Albers_Equal_Area_Conic (ESRI:102008)
+#source      : spat_b6486f0d2eb_46664_6Uxy02myoMrg5LO.tif
+#varname     : class_study_area_aligned_cnvc_Dec2025
+#name        : aci_2025_bc_v1
+#min value   :              0
+#max value   :              1
+
+# Save the raster as 8-bit unsigned integer
+aci_binary_out_path <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_binary_withshrub.tif")
 writeRaster(aci_algn_binary, aci_binary_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,

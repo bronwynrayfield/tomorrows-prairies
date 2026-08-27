@@ -6,7 +6,7 @@
 
 ##----------------------- Alison Long - March 2026 -------------------------
 
-# step 9: Fill in non-grassland pixels of the consensus map with other land cover
+# step 11: Fill in non-grassland pixels of the consensus map with other land cover
 #         classes to generate baseline map for landscape modelling
 
 # load packages
@@ -54,7 +54,8 @@ luts_file <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn.tif")
 aci_file  <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn.tif")
 
 # consensus map file
-cons_file <- file.path(consens_data_dir, "v4_temporal_modelling_extent_24Jul2026/grass_3class.tif")
+#cons_file <- file.path(consens_data_dir, "v4_temporal_modelling_extent_24Jul2026/grass_3class.tif")
+cons_file <- file.path(consens_data_dir, "new_fusion_global_norm_modext_26Aug2026/hard_class.tif")
 
 ####--- PREP LC RASTER ---####
 
@@ -80,6 +81,11 @@ plot(cm)
 luts_masked <- mask(crop(luts, sa), sa)
 aci_masked  <- mask(crop(aci, sa), sa)
 cm_masked   <- mask(crop(cm, sa), sa)
+
+# consensus map has the northern-most tip cut off
+# will crop/mask to it instead of sa
+aci_masked  <- mask(crop(aci, cm), cm)
+plot(aci_masked)
 
 ####--- RECLASSIFY LULC RASTER ---####
 
@@ -135,8 +141,8 @@ luts_masked_reclass
 plot(luts_masked_reclass)
 
 # reclassify ACI to modelling classes
-# 8 = tame grass
-# 9 = native grass
+# 8 = tame grass (from ACI not consensus map)
+# 9 = native grass (from ACI not consensus map)
 # 4 = settlement
 # 3 = annual crop
 # 5 = other 
@@ -225,31 +231,31 @@ plot(aci_masked_reclass)
 ####--- RECLASSIFY GRASS RASTER ---####
 
 # Reclassify 0 values (non-grass) to NA
-# 0 --> NA (nongrass)
-# 1 --> 2  (tame)
-# 2 --> 1  (native)
-cm_masked_reclass <- classify(cm_masked, 
-                                rcl = matrix(c(2, 1,  # Native grass
-                                               1, 2,  # Tame grass
-                                               0, NA), # Non-grass
+# 1 --> NA (nongrass)
+# 2 --> 2  (tame)
+# 3 --> 1  (native)
+cm_reclass <- classify(cm, 
+                                rcl = matrix(c(3, 1,  # Native grass
+                                               2, 2,  # Tame grass
+                                               1, NA), # Non-grass
                                              ncol = 2, byrow = TRUE))
 
-cm_masked_reclass
-plot(cm_masked_reclass)
+cm_reclass
+plot(cm_reclass)
 
 ####--- FILL NA PIXELS ---####
 
 # Validate the rasters align 
 stopifnot(
-  all.equal(ext(cm_masked), ext(luts_masked)),
-  all.equal(res(cm_masked), res(luts_masked)),
-  crs(cm_masked) == crs(luts_masked)
+  all.equal(ext(cm_reclass), ext(luts_reclass)),
+  all.equal(res(cm_reclass), res(luts_reclass)),
+  crs(cm_reclass) == crs(luts_reclass)
 )
 
 stopifnot(
-  all.equal(ext(cm_masked), ext(aci_masked)),
-  all.equal(res(cm_masked), res(aci_masked)),
-  crs(cm_masked) == crs(aci_masked)
+  all.equal(ext(cm_reclass), ext(aci_masked_reclass)),
+  all.equal(res(cm_reclass), res(aci_masked_reclass)),
+  crs(cm_reclass) == crs(aci_masked_reclass)
 )
 
 # Fill NA pixels in A with values from B
@@ -257,14 +263,14 @@ stopifnot(
 cm_filled <- cover(cm_masked_reclass, luts_masked_reclass)
 plot(cm_filled)
 
-cm_filled <- cover(cm_masked_reclass, aci_masked_reclass)
+cm_filled <- cover(cm_reclass, aci_masked_reclass)
 plot(cm_filled)
 
 # Get values and counts 
 freq_table <- freq(cm_filled) 
 print(freq_table)
 
-# LUTS version
+# LUTS version (consensus map 1.0 - v4)
 #   layer value     count
 # 1     1     1  97310792
 # 2     1     2  64075412
@@ -274,7 +280,7 @@ print(freq_table)
 # 6     1     8  55260431
 # 7     1     9   7667540
 
-# ACI version
+# ACI version (consensus map 1.0 - v4)
 #   layer value     count
 # 1     1     1  97310792
 # 2     1     2  64075412
@@ -284,10 +290,21 @@ print(freq_table)
 # 6     1     8  15343363
 # 7     1     9  10890541
 
+# ACI version (consensus map 2.0 - new data fusion global norm)
+#   layer value     count
+# 1     1     1  98148288
+# 2     1     2  53304622
+# 3     1     3 327433111
+# 4     1     4  17522116
+# 5     1     5 162451540
+# 6     1     8  14866664
+# 7     1     9  10769043
+
 # what to do with pixels that WERE NOT classified as grass
 # in consensus map but WERE in lulc dataset (classes 8 and 9)?
 
-# for now, reclassify to keep 8 and 9 as grass
+#	ACI says forage: assume that it is annual crop
+#	ACI says native: could go to OTHER or NATIVE in filled consensus map
 
 cm_filled_reclass <- classify(cm_filled, 
                               rcl = matrix(c(1, 1,  # Native grass
@@ -295,8 +312,8 @@ cm_filled_reclass <- classify(cm_filled,
                                              3, 3,  # Annual crop
                                              4, 4,  # Settlement
                                              5, 5,  # Other
-                                             8, 2,  # Tame grass
-                                             9, 1), # Non-grass
+                                             8, 3,  # ACI pasture/forage --> annual crop
+                                             9, 1), # ACI grassland --> native grass
                                            ncol = 2, byrow = TRUE))
 
 cm_filled_reclass
@@ -306,7 +323,7 @@ plot(cm_filled_reclass)
 freq_table <- freq(cm_filled_reclass) 
 print(freq_table)
 
-# LUTS version
+# LUTS version (consensus map 1.0 - v4)
 #   layer value     count
 # 1     1     1 104978332
 # 2     1     2 119335843
@@ -314,7 +331,7 @@ print(freq_table)
 # 4     1     4  11026463
 # 5     1     5 177284642
 
-# ACI version
+# ACI version (consensus map 1.0 - v4)
 #   layer value     count
 # 1     1     1 108201333
 # 2     1     2  79418775
@@ -326,6 +343,6 @@ print(freq_table)
 
 # Write result efficiently for large rasters (chunked writing)
 writeRaster(cm_filled_reclass,
-            filename = file.path(out_dir, "TP_baseline_map_29Jul2026.tif"),
+            filename = file.path(out_dir, "TP_baseline_map_26Aug2026.tif"),
             overwrite = TRUE,
-            wopt = list(gdal = c("COMPRESS=LZW", "TILED=YES")))
+            wopt = list(datatype = "INT1U", gdal = c("COMPRESS=LZW", "TILED=YES")))
