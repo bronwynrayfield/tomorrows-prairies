@@ -12,6 +12,7 @@ library(terra)
 library(sf)
 library(tidyverse)
 library(tools)   # for file_path_sans_ext
+library(rnaturalearth)
 library(viridisLite)
 library(ggspatial)
 
@@ -28,7 +29,7 @@ sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
 # grasslands
 raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
-proc_grass_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
+cons_map_dir <- "R:/CanadianGrasslands/WG_Classification/results/consensus_mapping"
 out_dir <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points"
 
 # ground-truthed data
@@ -38,29 +39,8 @@ gt_dir <- "R:/CanadianGrasslands/processeddatasets/groundtruth_data"
 eco_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts"
 
 # grass raster directories
-aci_aligned_dir   <- file.path(proc_grass_data_dir, "aafc_aci/aligned")
-luts30_masked_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_30m_v5/masked")
-luts10_masked_dir <- file.path(proc_grass_data_dir, "aafc_luts_2020_10m_v1/masked")
-cec_masked_dir    <- file.path(proc_grass_data_dir, "cec_nalcms/masked")
-ngi_aligned_dir   <- file.path(proc_grass_data_dir, "cfga_ngi/aligned")
-cgr_masked_dir    <- file.path(proc_grass_data_dir, "cgr_gam_adv/masked")
-eccc_masked_dir   <- file.path(proc_grass_data_dir, "eccc_grass/masked")
-esa_masked_dir    <- file.path(proc_grass_data_dir, "esa_worldcover/masked")
-glc_masked_dir    <- file.path(proc_grass_data_dir, "glc_fcs30d/masked")
-cnvc_aligned_dir  <- file.path(proc_grass_data_dir, "natureserve_cnvc/aligned")
-lcc_masked_dir    <- file.path(proc_grass_data_dir, "nrcan_lcc/masked")
-pudl_aligned_dir  <- file.path(proc_grass_data_dir, "phjv_pudl/aligned")
-pli_aligned_dir   <- file.path(proc_grass_data_dir, "sk_pli/aligned")
-lcr_masked_dir    <- file.path(proc_grass_data_dir, "statcan_lcr/masked")
-gpw_masked_dir    <- file.path(proc_grass_data_dir, "wri_gpw_ann/masked")
-plow_masked_dir   <- file.path(proc_grass_data_dir, "wwf_plowprint/masked")
-plvi_aligned_dir  <- file.path(proc_grass_data_dir, "ab_plvi/aligned")
-hfi_aligned_dir   <- file.path(proc_grass_data_dir, "abmi_hfi/aligned")
-gcc_aligned_dir   <- file.path(proc_grass_data_dir, "bc_gcc/aligned")
-dw_masked_dir     <- file.path(proc_grass_data_dir, "dw_2025_grass/masked")
-esri_masked_dir   <- file.path(proc_grass_data_dir, "esri_rangelands/masked")
-mgi_aligned_dir   <- file.path(proc_grass_data_dir, "mb_mgi/aligned")
-pglc_aligned_dir  <- file.path(proc_grass_data_dir, "aafc_pglc/aligned")
+cm01_dir <- file.path(cons_map_dir, "v4_temporal_modelling_extent_24Jul2026")
+cm02_dir <- file.path(cons_map_dir, "new_fusion_global_norm_modext_26Aug2026")
 
 ####--- FILES ---####
 # Pilot area
@@ -79,33 +59,8 @@ gt_file <- file.path(gt_dir, "gt_points_mod_Mar26_cleanJul26.shp")
 eco_file <- file.path(eco_dir, "ecodistricts_clean_class_sa.shp")
 
 # grass raster files
-aci2024_file <- file.path(aci_aligned_dir, "aafc_aci_merged_reproj_algn_binary_noshrub.tif")
-aci2025_file <- file.path(aci_aligned_dir, "aafc_aci_2025_merged_reproj_algn_binary_noshrub.tif")
-luts30_file  <- file.path(luts30_masked_dir, "luts30_reproj_algn_binary_masked.tif")
-luts10_file  <- file.path(luts10_masked_dir, "luts10_reproj_algn_binary_masked.tif")
-cec_file     <- file.path(cec_masked_dir, "nalcms_reproj_algn_binary_noshrub_masked.tif")
-ngi_file     <- file.path(ngi_aligned_dir, "cfga_ngi_merged_reproj_algn_binary.tif")
-cgr_file     <- file.path(cgr_masked_dir, "cgr_reproj_algn_binary_masked.tif")
-eccc_file    <- file.path(eccc_masked_dir, "eccc_reclass_reproj_algn_binary_masked.tif")
-esa_file     <- file.path(esa_masked_dir, "esa_reproj_algn_binary_noshrub_masked.tif")
-glc_file     <- file.path(glc_masked_dir, "glc_reproj_algn_binary_noshrub_masked.tif")
-cnvc_file    <- file.path(cnvc_aligned_dir, "cnvc_algn_binary.tif")
-lcc_file     <- file.path(lcc_masked_dir, "lcc_reproj_algn_binary_noshrub_masked.tif")
-pudl_file    <- file.path(pudl_aligned_dir, "pudl_reclass_reproj_algn_binary_noshrub.tif")
-pli_ap_file  <- file.path(pli_aligned_dir, "sk_pli_ap_reproj_algn_binary_noshrub.tif")
-pli_cu_file  <- file.path(pli_aligned_dir, "sk_pli_cu_reproj_algn_binary_noshrub.tif")
-pli_mg_file  <- file.path(pli_aligned_dir, "sk_pli_mg_reproj_algn_binary_noshrub.tif")
-pli_mm_file  <- file.path(pli_aligned_dir, "sk_pli_mm_reproj_algn_binary_noshrub.tif")
-lcr_file     <- file.path(lcr_masked_dir, "lcr_reproj_algn_binary_masked.tif")
-gpw_file     <- file.path(gpw_masked_dir, "gpw_reproj_algn_binary_noshrub_masked.tif")
-plow_file    <- file.path(plow_masked_dir, "plow_reproj_algn_intact_masked.tif")
-plvi_file    <- file.path(plvi_aligned_dir, "plvi_reproj_algn_binary_gte2015.tif")
-hfi_file     <- file.path(hfi_aligned_dir, "hfi_reproj_algn_binary_gte2015.tif")
-gcc_file     <- file.path(gcc_aligned_dir, "gcc_reproj_algn_binary.tif")
-dw_file      <- file.path(dw_masked_dir, "dw_reproj_algn_masked_binary.tif")
-esri_file    <- file.path(esri_masked_dir, "esri_reproj_algn_masked_binary.tif")
-mgi_file     <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_binary_noshrub.tif")
-pglc_file    <- file.path(pglc_aligned_dir, "pglc_reproj_algn_binary.tif")
+cm01_file <- file.path(cm01_dir, "grass_3class.tif")
+cm02_file <- file.path(cm02_dir, "hard_class.tif")
 
 ####--- READ INTO TERRA ---####
 
@@ -122,6 +77,7 @@ coords <- st_coordinates(gt_sf)
 
 summary(coords)
 
+# ignore error:
 bad <- which(
   coords[,1] < -180 | coords[,1] > 180 |
     coords[,2] < -90  | coords[,2] > 90
@@ -145,18 +101,9 @@ gt # 200,985 points
 cnvc <- rast(cnvc_file) # for plotting
 sap  <- vect(sap_file)  # for plotting
 
-files <- c(
-  aci2024_file, aci2025_file, luts10_file, luts30_file, cec_file, ngi_file, cgr_file, 
-  eccc_file, esa_file, glc_file, cnvc_file, lcc_file, pudl_file, pli_ap_file,
-  pli_cu_file, pli_mg_file, pli_mm_file, lcr_file, gpw_file, plow_file,
-  plvi_file, hfi_file, gcc_file, dw_file, esri_file, mgi_file, pglc_file
-)
+files <- c(cm01_file, cm02_file)
 
-keys <- c(
-  "aci2024","aci2025","luts10","luts30","cec","ngi","cgr","eccc", "esa","glc",
-  "cnvc","lcc","pudl","pli_ap","pli_cu","pli_mg","pli_mm","lcr",
-  "gpw","plow","plvi","hfi","gcc","dw","esri","mgi","pglc"
-)
+keys <- c("cm01", "cm02")
 
 names(files) <- keys
 rlist <- lapply(files, rast)  # each is single-layer SpatRaster
@@ -183,6 +130,14 @@ stopifnot(
   nrow(unique(as.data.frame(org_all))) == 1,
   nrow(unique(as.data.frame(dim_all))) == 1
 )
+
+# crop
+e <- terra::ext(rlist$cm02)
+
+rlist <- lapply(rlist, function(r) terra::crop(r, e))
+
+s <- rast(rlist)
+
 
 # ---- Combine into a single multi-layer SpatRaster ----
 # Because all rasters are aligned, this is safe and fast
@@ -313,7 +268,7 @@ stopifnot(nrow(attr_df) == nrow(gt_out))
 # Inspect NA shares per layer (helpful for coverage/masking)
 sort(sapply(attr_df[names(r_all)], function(x) mean(is.na(x))), decreasing = TRUE)[1:10]
 
-# add a field that categorizes the ground-truthed data into grass vs not ("not" is shrub/woody and annual cropland)
+# add a field that categorizes the ground-truthed data 
 
 # Normalize and derive the new field
 norm <- function(x) tolower(trimws(as.character(x)))
@@ -327,259 +282,6 @@ attr_df$LC_grass[vals == "woody"] <- 0L
 attr_df$LC_grass[vals == "annual cropland"] <- 0L
 attr_df$LC_grass[vals == "wetland"] <- 0L
 attr_df$LC_grass[vals == "open water"] <- 0L
-
-# Quick QA
-table(attr_df$LC_grass, useNA = "ifany")
-#    0      1 
-# 4111 196874
-
-table(vals, useNA = "ifany")
-#vals
-#annual cropland           mixed          native      open water            tame         wetland 
-#           1355            4112           18181              87          174581              22 
-#woody 
-#2647 
-
-head(attr_df)
-
-####--- EXPORT ---####
-
-# write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_ecodist_pli_sep_18Jul2026.csv")
-write.csv(attr_df, csv_out_path, row.names = FALSE)
-
-# filter attr_df to only include rows where Yer_Cll is 2015+
-stopifnot("Yer_Cll" %in% names(attr_df))
-attr_df_2015 <- attr_df %>%
-  filter(Yer_Cll >= 2015)
-
-head(attr_df_2015)
-
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026.csv")
-write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
-
-####--- CLEAN FOR NEXT STEP ---####
-
-# filter out any non-grass points (woody and annual cropland)
-#attr_df_2015 <- attr_df_2015 %>%
-#  filter(LC_grass == 1)
-
-# add source column and fill when points were used as training data 
-attr_df_2015 <- attr_df_2015 %>%
-  mutate(
-    Training = case_when(
-      Sorc_ID == "PLI_SKMoE" ~ "pli",
-      Sorc_ID == "ABMI_HFI" ~ "hfi",
-      Sorc_ID == "ABMI_THF" ~ "hfi",
-      Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
-      Sorc_ID == "ACI_field_2024" ~ "aci2024", 
-      Sorc_ID == "ACI_field_2025" ~ "aci2025", 
-      Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", 
-      TRUE ~ ""    # keep unmatched cases empty
-    )
-  )
-
-# Move new columns to left
-attr_df_2015 <- attr_df_2015 %>%
-  relocate(LC_grass, Training)
-
-# write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_binary_pli_sep_ge2015_18Jul2026_clean.csv")
-write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
-
-# load packages
-library(terra)
-library(sf)
-library(tidyverse)
-library(tools)   # for file_path_sans_ext
-
-# Set the temporary directory to a drive with sufficient space
-terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
-
-####--- DIRECTORIES ---####
-
-# pilot area
-#pa_dir <- "R:/CanadianGrasslands/processeddatasets/pilotarea"
-
-# study area
-#sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
-
-# grasslands
-#raw_grass_data_dir <- "R:/CanadianGrasslands/existingdatasets"
-proc_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
-results_dir <- "R:/CanadianGrasslands/WG_Classification/results"
-out_dir <- "R:/CanadianGrasslands/WG_Classification/results/consensus_mapping"
-
-# ground-truthed data
-gt_dir <- "R:/CanadianGrasslands/processeddatasets/groundtruth_data"
-
-# ecodistricts 
-eco_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts"
-
-# consensus map directory
-cm_dir  <- file.path(results_dir, "consensus_mapping/v4_temporal_modelling_extent_24Jul2026")
-
-####--- FILES ---####
-# Pilot area
-#pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
-
-# Study area
-#sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
-
-# ground-truthed data
-gt_file <- file.path(gt_dir, "gt_points_mod_Mar26_cleanJul26.shp")
-
-# ecodistricts
-eco_file <- file.path(eco_dir, "ecodistricts_clean_class_sa.shp")
-
-# consensus map
-cm_file <- file.path(cm_dir, "grass_3class.tif")
-
-####--- READ IN DATA ---####
-
-#gt <- vect(gt_file)
-#gt
-gt_sf <- sf::st_read(gt_file)
-
-cm_rast <- rast(cm_file)
-
-####--- PREP DATA ---####
-
-# keep only point geometries and remove empty geometries
-#gt_sf <- gt_sf[st_geometry_type(gt_sf) == "POINT", ]
-gt_sf <- gt_sf[st_geometry_type(gt_sf) == "POINT" &
-                 !sf::st_is_empty(gt_sf),]
-
-# clean
-coords <- st_coordinates(gt_sf)
-
-summary(coords)
-
-bad <- which(
-  coords[,1] < -180 | coords[,1] > 180 |
-    coords[,2] < -90  | coords[,2] > 90
-)
-
-length(bad)
-
-gt_sf[bad, ]
-
-keep <- coords[,1] >= -180 &
-  coords[,1] <= 180 &
-  coords[,2] >= -90 &
-  coords[,2] <= 90
-
-gt_sf <- gt_sf[keep, ]
-
-# convert to terra
-gt <- terra::vect(gt_sf)
-gt # 200,985 points
-
-# ---- Ensure points are terra SpatVector ----
-gt_vec <- if (inherits(gt, "sf")) terra::vect(gt) else gt
-stopifnot(inherits(gt_vec, "SpatVector"))
-stopifnot(geomtype(gt_vec) == "points")
-
-# ---- Reproject points once if needed ----
-gt_in_r_crs <- if (!identical(crs(gt_vec), crs(cm_rast))) {
-  project(gt_vec, crs(cm_rast))
-} else {
-  gt_vec
-}
-
-####--- EXTRACT AND BIND DATA ---####
-
-# ---- Single extract for all layers ----
-vals_df <- terra::extract(cm_rast, gt_in_r_crs, ID = TRUE)
-
-nrow(gt_in_r_crs)      # 200985
-nrow(vals_df)          # 200985
-
-# Basic counts
-n_pt   <- nrow(gt_in_r_crs)
-n_ext  <- nrow(vals_df)
-n_pt; n_ext
-
-# ID problems (should be 0 in each ideally)
-dups   <- vals_df$ID[duplicated(vals_df$ID)]
-miss   <- setdiff(seq_len(n_pt), vals_df$ID)        # IDs present in points but absent in extract
-extra  <- setdiff(vals_df$ID, seq_len(n_pt))        # IDs not in 1..nrow(points)
-
-length(dups); length(miss); length(extra)
-
-
-# ---- Bind values back to points ----
-# vals_df: result of terra::extract(cm_rast, gt_in_r_crs, ID = TRUE)
-# gt_in_r_crs: SpatVector points used in the extract()
-# cm_rast: multi-layer SpatRaster; names(cm_rast) are the desired column names
-
-# 1) Make a full, ordered value table (one row per point, in 1..n order)
-n_pt     <- nrow(gt_in_r_crs)
-val_cols <- setdiff(names(vals_df), "ID")
-
-row_map   <- match(seq_len(n_pt), vals_df$ID)     # which extract row corresponds to each point row
-vals_only <- as.data.frame(
-  matrix(NA, nrow = n_pt, ncol = length(val_cols)),
-  stringsAsFactors = FALSE
-)
-names(vals_only) <- val_cols
-good <- which(!is.na(row_map))
-vals_only[good, ] <- vals_df[row_map[good], val_cols, drop = FALSE]
-
-stopifnot(nrow(vals_only) == n_pt)
-
-# 2) Assign directly into the attribute table of the SAME object (gt_in_r_crs)
-gt_out <- gt_in_r_crs                           # keep geometry and row order
-#terra::values(gt_out)[, names(cm_rast)] <- vals_only
-
-v <- terra::values(gt_out)
-
-# remove any existing columns that will be replaced
-v <- v[, setdiff(names(v), names(cm_rast)), drop = FALSE]
-
-# How many geometries vs. how many rows in the attribute table?
-n_geom <- nrow(gt_out)
-n_attr <- nrow(terra::values(gt_out))
-n_geom; n_attr
-
-# Find attribute columns whose length != number of geometries
-attr_len <- sapply(terra::values(gt_out), NROW)
-bad_cols <- names(attr_len)[attr_len != n_geom]
-good_cols <- names(attr_len)[attr_len == n_geom]
-
-length(bad_cols); bad_cols[1:min(10, length(bad_cols))]  
-
-# 1) Attributes (already in gt_out after your binding step)
-vals <- terra::values(gt_out)               # data.frame with 196,931 rows
-
-# 2) Coordinates for a SpatVector (points) as a data.frame
-g   <- terra::geom(gt_out, df = TRUE)       # has columns 'geom','part','x','y','hole'
-stopifnot(nrow(g) == nrow(gt_out))
-#xy  <- g[, c("x", "y")]
-
-xy <- terra::crds(gt_out, df = TRUE)
-
-dim(vals)
-dim(xy)
-
-nrow(gt_out)
-
-# 3) Sanity check and combine
-stopifnot(nrow(vals) == nrow(xy))           # should both be 196,931 for points
-attr_df <- cbind(vals, xy, stringsAsFactors = FALSE)
-
-# rename coord columns
-names(attr_df)[(ncol(attr_df)-1):ncol(attr_df)] <- c("x", "y")
-
-stopifnot(nrow(attr_df) == nrow(gt_out))
-# Inspect NA shares per layer (helpful for coverage/masking)
-#sort(sapply(attr_df[names(cm_rast)], function(x) mean(is.na(x))), decreasing = TRUE)[1:10]
-
-# add a field that categorizes the ground-truthed data into native vs tame vs not (only "not" is shrub)
-
-# Normalize and derive the new field
-norm <- function(x) tolower(trimws(as.character(x)))
-vals <- norm(attr_df$LC_Cl_N)
 
 # ---- 3-class ground truth: 0 = not grass, 1 = tame, 2 = native ----
 attr_df$LC_class3 <- NA_integer_
@@ -610,53 +312,24 @@ table(attr_df$LC_class3, useNA = "ifany")
 
 head(attr_df)
 
-attr_df %>%
-  filter(is.na(LC_class3)) %>%
-  print()
-
+# fix values for cm02 (0 to 2 instead of 1 to 3)
+attr_df <- attr_df %>%
+  mutate(cm02 = cm02 - 1)
 
 ####--- EXPORT ---####
 
 # write to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_ecodist_pli_sep_consmap_24Jul2026.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_consensus_map_raster_values_26Aug2026.csv")
 write.csv(attr_df, csv_out_path, row.names = FALSE)
 
 # filter attr_df to only include rows where Yer_Cll is 2015+
+stopifnot("Yer_Cll" %in% names(attr_df))
 attr_df_2015 <- attr_df %>%
   filter(Yer_Cll >= 2015)
 
 head(attr_df_2015)
 
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_consmap_24Jul2026.csv")
-write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
-
-####--- CLEAN FOR NEXT STEP ---####
-
-# filter out any non-grass points (woody and annual cropland)
-#attr_df_2015_clean <- attr_df_2015 %>%
-#  filter(LC_class3 %in% c(1, 2))
-
-# add source column and fill when points were used as training data 
-# attr_df_2015 <- attr_df_2015 %>%
-#   mutate(
-#     Training = case_when(
-#       Sorc_ID == "PLI_SKMoE" ~ "pli",
-#       Sorc_ID == "ABMI_HFI" ~ "hfi",
-#       Sorc_ID == "ABMI_THF" ~ "hfi",
-#       Sorc_ID == "CFGA_NGI" & Yer_Cll %in% c(2022, 2023) ~ "ngi",
-#       Sorc_ID == "ACI_field_2024" ~ "aci2024", 
-#       Sorc_ID == "ACI_field_2025" ~ "aci2025", 
-#       Sorc_ID == "BC_ACI_2025" & LC_Cl_N == "TAME" ~ "aci2025", 
-#       TRUE ~ ""    # keep unmatched cases empty
-#     )
-#   )
-
-# Move new columns to left
-attr_df_2015 <- attr_df_2015 %>%
-  relocate(LC_class3)
-
-# write cleaned dataset to csv
-csv_out_path <- file.path(out_dir, "groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_Mar2026_clean_v2.csv")
+csv_out_path <- file.path(out_dir, "groundtruth_points_with_consensus_map_raster_values_ge2015_26Aug2026.csv")
 write.csv(attr_df_2015, csv_out_path, row.names = FALSE)
 
 #############################################################################################
@@ -683,7 +356,7 @@ library(mltools)
 # 2) File paths 
 # ----------------------------
 #points_excel_path <- "R:/CanadianGrasslands/WG_Classification/processed/groundtruthed_data_points/groundtruth_points_with_grass_raster_values_natvtam_pli_sep_ge2015_18Jul2026_clean_withnongrass.xlsx"
-metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
+#metadata_csv_path <- "R:/CanadianGrasslands/WG_Classification/github/tomorrows-prairies/processeddatasets/Grass/metadata_full_extent_nattam_pli_sep.csv"
 
 #out_dir <- "R:/CanadianGrasslands/WG_Classification/results/accuracy_assessment/native_v_tame/compiled_derived"
 #dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
@@ -788,7 +461,8 @@ points <- points %>%
 unique(points$Ecprv)
 
 # Define required columns
-required_cols <- c("Pt_ID", "LC_class3", "Sorc_ID", "Ecds_ID", "Ecrg_ID", "Ecrgn_n", "Ecprv", "Yer_Cll", "LC_Cl_N")
+required_cols <- c("Pt_ID", "LC_class3", "LC_grass", "Sorc_ID", "Ecds_ID", 
+                   "Ecrg_ID", "Ecrgn_n", "Ecprv", "Yer_Cll", "LC_Cl_N")
 missing_req <- setdiff(required_cols, names(points))
 if (length(missing_req) > 0) {
   stop("Missing required columns in points file: ", paste(missing_req, collapse = ", "))
@@ -843,11 +517,79 @@ pts.nat %>%
 #Check LC types present
 table(points$LC_class3, useNA = "ifany")
 
-# Identify which raster columns actually exist in the points file
-present_rasters <- intersect(raster_cols, names(points))
-if (length(present_rasters) == 0) {
-  stop("None of the expected raster columns were found in the points file.")
-}
+# filter to points collected in 2025
+pts.2025 <- points %>%
+  filter(Yer_Cll == 2025)
+
+#Check LC types present
+table(pts.2025$LC_class3, useNA = "ifany")
+#   0    1    2 
+# 315 4975  337 but consensus maps are 89% NA
+
+# plot 
+pts_sf <- st_as_sf(
+  pts.2025,
+  coords = c("POINT_X", "POINT_Y"),
+  crs = 4326
+)
+
+sap <- vect(sap_file)
+sap_sf <- st_as_sf(sap)
+
+ggplot() +
+  geom_sf(data = sap_sf,
+          fill = NA,
+          colour = "grey40",
+          linewidth = 0.3) +
+  geom_sf(data = pts_sf,
+          aes(colour = factor(LC_class3)),
+          size = 0.5) +
+  theme_minimal()
+
+# filter to points collected in 2024 or 2025
+pts.2024.2025 <- points %>%
+  filter(Yer_Cll %in% c(2024, 2025))
+
+#Check LC types present
+table(pts.2024.2025$LC_class3, useNA = "ifany")
+#   0     1     2 
+# 315 10016   762 but consensus maps are 93% NA
+
+# plot 
+pts_sf2 <- st_as_sf(
+  pts.2024.2025,
+  coords = c("POINT_X", "POINT_Y"),
+  crs = 4326
+)
+
+sap <- vect(sap_file)
+sap_sf <- st_as_sf(sap)
+
+ggplot() +
+  geom_sf(data = sap_sf,
+          fill = NA,
+          colour = "grey40",
+          linewidth = 0.3) +
+  geom_sf(data = pts_sf2,
+          aes(colour = factor(LC_class3)),
+          size = 0.5) +
+  theme_minimal()
+
+# filter points to those where consensus maps are not NA
+pts.2025.valid <- pts.2025 %>%
+  filter(!is.na(cm01) & !is.na(cm02))
+
+pts.2024.2025.valid <- pts.2024.2025 %>%
+  filter(!is.na(cm01) & !is.na(cm02))
+
+#Check LC types present
+table(pts.2025.valid$LC_class3, useNA = "ifany")
+# 0   1   2 
+# 55 320 231 
+
+table(pts.2024.2025.valid$LC_class3, useNA = "ifany")
+# 0   1   2 
+# 55 320 359
 
 # ----------------------------
 # 5) Load metadata and allow MULTIPLE years per raster

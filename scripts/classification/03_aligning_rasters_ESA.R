@@ -432,6 +432,31 @@ writeRaster(esa_algn_binary, esa_binary_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+# reclassify to binary with shrub
+esa_algn_binary <- classify(esa_reproj_algn, 
+                            rcl = matrix(c(0, NA,
+                                           10, 0, # Tree cover
+                                           20, 1, # Shrubland
+                                           30, 1, # Grassland
+                                           40, 0, # Cropland
+                                           50, 0, # Built-up
+                                           60, 0, # Bare/sparse vegetation
+                                           70, 0, # Snow and ice
+                                           80, 0, # Permanent water bodies
+                                           90, 0, # Herbaceous wetland
+                                           95, 0, # Mangroves
+                                           100, 0), # Moss and lichen
+                                         ncol = 2, byrow = TRUE))
+plot(esa_algn_binary)
+esa_algn_binary
+
+# Save the raster as 8-bit unsigned integer
+esa_binary_out_path <- file.path(esa_aligned_dir, "esa_reproj_algn_binary_noshrub.tif")
+writeRaster(esa_algn_binary, esa_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BIGTIFF=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
 # isolate shrub class
 esa_algn_shrub <- classify(esa_reproj_algn, 
                             rcl = matrix(c(0, NA,

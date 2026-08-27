@@ -832,6 +832,50 @@ if(any(is.na(acc_nt$tame_metric)))
 if(any(is.na(acc_nt$not_metric)))
   stop("not_metric still contains NAs")
 
+# --------------------------------------------
+# CLASS-DIFFICULTY NORMALIZATION
+# --------------------------------------------
+
+# normalize to remove structural advantage of classes
+# that are easier to classify - ensures equal treatment
+# of classes despite differing classification difficulty
+mean_native_metric <- mean(
+  acc_nt$native_metric,
+  na.rm = TRUE
+)
+
+mean_tame_metric <- mean(
+  acc_nt$tame_metric,
+  na.rm = TRUE
+)
+
+mean_not_metric <- mean(
+  acc_nt$not_metric,
+  na.rm = TRUE
+)
+
+log_msg(
+  sprintf(
+    "Class mean metrics: native=%.4f tame=%.4f not=%.4f",
+    mean_native_metric,
+    mean_tame_metric,
+    mean_not_metric
+  )
+)
+
+# acc_nt <- acc_nt %>%
+#   mutate(
+#     w_time = time_decay(
+#       year,
+#       target_year,
+#       lambda
+#     ),
+#     
+#     W_native = native_metric * w_time,
+#     W_tame   = tame_metric * w_time,
+#     W_not    = not_metric   * w_time
+#   )
+
 acc_nt <- acc_nt %>%
   mutate(
     w_time = time_decay(
@@ -840,10 +884,27 @@ acc_nt <- acc_nt %>%
       lambda
     ),
     
-    W_native = native_metric * w_time,
-    W_tame   = tame_metric * w_time,
-    W_not    = not_metric   * w_time
+    native_metric_norm = native_metric / mean_native_metric,
+    tame_metric_norm = tame_metric / mean_tame_metric,
+    not_metric_norm = not_metric / mean_not_metric,
+    
+    W_native = native_metric_norm * w_time,
+    W_tame = tame_metric_norm * w_time,
+    W_not = not_metric_norm * w_time
   )
+
+# QA - check weight distributions after normalization
+summary(acc_nt$W_native)
+summary(acc_nt$W_tame)
+summary(acc_nt$W_not)
+
+acc_nt %>%
+  summarise(
+    native_mean = mean(W_native, na.rm = TRUE),
+    tame_mean   = mean(W_tame, na.rm = TRUE),
+    not_mean    = mean(W_not, na.rm = TRUE)
+  )
+
 
 ## ---- Validate tri-class raster coverage ---- ##
 
@@ -906,14 +967,14 @@ ids_tbl_nt <- unique(acc_nt$Ecds_ID)
 missing_ids_nt <- setdiff(ids_r, ids_tbl_nt)
 
 if (length(missing_ids_bin) > 0) {
-  stop("Ecodistrict IDs missing from binary accuracy table: ",
+  warning("Ecodistrict IDs missing from binary accuracy table: ",
        paste(
          utils::head(missing_ids_bin),
          collapse = ", "
        ))}
 
 if (length(missing_ids_nt) > 0) {
-  stop("Ecodistrict IDs missing from triclass accuracy table: ",
+  warning("Ecodistrict IDs missing from triclass accuracy table: ",
        paste(
          utils::head(missing_ids_nt),
          collapse = ", "
@@ -1013,13 +1074,25 @@ if (length(missing_ids_nt) > 0) {
       meta %>% select(raster_id, year),
       by = c("raster_name" = "raster_id")
     ) %>%
+    # mutate(
+    #   accuracy_imputed = TRUE,
+    #   w_time = time_decay(year, target_year, lambda),
+    #   
+    #   W_native = native_metric * w_time,
+    #   W_tame   = tame_metric   * w_time,
+    #   W_not    = not_metric    * w_time
+    # )
     mutate(
       accuracy_imputed = TRUE,
       w_time = time_decay(year, target_year, lambda),
       
-      W_native = native_metric * w_time,
-      W_tame   = tame_metric   * w_time,
-      W_not    = not_metric    * w_time
+      native_metric_norm = native_metric / mean_native_metric,
+      tame_metric_norm = tame_metric / mean_tame_metric,
+      not_metric_norm = not_metric / mean_not_metric,
+      
+      W_native = native_metric_norm * w_time,
+      W_tame = tame_metric_norm * w_time,
+      W_not = not_metric_norm * w_time
     )
   
   # Append to accuracy table
@@ -1044,6 +1117,19 @@ length(unique(acc_nt$raster_name))
 acc_nt %>%
   count(Ecds_ID) %>%
   filter(n < length(unique(acc_nt$raster_name)))
+
+# QA check means
+acc_nt %>%
+  summarise(
+    native_mean = mean(W_native, na.rm = TRUE),
+    tame_mean   = mean(W_tame, na.rm = TRUE),
+    not_mean    = mean(W_not, na.rm = TRUE)
+  )
+
+# before normalizing classes:
+# native_metric mean ≈ 0.552
+# tame_metric   mean ≈ 0.491
+# not_metric    mean ≈ 0.628
 
 ## ---- Build accuracy weight stack helper ---- ##
 
@@ -1398,6 +1484,43 @@ process_tile <- function(i) {
     nt_not_present / global_weight_sum,
     0
   )
+  
+  # ----------------------
+  # PRESERVE DOMINANT DATASET
+  # ----------------------
+  dataset_names <- c(names(bin_stack), names(nt_stack))
+  
+  dominant_lookup <- data.frame(
+    dataset_id = seq_along(dataset_names),
+    dataset_name = dataset_names
+  )
+  
+  write.csv(
+    dominant_lookup,
+    file.path(tmp_root, "dominant_dataset_lookup.csv"),
+    row.names = FALSE
+  )
+  
+  dominant_dataset_idx <- which.max(all_weights)
+  
+  dominant_dataset <- dominant_dataset_idx
+  levels(dominant_dataset) <- data.frame(
+    value = seq_along(dataset_names),
+    dataset = dataset_names
+  )
+  
+  names(dominant_dataset) <- "dominant_dataset"
+  
+  # Fraction of support from dominant dataset
+  max_dataset_weight <- app(all_weights, max, na.rm = TRUE)
+  
+  dominant_dataset_fraction <- ifel(
+    global_weight_sum > 0,
+    max_dataset_weight / global_weight_sum,
+    NA
+  )
+  
+  names(dominant_dataset_fraction) <- "dominant_dataset_fraction"
   
   # ----------------------
   # TRICLASS WEIGHT RATIOS
@@ -1798,7 +1921,8 @@ process_tile <- function(i) {
            sum_weight_present, num_positive, num_negative, vote_margin, weighted_vote_margin,
            num_not_votes, num_tame_votes, num_native_votes, triclass_agreement, vote_margin_tri, 
            weighted_agreement_tri, ratio_not_dataset, ratio_native_dataset, ratio_tame_dataset,
-           max_class_ratio, fraction_binary_support, fraction_triclass_support)
+           max_class_ratio, fraction_binary_support, fraction_triclass_support,
+           dominant_dataset, dominant_dataset_fraction)
   
   names(out) <- c("p_not", "p_tame", "p_native", "entropy", "entropy_norm",
                   "ess", "ess_uncertainty", "support_score", "support_uncertainty",
@@ -1807,7 +1931,8 @@ process_tile <- function(i) {
                   "weighted_vote_margin", "num_not_votes", "num_tame_votes", "num_native_votes", 
                   "triclass_agreement", "vote_margin_tri", "weighted_agreement_tri",
                   "ratio_not_dataset", "ratio_native_dataset", "ratio_tame_dataset",
-                  "max_class_ratio", "fraction_binary_support", "fraction_triclass_support")
+                  "max_class_ratio", "fraction_binary_support", "fraction_triclass_support",
+                  "dominant_dataset", "dominant_dataset_fraction")
   
   writeRaster(out, out_file, overwrite=TRUE)
   
@@ -1864,7 +1989,7 @@ cat("Mosaicking", length(files), "tiles...\n")
 
 # Check layer consistency - make sure correct number of layers
 #stopifnot(all(sapply(files, function(f) nlyr(rast(f)) == 4)))
-stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 29, logical(1))))
+stopifnot(all(vapply(files, function(f) nlyr(rast(f)) == 31, logical(1))))
 
 # Mosaic all tiles together
 mosaic_out <- do.call(merge, lapply(files, rast))
@@ -1881,7 +2006,8 @@ names(mosaic_out) <- c("p_not", "p_tame", "p_native", "entropy", "entropy_norm",
                        "weighted_vote_margin", "num_not_votes", "num_tame_votes", "num_native_votes", 
                        "triclass_agreement", "vote_margin_tri", "weighted_agreement_tri",
                        "ratio_not_dataset", "ratio_native_dataset", "ratio_tame_dataset",
-                       "max_class_ratio", "fraction_binary_support", "fraction_triclass_support")
+                       "max_class_ratio", "fraction_binary_support", "fraction_triclass_support",
+                       "dominant_dataset", "dominant_dataset_fraction")
 
 # write locally now
 checkpoint_dir <- file.path(tmp_root, "mosaic_checkpoint")
@@ -1986,6 +2112,9 @@ max_class_ratio <- mosaic_out[["max_class_ratio"]]
 
 fraction_binary_support <- mosaic_out[["fraction_binary_support"]]
 fraction_triclass_support <- mosaic_out[["fraction_triclass_support"]]
+
+dominant_dataset <- mosaic_out[["dominant_dataset"]]
+dominant_dataset_fraction <- mosaic_out[["dominant_dataset_fraction"]]
 
 # Check
 tmp_fraction <- fraction_binary_support +
@@ -2889,6 +3018,12 @@ tame_possible <- p_tame >= 0.3
 tame_dominant <- hard_class == 2
 missed_tame <- tame_possible & !tame_dominant
 
+plot(missed_tame)
+
+writeRaster(missed_tame, file.path(checkpoint_dir, "missed_tame.tif"),
+            overwrite = TRUE, wopt = list(datatype = "FLT4S",
+                                          gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
 png(
   file.path(diag_dir, "missed_tame.png"),
   width = 2400,
@@ -2958,7 +3093,8 @@ names(combined) <- "combined"
 freq(combined)
 plot(combined)
 
-###################################################
+############################################################
+############################################################
 
 #------ Tiled temporal workflow (grass vs nongrass) ------#
 
