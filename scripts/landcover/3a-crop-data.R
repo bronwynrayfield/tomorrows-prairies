@@ -111,6 +111,9 @@ nr_cdd_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, n
 
 # Socio-economic
 canfax_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea"))
+elevator_reproj <- st_read(tagged_path("./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea"))
+popctr2011_reproj <- st_read(tagged_path("./processeddatasets", popctr_filepath, paste0(popctr2011_filename, ".shp"), "proj-naaea"))
+popctr2021_reproj <- st_read(tagged_path("./processeddatasets", popctr_filepath, paste0(popctr2021_filename, ".shp"), "proj-naaea"))
 
 #--- Crop and mask to modelling extent ----
 # Census subdivisions
@@ -189,6 +192,9 @@ nr_cdd_fut <- mask(crop(nr_cdd_fut_reproj, me_r), me_r)
 
 # Socio-economic
 canfax <- st_intersection(canfax_reproj, me)
+elevator <- st_intersection(elevator_reproj, me)
+popctr2011 <- st_intersection(popctr2011_reproj, me)
+popctr2021 <- st_intersection(popctr2021_reproj, me)
 
 #--- Write to disk ----
 write_sf_tagged(census, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "modelling-extent")
@@ -240,9 +246,9 @@ write_rast_tagged(tx_mean_fut, "./processeddatasets", climate_filepath, tx_mean_
 write_rast_tagged(nr_cdd_hist, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "modelling-extent")
 write_rast_tagged(nr_cdd_fut, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "modelling-extent")
 write_sf_tagged(canfax, "./processeddatasets", canfax_filepath, canfax_filename, "modelling-extent")
-
-
-#st_write(roads, file.path("./processeddatasets", pilot_filepath, "NRN_SK_14_0_GPKG_en_pilot_pad.gpkg"), layer = "NRN_SK_14_0_ROADSEG", delete_dsn = FALSE)
+write_sf_tagged(elevator, "./processeddatasets", elevator_filepath, elevator_filename, "modelling-extent")
+write_sf_tagged(popctr2011, "./processeddatasets", popctr_filepath, paste0(popctr2011_filename, ".shp"), "modelling-extent")
+write_sf_tagged(popctr2021, "./processeddatasets", popctr_filepath, paste0(popctr2021_filename, ".shp"), "modelling-extent")
 
 
 #--- Create binary layers from AAFC LUTS rasters ----
@@ -258,7 +264,7 @@ classes <- list(
   `2020` = c("native", "tame", "crop", "settlement", "forest", "water")
 )
 
-#--- LULC binary layers ----
+# LULC binary layers
 bin_layers <- list()
 
 # Reclass to binary layer and save result to disk

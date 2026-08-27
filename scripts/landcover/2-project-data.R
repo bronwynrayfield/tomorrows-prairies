@@ -139,7 +139,9 @@ roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filep
 
 # Canfax net returns
 canfax_raw <- st_read(file.path("./existingdatasets", capitalize_first(canfax_filepath), canfax_filename))
-
+elevator_raw <- st_read(file.path("./existingdatasets", capitalize_first(elevator_filepath), elevator_filename))
+popctr2011_raw <- st_read(file.path("./existingdatasets", capitalize_first(popctr_filepath), paste0(popctr2011_filename, ".shp")))
+popctr2021_raw <- st_read(file.path("./existingdatasets", capitalize_first(popctr_filepath), paste0(popctr2021_filename, ".shp")))
 
 #--- Unscale to real units and apply NAs ----
 oc_raw[oc_raw == oc_nodata] <- NA
@@ -229,7 +231,9 @@ nr_cdd_hist_reproj <- project(nr_cdd_hist_raw, me_r, method = "bilinear")
 nr_cdd_fut_reproj <- project(nr_cdd_fut_raw, me_r, method = "bilinear")
 pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
 canfax_reproj <- st_transform(canfax_raw, st_crs(sa))
-
+elevator_reproj <- st_transform(elevator_raw, st_crs(sa))
+popctr2011_reproj <- st_transform(popctr2011_raw, st_crs(sa))
+popctr2021_reproj <- st_transform(popctr2021_raw, st_crs(sa))
 
 roads_reproj <- st_transform(roads_raw, st_crs(sa))
 roads_r <- rasterize(
@@ -290,3 +294,6 @@ write_rast_tagged(tx_mean_fut_reproj, "./processeddatasets", climate_filepath, t
 write_rast_tagged(nr_cdd_hist_reproj, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_fut_reproj, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea")
 write_sf_tagged(canfax_reproj, "./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea")
+write_sf_tagged(elevator_reproj, "./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea")
+write_sf_tagged(popctr2011_reproj, "./processeddatasets", popctr_filepath, popctr2011_filename, "proj-naaea")
+write_sf_tagged(popctr2021_reproj, "./processeddatasets", popctr_filepath, popctr2021_filename, "proj-naaea")

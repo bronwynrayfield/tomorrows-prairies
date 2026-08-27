@@ -123,6 +123,9 @@ nr_cdd_fut_filename <- paste("nr_cdd", ssp, fut_period, "p50.tif", sep="_")
 
 # Socio-economic
 canfax_filename <- "canfax_results_tbl"
+elevator_filename <- "Prairies_ProcessElevators_Aug2026.shp"
+popctr2011_filename <- "gpc_000a11a_e"
+popctr2021_filename <- "lpc_000a21a_e"
 
 #--- Directories ----
 # partial path in either the existing or processed data directories
@@ -174,6 +177,8 @@ climate_filepath <- "climate/CanDCS-M6/geotiff"
 
 # Socio-economic
 canfax_filepath <- "socio-economic/canfax"
+elevator_filepath <- "socio-economic/process-elevators"
+popctr_filepath <- "socio-economic/StatsCan Population Centres"
 
 #--- Scale ----
 oc_scale <- 10

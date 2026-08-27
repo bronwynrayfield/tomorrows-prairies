@@ -37,139 +37,140 @@
 #   - 4-prepare-spatial-inputs.R outputs
 # =============================================================================
 
-source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "functions-general.R"))
-source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
-
-# ---- Resolution setting ----
-# Change to 30 for final run
-target_res <- 30
-agg_fact   <- target_res / 30
-
-# ---- Window sizes ----
-# Comment out sizes to exclude from this run
-win_sizes_m <- c(
-  3200#,
-  # 6000,
-  # 10000
-)
+source(file.path("scripts/landcover", "0a-setup.R"))
 
 # ---- Output directory ----
-predictors_filepath <- "predictors"
-outdir <- file.path("./processeddatasets", predictors_filepath, paste0(target_res, "m"))
+pred_dir <- file.path("processeddatasets", "predictors", sprintf("%dm", res_m))
 
 # ---- Load files ----
-
 # Modelling extent
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
 sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 
-# Ecodistricts (for cropland suitability imputation)
+# Ecodistricts
 ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
                                     ecodistricts_filename, "modelling-extent"))
-
 # Canfax results
-canfax <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax_filename, "modelling-extent"))
-
-# Binary AAFC filenames = cleaner than using the merged filename
-aafc2015_binary_filename <- "AAFC2015.tif"
-aafc2010_binary_filename <- "AAFC2010.tif"
-
-# Binary filepath
-aafc_binary_filepath <- file.path(aafc_filepath, "binary")
-
-# AAFC LUTS binary rasters — 2015
-native2015_bin     <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2015_binary_filename, "native"))
-tame2015_bin       <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2015_binary_filename, "tame"))
-crop2015_bin       <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2015_binary_filename, "crop"))
-settlement2015_bin <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2015_binary_filename, "settlement"))
-forest2015_bin     <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2015_binary_filename, "forest"))
-water2015_bin      <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2015_binary_filename, "water"))
-
-# AAFC LUTS binary rasters — 2010
-native2010_bin     <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2010_binary_filename, "native"))
-tame2010_bin       <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2010_binary_filename, "tame"))
-settlement2010_bin <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2010_binary_filename, "settlement"))
-forest2010_bin     <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2010_binary_filename, "forest"))
-water2010_bin      <- rast(tagged_path("./processeddatasets", aafc_binary_filepath, aafc2010_binary_filename, "water"))
-
-# Protected areas binary rasters
-pa_hard_bin        <- rast(tagged_path("./processeddatasets", pa_filepath, pa_filename, "hard", "binary"))
-pa_provpasture_bin <- rast(tagged_path("./processeddatasets", pa_filepath, pa_filename, "provpasture", "binary"))
-
-# Cropland suitability
-crop_suit <- rast(tagged_path("./processeddatasets", crop_suit_2019_filepath,
-                              crop_suit_2019_filename, "modelling-extent"))
-
+canfax <- st_read(tagged_path("./processeddatasets", canfax_filepath, 
+                              canfax_filename, "modelling-extent"))
+# Process elevators
+elevator <- st_read(tagged_path("./processeddatasets", elevator_filepath, 
+                              elevator_filename, "modelling-extent"))
 # Roads
 roads <- rast(tagged_path("./processeddatasets", road_filepath,
-                              road_filename, "modelling-extent"))
-roads <- rast("./processeddatasets/landcover/Roads - Poley et al 2021/roads_modelling-extent.tif")
-roads <- resample(roads, me_r, method = "bilinear")
+                              paste0(road_filename, ".tif"), "modelling-extent"))
+# Rails
+rails <- rast(tagged_path("./processeddatasets", rail_filepath,
+                          paste0(rail_filename, ".tif"), "modelling-extent"))
 
-# ---- Resample to target resolution (skip if target_res == 30) ----
-if (agg_fact > 1) {
-  sa_r <- aggregate(sa_r, fact = agg_fact, fun = "modal")
-  me_r <- aggregate(me_r, fact = agg_fact, fun = "modal")
-  
-  # AAFC binary layers — average only, no thresholding
-  # Note: at 300m values are proportions (0-1), not binary
-  # Results at 300m are for prototyping only and not directly
-  # comparable to 30m final run
-  native2015_bin     <- resample(native2015_bin,     me_r, method = "average")
-  tame2015_bin       <- resample(tame2015_bin,       me_r, method = "average")
-  crop2015_bin       <- resample(crop2015_bin,       me_r, method = "average")
-  settlement2015_bin <- resample(settlement2015_bin, me_r, method = "average")
-  forest2015_bin     <- resample(forest2015_bin,     me_r, method = "average")
-  water2015_bin      <- resample(water2015_bin,      me_r, method = "average")
-  native2010_bin     <- resample(native2010_bin,     me_r, method = "average")
-  tame2010_bin       <- resample(tame2010_bin,       me_r, method = "average")
-  settlement2010_bin <- resample(settlement2010_bin, me_r, method = "average")
-  forest2010_bin     <- resample(forest2010_bin,     me_r, method = "average")
-  water2010_bin      <- resample(water2010_bin,      me_r, method = "average")
-  crop_suit          <- resample(crop_suit,          me_r, method = "bilinear")
-  
-  # PA rasters — average then threshold at >0.5
-  # Cell is treated as protected if majority of underlying 30m pixels are protected
-  pa_hard_bin        <- resample(pa_hard_bin,        me_r, method = "average")
-  pa_hard_bin        <- ifel(pa_hard_bin > 0.5, 1, 0)
-  pa_provpasture_bin <- resample(pa_provpasture_bin, me_r, method = "average")
-  pa_provpasture_bin <- ifel(pa_provpasture_bin > 0.5, 1, 0)
-}
+# Population centres
+popctr2011 <- st_read(tagged_path("./processeddatasets", popctr_filepath, 
+                              paste0(popctr2011_filename, ".shp"), "modelling-extent"))
+popctr2021 <- st_read(tagged_path("./processeddatasets", popctr_filepath, 
+                                  paste0(popctr2021_filename, ".shp"), "modelling-extent"))
 
 # ---- Rasterize Canfax results ----
 canfax_v <- vect(canfax)
 canfax_r <- rasterize(canfax_v, me_r, field = "nt_b_25")
 write_rast_tagged(canfax_r, outdir, paste0(canfax_filename, ".tif"), paste0(target_res, "m"))
 
-# ---- Apply pa_hard mask to native and tame grass ----
-# Required step to map unprotected grasslands
-native2015_unprot <- ifel(pa_hard_bin == 1, NA, native2015_bin)
-tame2015_unprot   <- ifel(pa_hard_bin == 1, NA, tame2015_bin)
-native2010_unprot <- ifel(pa_hard_bin == 1, NA, native2010_bin)
+# ---- Distance to ----
+# Process elevators
+elev_d <- distance(me_r, vect(elevator))   # metres, one value per cell
+elev_d <- mask(elev_d, me_r)
+plot(elev_d / 1000, main = "Distance to process elevator (km)")
+points(vect(elevator), pch = 21, bg = "white", col = "black", lwd = 0.8,
+       cex = 0.4 + 2 * sqrt(elevator$CAP_T / max(elevator$CAP_T, na.rm = TRUE)))
 
-# ---- Cropland suitability imputation ----
-# Fill NAs in crop_suit with ecodistrict means
-ecodistrict_zones <- rasterize(ecodistricts, me_r, field = "ECODISTRIC")
-eco_means         <- zonal(crop_suit, ecodistrict_zones, fun = "mean", na.rm = TRUE)
-names(eco_means)  <- c("ECODISTRIC", "mean_suit")
-ecodistrict_means <- classify(ecodistrict_zones, eco_means)
-crop_suit_filled  <- ifel(is.na(crop_suit) & !is.na(me_r), ecodistrict_means, crop_suit)
-
-# QA/QC
-freq(is.na(crop_suit_filled))
-
-# Save
-write_rast_tagged(crop_suit_filled, outdir, crop_suit_2019_filename, paste0(target_res, "m"), "filled")
-
-# Distance to roads at 30m
-# ---- Distance to cropland edge ----
+# Roads
 roads_for_dist <- ifel(roads == 1, 1, NA)
 dist_to_road  <- distance(roads_for_dist)
 dist_to_road  <- mask(dist_to_road, me_r)
+plot(dist_to_road / 1000, main = "Distance to roads (km)")
+
+# Rails
+rails_for_dist <- ifel(rails == 1, 1, NA)
+dist_to_rail  <- distance(rails_for_dist)
+dist_to_rail  <- mask(dist_to_rail, me_r)
+plot(dist_to_rail / 1000, main = "Distance to railways (km)")
+
+# ---- Population centre distance predictors -------------------------------
+# POPCTR (>=1,000 people, >=400/km2), 2011: 175 polygons in extent.
+# PCTYPE: 1 core (28), 2 fringe (30), 4 outside any CMA/CA (112), 6 secondary core (5).
+# PCCLASS by population: 2 small (1,000-29,999), 3 medium (30,000-99,999), 4 large (100,000+).
+
+# Subset population centres that serve as the core or secondary core of a 
+# census metropolitan area (CMA) or census agglomeration (CA).
+# A CMA needs a total population of at least 100,000 with 50,000 or more in the core
+# A CA needs a core of at least 10,000.
+pc_cma_ca_cores2011 <- popctr2011[popctr2011$PCTYPE %in% c(1, 6), ]
+pc_cma_ca_cores2021 <- popctr2021[popctr2021$PCTYPE %in% c(1, 6), ]
+
+# Distance to nearest population centre and distance to nearest regional centre
+# 2011
+pc_d_all_2011 <- distance(me_r, vect(popctr2011), rasterize = TRUE, unit = "m")
+pc_d_all_2011 <- mask(pc_d_all_2011, me_r)
+plot(pc_d_all_2011/1000, main = "Distance to nearest population centre (km)")
+plot(st_geometry(popctr2011), border = "white", lwd = 0.4, add = TRUE)
+
+pc_d_core_2011 <- distance(me_r, vect(pc_cma_ca_cores2011), rasterize = TRUE, unit = "m")
+pc_d_core_2011 <- mask(pc_d_core_2011, me_r)
+plot(pc_d_core_2011/1000, main = "Distance to nearest regional centre (km)")
+plot(st_geometry(pc_cma_ca_cores2011), border = "white", lwd = 0.4, add = TRUE)
+
+# 2021
+pc_d_all_2021 <- distance(me_r, vect(popctr2021), rasterize = TRUE, unit = "m")
+pc_d_all_2021 <- mask(pc_d_all_2021, me_r)
+plot(pc_d_all_2021/1000, main = "Distance to nearest population centre (km)")
+plot(st_geometry(popctr2021), border = "white", lwd = 0.4, add = TRUE)
+
+pc_d_core_2021 <- distance(me_r, vect(pc_cma_ca_cores2021), rasterize = TRUE, unit = "m")
+pc_d_core_2021 <- mask(pc_d_core_2021, me_r)
+plot(pc_d_core_2021/1000, main = "Distance to nearest regional centre (km)")
+plot(st_geometry(pc_cma_ca_cores2021), border = "white", lwd = 0.4, add = TRUE)
+
 
 # Save
-writeRaster(dist_to_road, "./processeddatasets/predictors/30m/dist_to_road_30m.tif")
+writeRaster(elev_d, 
+            file.path("processeddatasets", 
+                      capitalize_first(elevator_filepath), 
+                      sub("\\.shp$", "_dist.tif", elevator_filename)), 
+            overwrite = TRUE)
+
+writeRaster(dist_to_road, file.path(pred_dir, "dist_to_road_30m.tif"), overwrite=TRUE)
+writeRaster(dist_to_rail, file.path(pred_dir, "dist_to_rail_30m.tif"), overwrite=TRUE)
+writeRaster(pc_d_all_2011, file.path(pred_dir, "dist_to_popctr2011_30m.tif"), overwrite=TRUE)
+writeRaster(pc_d_all_2021, file.path(pred_dir, "dist_to_popctr2021_30m.tif"), overwrite=TRUE)
+writeRaster(pc_d_core_2011, file.path(pred_dir, "dist_to_regctr2011_30m.tif"), overwrite=TRUE)
+writeRaster(pc_d_core_2021, file.path(pred_dir, "dist_to_regctr2021_30m.tif"), overwrite=TRUE)
+
+
+# Read files back in and check for correlation and ranges
+f <- file.path(pred_dir, paste0("dist_to_", c("popctr", "regctr"), 
+                                rep(c(2011, 2021), each = 2), "_30m.tif"))
+pc <- rast(f)
+names(pc) <- c("popctr2011", "regctr2011", "popctr2021", "regctr2021")
+
+# 100k regular sample - full vectors are 1.1e9 elements
+s <- spatSample(pc, 1e5, method = "regular", na.rm = TRUE, as.df = TRUE)
+round(cor(s, method = "spearman"), 3)
+#            popctr2011 regctr2011 popctr2021 regctr2021
+# popctr2011      1.000      0.537      0.944      0.536
+# regctr2011      0.537      1.000      0.538      0.972
+# popctr2021      0.944      0.538      1.000      0.541
+# regctr2021      0.536      0.972      0.541      1.000
+
+# range: 2021 values outside the 2011 range could be a problem for RF model
+sapply(s, range)
+# popctr2011 regctr2011 popctr2021 regctr2021
+# [1,]        0.0        0.0        0.0        0.0
+# [2,]   175968.3   290293.9   175215.1   291176.6
+
+
+
+
+
+
 
 # ---- Moving window focal statistics ----
 # Define layers and names for focal loop
