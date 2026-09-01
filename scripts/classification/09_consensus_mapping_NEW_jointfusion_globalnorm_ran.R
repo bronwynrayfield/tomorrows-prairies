@@ -455,7 +455,7 @@ download_files <- function(files_named) {
       
       # crop + mask to study area
       r <- rast(raw_file)
-
+      
       r <- crop(r, sa)
       r <- mask(r, sa)
       
@@ -968,17 +968,17 @@ missing_ids_nt <- setdiff(ids_r, ids_tbl_nt)
 
 if (length(missing_ids_bin) > 0) {
   warning("Ecodistrict IDs missing from binary accuracy table: ",
-       paste(
-         utils::head(missing_ids_bin),
-         collapse = ", "
-       ))}
+          paste(
+            utils::head(missing_ids_bin),
+            collapse = ", "
+          ))}
 
 if (length(missing_ids_nt) > 0) {
   warning("Ecodistrict IDs missing from triclass accuracy table: ",
-       paste(
-         utils::head(missing_ids_nt),
-         collapse = ", "
-       ))}
+          paste(
+            utils::head(missing_ids_nt),
+            collapse = ", "
+          ))}
 
 # How much area is represented by missing ecodistricts?
 ecodist_freq <- freq(ecodist_r)
@@ -1668,7 +1668,7 @@ process_tile <- function(i) {
   names(fraction_binary_support)   <- "fraction_binary_support"
   names(fraction_triclass_support) <- "fraction_triclass_support"
   
-    # ----------------------
+  # ----------------------
   # EVIDENCE COMPUTATION
   # ----------------------
   
@@ -2234,10 +2234,10 @@ global(
 # ess.1 0.2896904 0.3667801 0.4216827 0.4752489 0.4926966
 # ess.2 0.2211476 0.2905429 0.3392119 0.3891240 0.4049051
 
- #             X5.      X25.      X50.      X75.      X95.
- # ess   0.4202574 0.5005994 0.5571364 0.6103342 0.6290974
- # ess.1 0.2896904 0.3667801 0.4216827 0.4752489 0.4926966
- # ess.2 0.2211476 0.2905429 0.3392119 0.3891240 0.4049051
+#             X5.      X25.      X50.      X75.      X95.
+# ess   0.4202574 0.5005994 0.5571364 0.6103342 0.6290974
+# ess.1 0.2896904 0.3667801 0.4216827 0.4752489 0.4926966
+# ess.2 0.2211476 0.2905429 0.3392119 0.3891240 0.4049051
 
 # Evaluate behavior versus source counts
 # Support scores should increase when evidence increases
@@ -2467,7 +2467,7 @@ writeRaster(uncertainty_total, file.path(checkpoint_dir, "uncertainty_total.tif"
 # Weight entropy and confidence more than support:
 uncertainty_total_w <- (
   0.6 * entropy_norm +
-  0.4 * support_uncertainty)
+    0.4 * support_uncertainty)
 
 names(uncertainty_total_w) <- "uncertainty_total_weighted"
 
@@ -2483,8 +2483,8 @@ levels(hard_class) <- data.frame(
 )
 
 writeRaster(hard_class, file.path(checkpoint_dir, "hard_class.tif"),
-  overwrite = TRUE, wopt = list(datatype = "INT1U",
-    gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+            overwrite = TRUE, wopt = list(datatype = "INT1U",
+                                          gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
 
 #------ High-confidence-only classification ------#
 # Check to calibrate confidence threshold
@@ -2717,7 +2717,7 @@ checkpoint_dir <- file.path(tmp_root, "mosaic_layers")
 
 writeRaster(high_conf_class, file.path(checkpoint_dir, "high_conf_class.tif"),
             overwrite = TRUE, wopt = list(datatype = "INT1U",
-            gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+                                          gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
 
 writeRaster(mod_class, file.path(checkpoint_dir, "mod_class.tif"),
             overwrite = TRUE, wopt = list(datatype = "INT1U",
