@@ -19,9 +19,10 @@ library(pheatmap)
 library(igraph)
 library(ggraph)
 library(ape)
+library(vegan)
 library(ggrepel)
 
-## ---- Load results ---- ##
+## ---- Setup ---- ##
 
 # Set directories
 results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatial_agreement_analysis/outputs_nattam_pairwise")
@@ -29,6 +30,11 @@ results_dir <- file.path("R:/CanadianGrasslands/WG_Classification/results/spatia
 # Results file
 #results_file <- file.path(results_dir, "pairwise_nattam_spatial_agreement_01Jun2026.csv")
 results_file <- file.path(results_dir, "pairwise_nattam_spatial_agreement_02Jun2026_plicombined.csv")
+
+# Metadata file
+meta_file <- 
+  
+  ## ---- Load results ---- ##
 
 # Load results file
 pairwise_long <- read_csv(results_file, show_col_types = FALSE)
@@ -112,7 +118,150 @@ mat_acc        <- to_matrix(pairwise_clean, "accuracy")
 #mat_sorensen[mat_sorensen == 1] <- NA
 #mat_kappa[mat_kappa == 1]       <- NA
 
-## ---- PCoa ---- ##
+# Macro Jaccard = "How similar are the products across all classes, giving each class equal importance?"
+# Macro F1 = "Across all classes, how balanced is agreement once precision and recall are both considered?"
+# Multiclass MCC = "What is the overall correlation between the two classification maps?"
+# Kappa = "How much more agreement exists than would be expected given the class frequencies of the two datasets?"
+
+## ---- PCoA with explanatory variables ---- ##
+# dist_mat <- as.matrix(1 - mat_mcc)
+# dist_mat[!is.finite(dist_mat)] <-max(dist_mat, na.rm = TRUE)
+# pcoa_res <- pcoa(as.dist(dist_mat))
+
+D <- 1 - mat_jacc_macro
+
+diag(D) <- 0
+
+D_dist <- as.dist(D)
+
+# run pcoa
+pcoa_res <- pcoa(D_dist)
+
+# extract first two axes
+scores <- as.data.frame(pcoa_res$vectors[, 1:2])
+
+scores$raster <- rownames(scores)
+
+# percent variance explained
+var_exp <- round(100 * pcoa_res$values$Relative_eig[1:2], 1)
+var_exp
+
+# join metadata
+dataset_meta <- dataset_meta %>%
+  filter(raster %in% rownames(mat_jacc_macro))
+
+scores <- left_join(scores, dataset_meta, by = "raster")
+
+# reorder metadata to match distance matrix
+meta_ord <- dataset_meta %>%
+  slice(match(
+    rownames(mat_jacc_macro),
+    raster
+  ))
+
+identical(
+  meta_ord$raster,
+  rownames(mat_jacc_macro)
+)
+
+# basic pcoa plot
+ggplot(
+  scores,
+  aes(Axis.1, Axis.2)
+) +
+  geom_point(
+    aes(color = source_type),
+    size = 4
+  ) +
+  geom_text(
+    aes(label = raster),
+    nudge_y = 0.01
+  ) +
+  theme_bw() +
+  labs(
+    x = paste0("PCoA1 (", var_exp[1], "%)"),
+    y = paste0("PCoA2 (", var_exp[2], "%)")
+  )
+
+# continuous variables
+fit_cont <- envfit(
+  pcoa_res$vectors[, 1:2],
+  meta_ord %>%
+    select(resolution, year),
+  permutations = 999
+)
+
+fit_cont
+
+# categorical variables
+fit_cat <- envfit(
+  pcoa_res$vectors[, 1:2],
+  meta_ord %>%
+    select(source_type, extent, nattam),
+  permutations = 999
+)
+
+fit_cat
+
+# plot envfit vectors
+plot(
+  pcoa_res$vectors[,1:2],
+  pch = 19,
+  xlab = paste0("PCoA1 (", var_exp[1], "%)"),
+  ylab = paste0("PCoA2 (", var_exp[2], "%)")
+)
+
+text(
+  pcoa_res$vectors[,1:2],
+  labels = rownames(pcoa_res$vectors),
+  pos = 3
+)
+
+plot(fit_cont, add = TRUE, col = "red")
+
+plot(fit_cat, add = TRUE, col = "blue")
+
+# PERMANOVA using adonis2
+
+# categorical variables
+adonis2(
+  D_dist ~ source_type + extent + nattam,
+  data = meta_ord,
+  permutations = 999
+)
+
+# mixed variables
+adonis2(
+  D_dist ~ source_type +
+    extent +
+    nattam +
+    resolution +
+    year,
+  data = meta_ord,
+  permutations = 999
+)
+
+# sequential tests by term
+adonis2(
+  D_dist ~ source_type +
+    extent +
+    nattam +
+    resolution +
+    year,
+  data = meta_ord,
+  permutations = 999,
+  by = "margin" # since attributes are likely correlated
+)
+
+# before interpreting significant factor effects,
+# run for any categorical variables that come out
+# as sig in PERMANOVA to determine whether sig 
+# reflects centroid separation vs differences in 
+# dispersion among groups:
+betadisper(D_dist, meta_ord$source_type) |> anova()
+
+
+## ---- PCoA ---- ##
 dist_mat <- as.matrix(1 - mat_mcc)
 
 dist_mat[!is.finite(dist_mat)] <-

@@ -3214,7 +3214,7 @@ aws.s3::put_object(
 
 tame_possible2 <- p_tame >= 0.25 & entropy_norm >= 0.5
 
-writeRaster(tame_possible1, file.path(checkpoint_dir, "tame_possible1.tif"),
+writeRaster(tame_possible1, file.path(checkpoint_dir, "tame_possible2.tif"),
             overwrite = TRUE, wopt = list(datatype = "FLT4S",
                                           gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
 
