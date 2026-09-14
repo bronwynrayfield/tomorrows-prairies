@@ -45,6 +45,7 @@
 #   across variants (193,153,740 px at 2020).
 #
 # Notes:
+#   - Class codes derived from 0a-setup.R
 #   - ACI 2009-2010 are 56 m, nearest-neighbour projected to 30 m; the t1
 #     window is native 30 m. The two windows differ in effective grain.
 #   - AAFC re-releases individual province-years. aci_url_index.csv from 1h
@@ -76,13 +77,6 @@ aci_years_2020 <- 2019:2022  # brackets 2020; see header, window choice is open
 # ACI codes counted as tame evidence
 #aci_tame_codes <- c(110, 122)
 aci_tame_codes <- 122
-
-# Class codes, shared by both years
-cls_other     <- 5
-cls_native    <- 1
-cls_tame      <- 2
-cls_annual    <- 3
-cls_settlement <- 4
 
 # ---- Paths ----
 binary_dir  <- file.path("./processeddatasets", aafc_filepath, "binary")
@@ -154,11 +148,7 @@ lulc_2010 <- ifel(native2010 == 1, cls_native,
              ifel(settlement2010 == 1, cls_settlement, cls_other)))
 )
 names(lulc_2010) <- "lulc_2010"
-levels(lulc_2010) <- data.frame(
-  value = c(cls_other, cls_native, cls_tame, cls_annual, cls_settlement),
-  class = c("other", "native grassland", "tame grassland", "annual cropland",
-            "settlement")
-)
+levels(lulc_2010) <- lulc_levels # from 0a-setup.R
 
 # ---- LULC 2020 ----
 # Same construction. LUTS's own annual/tame split is
