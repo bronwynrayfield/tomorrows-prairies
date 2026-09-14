@@ -44,6 +44,24 @@ ecozones_reproj <- st_read(tagged_path("./processeddatasets", ecozones_filepath,
 ecoregions_reproj <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "proj-naaea"))
 ecodistricts_reproj <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea"))
 
+# Protected Areas
+pa_reproj <- st_read(
+  tagged_path("./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG"),
+  layer = paste0(tools::file_path_sans_ext(pa_filename), "_proj-naaea")
+)
+
+sk_cce_reproj <- st_read(
+  tagged_path("./processeddatasets", sk_cce_filepath, sk_cce_filename, "proj-naaea", driver = "GPKG"),
+  layer = paste0(tools::file_path_sans_ext(sk_cce_filename), "_proj-naaea")
+)
+
+# Land tenure
+ncc_reproj <- st_read(
+  tagged_path("./processeddatasets", ncc_easement_filepath, ncc_easement_filename,
+              "proj-naaea", driver = "GPKG"),
+  layer = paste0(tools::file_path_sans_ext(ncc_easement_filename), "_proj-naaea")
+)
+
 # Roads
 roads_reproj <-rast(tagged_path("./processeddatasets", road_filepath, paste0(road_filename, ".tif"), "proj-naaea"))
 
@@ -66,17 +84,6 @@ crop_gain_class_reproj <- rast(tagged_path("./processeddatasets", crop_gain_file
 crop_gain_year_reproj <- rast(tagged_path("./processeddatasets", crop_gain_filepath, crop_gain_year_filename, "proj-naaea"))
 builtup_gain_class_reproj <- rast(tagged_path("./processeddatasets", builtup_gain_filepath, builtup_gain_class_filename, "proj-naaea"))
 builtup_gain_year_reproj <- rast(tagged_path("./processeddatasets", builtup_gain_filepath, builtup_gain_year_filename, "proj-naaea"))
-
-# Protected Areas
-pa_reproj <- st_read(
-  tagged_path("./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG"),
-  layer = paste0(tools::file_path_sans_ext(pa_filename), "_proj-naaea")
-)
-ncc_reproj <- st_read(
-  tagged_path("./processeddatasets", ncc_easement_filepath, ncc_easement_filename,
-              "proj-naaea", driver = "GPKG"),
-  layer = paste0(tools::file_path_sans_ext(ncc_easement_filename), "_proj-naaea")
-)
 
 # Soil
 oc_reproj <- rast(tagged_path("./processeddatasets", soil_filepath, oc_filename, "proj-naaea"))
@@ -110,7 +117,8 @@ nr_cdd_hist_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, 
 nr_cdd_fut_reproj <- rast(tagged_path("./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea"))
 
 # Socio-economic
-canfax_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea"))
+canfax2009_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax2009_filename, "proj-naaea"))
+canfax2024_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath, canfax2024_filename, "proj-naaea"))
 elevator_reproj <- st_read(tagged_path("./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea"))
 popctr2011_reproj <- st_read(tagged_path("./processeddatasets", popctr_filepath, paste0(popctr2011_filename, ".shp"), "proj-naaea"))
 popctr2021_reproj <- st_read(tagged_path("./processeddatasets", popctr_filepath, paste0(popctr2021_filename, ".shp"), "proj-naaea"))
@@ -126,10 +134,37 @@ ecoregions <- st_intersection(ecoregions_reproj, me)
 ecodistricts <- st_intersection(ecodistricts_reproj, me)
 
 # Protected Areas
-# using st_crop() instead of st_intersection() for speed
-# will rasterize later which will take care of NAs
+# CPCAD
+# using st_crop() and then st_intersection() for speed, will rasterize later 
+# clean geometries
 pa <- st_crop(pa_reproj, st_bbox(me_r))
+pa <- st_intersection(pa, me)
+pa <- st_collection_extract(pa, "POLYGON")
+pa <- st_cast(pa, "MULTIPOLYGON")
+
+# cropping to study area once here because it takes a while to run and the 
+# file size on disk is small
+pa_sa <- st_intersection(pa, sa)
+pa_sa <- st_collection_extract(pa_sa, "POLYGON")
+pa_sa <- st_cast(pa_sa, "MULTIPOLYGON")
+
+# SK Crown Conservation Easements
+sk_cce <- st_crop(sk_cce_reproj, st_bbox(me_r))
+sk_cce <- st_intersection(sk_cce, me)
+sk_cce <- st_cast(sk_cce, "MULTIPOLYGON")
+
+
+# Land tenure
 ncc <- st_crop(ncc_reproj, st_bbox(me_r))
+ncc <- st_intersection(ncc, me)
+ncc <- st_collection_extract(ncc, "POLYGON")
+ncc <- st_cast(ncc, "MULTIPOLYGON")
+
+# cropping to study area once here because it takes a while to run and the 
+# file size on disk is small
+ncc_sa <- st_intersection(ncc, sa)
+ncc_sa <- st_collection_extract(ncc_sa, "POLYGON")
+ncc_sa <- st_cast(ncc_sa, "MULTIPOLYGON")
 
 # Roads
 roads <- mask(crop(roads_reproj, me), me)
@@ -191,7 +226,8 @@ nr_cdd_hist <- mask(crop(nr_cdd_hist_reproj, me_r), me_r)
 nr_cdd_fut <- mask(crop(nr_cdd_fut_reproj, me_r), me_r)
 
 # Socio-economic
-canfax <- st_intersection(canfax_reproj, me)
+canfax2009 <- st_intersection(canfax2009_reproj, me)
+canfax2024 <- st_intersection(canfax2024_reproj, me)
 elevator <- st_intersection(elevator_reproj, me)
 popctr2011 <- st_intersection(popctr2011_reproj, me)
 popctr2021 <- st_intersection(popctr2021_reproj, me)
@@ -202,7 +238,10 @@ write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_fil
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
 write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
+write_sf_tagged(pa_sa, "./processeddatasets", pa_filepath, pa_filename, "study-area", driver = "GPKG")
+write_sf_tagged(sk_cce, "./processeddatasets", sk_cce_filepath, sk_cce_filename, "modelling-extent", driver = "GPKG")
 write_sf_tagged(ncc, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "modelling-extent", driver = "GPKG")
+write_sf_tagged(ncc_sa, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "study-area", driver = "GPKG")
 write_rast_tagged(roads, "./processeddatasets", road_filepath, paste0(road_filename, ".tif"), "modelling-extent")
 write_rast_tagged(crop_suit, "./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent")
 write_rast_tagged(plowprint, "./processeddatasets", plowprint_filepath, plowprint_filename, "modelling-extent")
@@ -245,7 +284,8 @@ write_rast_tagged(tx_mean_hist, "./processeddatasets", climate_filepath, tx_mean
 write_rast_tagged(tx_mean_fut, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "modelling-extent")
 write_rast_tagged(nr_cdd_hist, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "modelling-extent")
 write_rast_tagged(nr_cdd_fut, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "modelling-extent")
-write_sf_tagged(canfax, "./processeddatasets", canfax_filepath, canfax_filename, "modelling-extent")
+write_sf_tagged(canfax2009, "./processeddatasets", canfax_filepath, canfax2009_filename, "modelling-extent")
+write_sf_tagged(canfax2024, "./processeddatasets", canfax_filepath, canfax2024_filename, "modelling-extent")
 write_sf_tagged(elevator, "./processeddatasets", elevator_filepath, elevator_filename, "modelling-extent")
 write_sf_tagged(popctr2011, "./processeddatasets", popctr_filepath, paste0(popctr2011_filename, ".shp"), "modelling-extent")
 write_sf_tagged(popctr2021, "./processeddatasets", popctr_filepath, paste0(popctr2021_filename, ".shp"), "modelling-extent")

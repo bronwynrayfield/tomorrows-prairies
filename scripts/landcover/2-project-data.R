@@ -64,6 +64,7 @@ ecodistricts_raw <- st_read(file.path("./processeddatasets", ecodistricts_filepa
 
 # Protected Areas
 pa_raw <- st_read(file.path("./existingdatasets", capitalize_first(pa_filepath), paste0(pa_filename, ".gdb")), layer = pa_filename)
+sk_cce_raw <- st_read(file.path("./existingdatasets", capitalize_first(sk_cce_filepath), paste0(sk_cce_filename, ".gpkg")), layer = "Crown_Conservation_Easements")
 
 # Land tenure
 ncc_gdb <- file.path("./existingdatasets", capitalize_first(ncc_easement_filepath), paste0(ncc_easement_filename, ".gdb"))
@@ -138,8 +139,11 @@ roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filep
                              quiet=TRUE)
 
 # Canfax net returns
-canfax_raw <- st_read(file.path("./existingdatasets", capitalize_first(canfax_filepath), canfax_filename))
+canfax2009_raw <- st_read(file.path("./existingdatasets", capitalize_first(canfax_filepath), canfax2009_filename))
+canfax2024_raw <- st_read(file.path("./existingdatasets", capitalize_first(canfax_filepath), canfax2024_filename))
+# Process elevators
 elevator_raw <- st_read(file.path("./existingdatasets", capitalize_first(elevator_filepath), elevator_filename))
+# Population centres
 popctr2011_raw <- st_read(file.path("./existingdatasets", capitalize_first(popctr_filepath), paste0(popctr2011_filename, ".shp")))
 popctr2021_raw <- st_read(file.path("./existingdatasets", capitalize_first(popctr_filepath), paste0(popctr2021_filename, ".shp")))
 
@@ -157,7 +161,7 @@ silt_raw[silt_raw == silt_nodata] <- NA
 ph_raw[ph_raw == ph_nodata] <- NA
 ph_real <- ph_raw / ph_scale
 
-#--- clean PA data ----
+#--- clean PA & Land tenure data ----
 # CPCAD
 # Cast to multipolygon to eliminate exotic geometry types
 pa_cast <- st_cast(pa_raw, "MULTIPOLYGON")
@@ -173,6 +177,24 @@ table(st_geometry_type(pa_valid))
 
 # Check how many are still invalid
 sum(!st_is_valid(pa_valid))
+
+
+# SK Crown Conservation Easements
+# Cast to multipolygon to eliminate exotic geometry types
+sk_cce_cast <- st_cast(sk_cce_raw, "MULTIPOLYGON")
+
+# Make valid
+sk_cce_valid <- st_make_valid(sk_cce_cast)
+
+# Verify
+sum(!st_is_valid(sk_cce_valid))
+
+# Check geometry types are now all standard
+table(st_geometry_type(sk_cce_valid))
+
+# Check how many are still invalid
+sum(!st_is_valid(sk_cce_valid))
+
 
 # NCC easements
 ncc_all <- Map(\(x, nm) x |> mutate(src_layer = nm) |> st_transform(crs(me_r)),
@@ -193,7 +215,9 @@ census_reproj <- st_transform(census_raw, st_crs(sa))
 ecozones_reproj <- st_transform(ecozones_raw, st_crs(sa))
 ecoregions_reproj <- st_transform(ecoregions_raw, st_crs(sa))
 ecodistricts_reproj <- st_transform(ecodistricts_raw, st_crs(sa))
-
+pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
+sk_cce_reproj <- st_transform(sk_cce_valid, crs = crs(me_r))
+# ncc_all is already reprojected
 grass_loss_class_reproj <- project(grass_loss_class_raw, me_r, method = "near")
 grass_loss_year_reproj <- project(grass_loss_year_raw, me_r, method = "near")
 ipast_loss_class_reproj <- project(ipast_loss_class_raw, me_r, method = "near")
@@ -229,8 +253,8 @@ tx_mean_hist_reproj <- project(tx_mean_hist_raw, me_r, method = "bilinear")
 tx_mean_fut_reproj <- project(tx_mean_fut_raw, me_r, method = "bilinear")
 nr_cdd_hist_reproj <- project(nr_cdd_hist_raw, me_r, method = "bilinear")
 nr_cdd_fut_reproj <- project(nr_cdd_fut_raw, me_r, method = "bilinear")
-pa_reproj <- st_transform(pa_valid, crs = crs(me_r))
-canfax_reproj <- st_transform(canfax_raw, st_crs(sa))
+canfax2009_reproj <- st_transform(canfax2009_raw, st_crs(sa))
+canfax2024_reproj <- st_transform(canfax2024_raw, st_crs(sa))
 elevator_reproj <- st_transform(elevator_raw, st_crs(sa))
 popctr2011_reproj <- st_transform(popctr2011_raw, st_crs(sa))
 popctr2021_reproj <- st_transform(popctr2021_raw, st_crs(sa))
@@ -251,6 +275,7 @@ write_sf_tagged(ecozones_reproj, "./processeddatasets", ecozones_filepath, ecozo
 write_sf_tagged(ecoregions_reproj, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "proj-naaea")
 write_sf_tagged(ecodistricts_reproj, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea")
 write_sf_tagged(pa_reproj, "./processeddatasets", pa_filepath, pa_filename, "proj-naaea", driver = "GPKG")
+write_sf_tagged(sk_cce_reproj, "./processeddatasets", sk_cce_filepath, sk_cce_filename, "proj-naaea", driver = "GPKG")
 write_sf_tagged(ncc_all, "./processeddatasets", ncc_easement_filepath, ncc_easement_filename, "proj-naaea", driver = "GPKG")
 #write_sf_tagged(roads_reproj, "./processeddatasets", road_filepath, road_filename, "proj-naaea", layer = "roads_merge") #skip and write raster instead
 write_rast_tagged(roads_r, "./processeddatasets", road_filepath, paste0(road_filename, ".tif"), "proj-naaea")
@@ -293,7 +318,8 @@ write_rast_tagged(tx_mean_hist_reproj, "./processeddatasets", climate_filepath, 
 write_rast_tagged(tx_mean_fut_reproj, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_hist_reproj, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_fut_reproj, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea")
-write_sf_tagged(canfax_reproj, "./processeddatasets", canfax_filepath, canfax_filename, "proj-naaea")
+write_sf_tagged(canfax2009_reproj, "./processeddatasets", canfax_filepath, canfax2009_filename, "proj-naaea")
+write_sf_tagged(canfax2024_reproj, "./processeddatasets", canfax_filepath, canfax2024_filename, "proj-naaea")
 write_sf_tagged(elevator_reproj, "./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea")
 write_sf_tagged(popctr2011_reproj, "./processeddatasets", popctr_filepath, popctr2011_filename, "proj-naaea")
 write_sf_tagged(popctr2021_reproj, "./processeddatasets", popctr_filepath, popctr2021_filename, "proj-naaea")
