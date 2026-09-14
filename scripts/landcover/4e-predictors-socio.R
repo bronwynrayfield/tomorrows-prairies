@@ -39,9 +39,6 @@
 
 source(file.path("scripts/landcover", "0a-setup.R"))
 
-# ---- Output directory ----
-pred_dir <- file.path("processeddatasets", "predictors", sprintf("%dm", res_m))
-
 # ---- Load files ----
 # Modelling extent
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
@@ -51,8 +48,11 @@ sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
                                     ecodistricts_filename, "modelling-extent"))
 # Canfax results
-canfax <- st_read(tagged_path("./processeddatasets", canfax_filepath, 
-                              canfax_filename, "modelling-extent"))
+canfax2009 <- st_read(tagged_path("./processeddatasets", canfax_filepath, 
+                                  canfax2009_filename, "modelling-extent"))
+canfax2024 <- st_read(tagged_path("./processeddatasets", canfax_filepath, 
+                                  canfax2024_filename, "modelling-extent"))
+
 # Process elevators
 elevator <- st_read(tagged_path("./processeddatasets", elevator_filepath, 
                               elevator_filename, "modelling-extent"))
@@ -70,9 +70,15 @@ popctr2021 <- st_read(tagged_path("./processeddatasets", popctr_filepath,
                                   paste0(popctr2021_filename, ".shp"), "modelling-extent"))
 
 # ---- Rasterize Canfax results ----
-canfax_v <- vect(canfax)
-canfax_r <- rasterize(canfax_v, me_r, field = "nt_b_25")
-write_rast_tagged(canfax_r, outdir, paste0(canfax_filename, ".tif"), paste0(target_res, "m"))
+# 2005 - 2009
+canfax2009_v <- vect(canfax2009)
+canfax2009_r <- rasterize(canfax2009_v, me_r, field = "nt_b_25")
+write_rast_tagged(canfax2009_r, "./processeddatasets", pred_dir, "canfax_nt_b_25_2005-2009.tif", paste0(res_m, "m"))
+# 2020 - 2024
+canfax2024_v <- vect(canfax2024)
+canfax2024_r <- rasterize(canfax2024_v, me_r, field = "nt_b_25")
+write_rast_tagged(canfax2024_r, "./processeddatasets", pred_dir, "canfax_nt_b_25_2020-2024.tif", paste0(res_m, "m"))
+
 
 # ---- Distance to ----
 # Process elevators
@@ -131,18 +137,13 @@ plot(st_geometry(pc_cma_ca_cores2021), border = "white", lwd = 0.4, add = TRUE)
 
 
 # Save
-writeRaster(elev_d, 
-            file.path("processeddatasets", 
-                      capitalize_first(elevator_filepath), 
-                      sub("\\.shp$", "_dist.tif", elevator_filename)), 
-            overwrite = TRUE)
-
-writeRaster(dist_to_road, file.path(pred_dir, "dist_to_road_30m.tif"), overwrite=TRUE)
-writeRaster(dist_to_rail, file.path(pred_dir, "dist_to_rail_30m.tif"), overwrite=TRUE)
-writeRaster(pc_d_all_2011, file.path(pred_dir, "dist_to_popctr2011_30m.tif"), overwrite=TRUE)
-writeRaster(pc_d_all_2021, file.path(pred_dir, "dist_to_popctr2021_30m.tif"), overwrite=TRUE)
-writeRaster(pc_d_core_2011, file.path(pred_dir, "dist_to_regctr2011_30m.tif"), overwrite=TRUE)
-writeRaster(pc_d_core_2021, file.path(pred_dir, "dist_to_regctr2021_30m.tif"), overwrite=TRUE)
+write_rast_tagged(elev_d, "./processeddatasets", elevator_filepath, "dist_to_elevator.tif", "modelling-extent")
+write_rast_tagged(dist_to_road,  "./processeddatasets", road_filepath, "dist_to_road.tif", "modelling-extent")
+write_rast_tagged(dist_to_rail,  "./processeddatasets", rail_filepath, "dist_to_rail.tif", "modelling-extent")
+write_rast_tagged(pc_d_all_2011,  "./processeddatasets", popctr_filepath, "dist_to_popctr2011.tif", "modelling-extent")
+write_rast_tagged(pc_d_all_2021,  "./processeddatasets", popctr_filepath, "dist_to_popctr2021.tif", "modelling-extent")
+write_rast_tagged(pc_d_core_2011,  "./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
+write_rast_tagged(pc_d_core_2021,  "./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
 
 
 # Read files back in and check for correlation and ranges
