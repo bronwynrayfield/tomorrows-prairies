@@ -1,6 +1,4 @@
-# 0b-predictor-files.R
-# Named vector of predictor layer paths, shared by 6-screen-collinearity-predictors.R
-# and 6b-plot-predictors.R. Sourced after 0-setup.R.
+# Named vector of predictor layer paths and labels
 
 predictor_files <- c(
   # climate
@@ -58,7 +56,7 @@ predictor_files <- c(
   # popdens    = tagged_path("./processeddatasets", ..., "modelling-extent")
 )
 
-# display names + units for figure panels -- verify units before submission
+# display names + units for figure panels - verify units before submission
 predictor_labels <- c(
   prtot        = "Total precipitation (mm)",
   tn_mean      = "Mean daily min. temperature (\u00B0C)",
