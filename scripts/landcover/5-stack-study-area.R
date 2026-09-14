@@ -1,7 +1,4 @@
-# 5-stack-study-area.R
-# tomorrows-prairies
-#
-# Assembles the biophysical predictor stack from the per-block outputs of
+# Assembles the predictor stack from the per-block outputs of
 # 4b-4e, masks each layer to the study area, and writes it to a single
 # directory with a _study-area suffix. Also computes the union of NA cells
 # across the stack (excluding water) -- ranger drops any row with an NA in
@@ -20,7 +17,7 @@ gopt_for <- function(datatype) {
   c(base, if (grepl("^FLT", datatype)) "PREDICTOR=3" else "PREDICTOR=2")
 }
 
-out_sa <- file.path("./processeddatasets", "predictors", "30m")
+out_sa <- file.path("./processeddatasets", "predictors", paste0(res_m, "m"))
 sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 water <- rast(file.path("./processeddatasets", aafc_filepath, "binary", "AAFC2010_water.tif"))
 
@@ -56,6 +53,7 @@ names(stk) <- names(files)
 # geometry standardised upstream in 3-crop; but still double check
 stopifnot(compareGeom(stk, sa_r, stopOnError = FALSE))
 
+# count of non-NA cells in study area
 n_sa <- global(!is.na(sa_r), "sum", na.rm = TRUE)[[1]]
 
 # per-layer NA counts: any layer well above the others is the binding one
@@ -66,7 +64,7 @@ na_by_layer$lost_vs_sa <- na_by_layer$valid - n_sa      # negative = cells lost
 # union: cells valid in every layer, excluding water. This is the predictor
 # eligibility envelope - not the training population, which is additionally
 # restricted to baseline grassland (see 6a).
-wtr <- crop(water, sa_r)
+wtr <- mask(crop(water, sa_r), sa_r)
 wtr <- subst(wtr, NA, 0) == 1          # NA outside water == not water
 ok <- !any(is.na(stk)) & !wtr
 writeRaster(ok, file.path(out_sa, "predictor-valid-mask_study-area.tif"),
