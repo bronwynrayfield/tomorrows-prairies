@@ -1,16 +1,15 @@
+# set common libraries, parameters, functions, files, and directories
+
 library(terra)
+library(tidyterra)
 library(sf)
 library(dplyr)
-#library(stringr)
 library(tidyr)
 library(ggplot2)
-#library(maptiles)
 library(ranger)
-#library(caret)
 library(pROC)
 library(usdm)
-library(tidyterra)
-library(patchwork)
+#library(patchwork)
 library(geodata)
 
 # check available space on different mount points and memory
@@ -71,6 +70,9 @@ plowprint_filename <- "plow_reproj_algn_masked.tif"
 
 # Protected Areas
 pa_filename <- "ProtectedConservedArea_2024"
+sk_cce_filename <- "CrownCEs_-4202437152155019093"
+
+# Land tenure
 ncc_easement_filename <- "NatureUnited_Ownership"
 
 # Soil
@@ -122,7 +124,8 @@ nr_cdd_hist_filename <- paste("nr_cdd", ssp, hist_period, "p50.tif", sep="_")
 nr_cdd_fut_filename <- paste("nr_cdd", ssp, fut_period, "p50.tif", sep="_") 
 
 # Socio-economic
-canfax_filename <- "canfax_results_tbl"
+canfax2009_filename <- "canfax_results_tbl_2005-2009.shp"
+canfax2024_filename <- "canfax_results_tbl_2020-2024.shp"
 elevator_filename <- "Prairies_ProcessElevators_Aug2026.shp"
 popctr2011_filename <- "gpc_000a11a_e"
 popctr2021_filename <- "lpc_000a21a_e"
@@ -159,6 +162,9 @@ plowprint_filepath <- "cropland/Plowprint WWF"
 
 # Protected Areas
 pa_filepath <- "management/Canadian Protected and Conserved Areas Database/ProtectedConservedArea_2024"
+sk_cce_filepath <- "management/SK Crown Conservation Easements"
+
+# Land Tenure
 ncc_easement_filepath <- "management/Tenure data (NCC)"
 
 # Soil
