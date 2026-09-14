@@ -48,7 +48,7 @@
 #   - 0-setup.R (parameters, file paths, functions)
 # ============================================================
 
-source(file.path("scripts/landcover", "0-setup.R"))
+source(file.path("scripts/landcover", "0a-setup.R"))
 
 library(foreign)
 
