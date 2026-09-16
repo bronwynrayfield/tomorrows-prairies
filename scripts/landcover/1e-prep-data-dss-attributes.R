@@ -62,8 +62,6 @@
 
 source(file.path("scripts/landcover", "0a-setup.R"))
 
-library(foreign)
-
 # --- Parameters -------------------------------------------------------
 
 dss_root <- file.path("existingdatasets", "Soil/detailed-soil-survey")

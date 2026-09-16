@@ -9,11 +9,15 @@ library(ggplot2)
 library(ranger)
 library(pROC)
 library(usdm)
-#library(patchwork)
+library(patchwork)
 library(geodata)
+library(foreign)
 
 # check available space on different mount points and memory
 system("df -h")
+
+# don't use scientific noation unless necessary
+options(scipen = 999)
 
 # set terra options for memory, temp directory, and progress bar
 terraOptions(memfrac = 0.8,
