@@ -278,7 +278,7 @@ for (v in vars) {
     r,
     root      = "./processeddatasets",
     rel_dir   = dss_filepath,
-    filename  = paste0(v$file, "_modelling-extent"),
+    filename = sub("\\.tif$", "_modelling-extent.tif", v$file),
     datatype  = v$dt,
     overwrite = TRUE,
     gdal      = c("COMPRESS=DEFLATE", "PREDICTOR=2")
