@@ -58,7 +58,7 @@ n_sa <- global(!is.na(sa_r), "sum", na.rm = TRUE)[[1]]
 
 # per-layer NA counts: any layer well above the others is the binding one
 na_by_layer <- global(is.na(stk), "sum", na.rm = TRUE)
-na_by_layer$valid    <- ncell(stk) - na_by_layer$sum
+na_by_layer$valid <- ncell(stk) - na_by_layer$sum
 na_by_layer$lost_vs_sa <- na_by_layer$valid - n_sa      # negative = cells lost
 
 # union: cells valid in every layer, excluding water. This is the predictor
@@ -75,12 +75,60 @@ n_ok <- global(ok, "sum", na.rm = TRUE)[[1]]
 cat("\nstudy area cells          :", format(n_sa, big.mark = ","), "\n")
 # study area cells          : 519,027,074 
 cat("valid in every predictor  :", format(n_ok, big.mark = ","), "\n")
-# valid in every predictor  : 474,953,890 
+# valid in every predictor  : 457,546,886 
+# valid in every predictor  : 474,953,890 (OLD)
 cat("lost to NA union + water  :", format(n_sa - n_ok, big.mark = ","),
     sprintf("(%.2f%%)\n", 100 * (n_sa - n_ok) / n_sa))
-# lost to NA union + water  : 44,073,184 (8.49%)
+# lost to NA union + water  : 61,480,188 (11.85%)
+# lost to NA union + water  : 44,073,184 (8.49%) (OLD)
 
 print(na_by_layer[order(na_by_layer$lost_vs_sa), ])
+# sum     valid lost_vs_sa
+# kp33         472891728 483240294  -35786780
+# kp0          472620372 483511650  -35515424
+# kp1500       472620372 483511650  -35515424
+# ldepth       468893249 487238773  -31788301
+# ldepth_max   468893249 487238773  -31788301
+# net_return   468059031 488072991  -30954083
+# drainage     450685115 505446907  -13580167
+# oc           448803917 507328105  -11698969
+# bd           448803917 507328105  -11698969
+# clay         448803917 507328105  -11698969
+# sand         448803917 507328105  -11698969
+# silt         448803917 507328105  -11698969
+# ph           448803917 507328105  -11698969
+# slope        446965867 509166155   -9860919
+# watertbl     444251628 511880394   -7146680
+# tsm_planting 439939324 516192698   -2834376
+# tsm_growing  439939324 516192698   -2834376
+# psssm_mean   438725748 517406274   -1620800
+# psssm_sd     438725748 517406274   -1620800
+# prtot        437469681 518662341    -364733
+# tn_mean      437469681 518662341    -364733
+# tx_mean      437469681 518662341    -364733
+# gddgrow_5    437469681 518662341    -364733
+# nrcdd        437469681 518662341    -364733
+# elev         437104948 519027074          0
+# tri          437104948 519027074          0
+# tpi          437104948 519027074          0
+# srr          437104948 519027074          0
+# northness    437104948 519027074          0
+# eastness     437104948 519027074          0
+# unprot_grs   437104948 519027074          0
+# native       437104948 519027074          0
+# tame         437104948 519027074          0
+# crop         437104948 519027074          0
+# dev          437104948 519027074          0
+# fors         437104948 519027074          0
+# other        437104948 519027074          0
+# d_elevator   437104948 519027074          0
+# d_road       437104948 519027074          0
+# d_rail       437104948 519027074          0
+# d_popctr     437104948 519027074          0
+# d_regctr     437104948 519027074          0
+
+
+# (OLD)
 # sum     valid lost_vs_sa
 # kp33         472891728 483240294  -35786780
 # kp0          472620372 483511650  -35515424
