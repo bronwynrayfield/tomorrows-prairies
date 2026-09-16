@@ -1,4 +1,3 @@
-# 6a-screen-collinearity-predictors.R
 # Pairwise correlation + VIF screen to flag collinear predictors before the RF.
 # RF tolerates collinearity for prediction, but it distorts variable importance
 # and effect plots, so redundant predictors are screened out.
@@ -7,7 +6,7 @@ source(file.path("scripts/landcover", "0b-predictor-files.R"))
 
 # ---- inputs ----
 out_dir  <- "output/landcover/collinearity"
-out_sa   <- file.path("./processeddatasets", "predictors", "30m")
+out_sa   <- file.path("./processeddatasets", "predictors", paste0(res_m, "m"))
 sample_n   <- 20000      # target complete (non-NA) sample size
 cor_method <- "spearman" # "spearman" (monotonic) or "pearson" (linear)
 cor_th     <- 0.7        # |r| at/above this flags a pair as collinear
@@ -15,6 +14,7 @@ vif_th     <- 5          # VIF at/above this flags multicollinearity (5 = strict
 
 sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 ecoregions <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent"))
+ecoregion_r <- rast(file.path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), "_modelling-extent.tif")))
 msk <- rast(file.path(out_sa, "predictor-valid-mask_study-area.tif"))
 
 # baseline (2010) grassland: native + tame. Screening samples the training
@@ -34,7 +34,8 @@ if (length(missing)) {
   stop("missing predictor layers:\n  ", paste(names(missing), missing, sep = ": ", collapse = "\n  "))
 }
 
-r <- rast(files)
+sa_file <- function(nm) file.path(out_sa, paste0(nm, "_study-area.tif"))
+r <- rast(sapply(names(files), sa_file))
 names(r) <- names(files)
 
 # ---- sample values ----
@@ -62,8 +63,28 @@ vals <- vals[sample(nrow(vals), min(sample_n, nrow(vals))), ]
 
 saveRDS(vals, file.path(out_sa, "covariate-sample_training.rds"))
 
-drop_cols <- c("x", "y", "silt", "sand")
+# closure sets: two exact linear dependencies in the predictor set.
+#   texture   clay + sand + silt ~ 100
+#   focal     native + tame + crop + dev + fors + other = 1 at every pixel
+# Both are dropped a priori, not by threshold - with all members present the
+# correlation matrix is singular and VIF is meaningless. One member of each set 
+# is withheld as the reference: clay is retained over sand/silt as the more 
+# interpretable; other is withheld per 4d, where it is computed but not 
+# exported. The retained five proportions still sum to (1 - other) and remain 
+# strongly collinear where other is small;vifstep arbitrates that.
+#
+# categorical, excluded from the screen but retained in the model:
+#   grass_origin  binary native/tame. vif() needs numeric, and this is the
+#     cohort split (0.22% vs 17.4% conversion), in by design rather than by
+#     threshold. Expect it to lead importance and compress the rest.
+#   ecoregion     25-level factor. Dummy-coding gives 25 columns summing to 1,
+#     the same singularity as above, so VIF is undefined for it. Collinearity
+#     with climate and soil is real but unquantifiable here (ecoregions are
+#     delineated on those variables) - it nests above the LOEO folds, so the
+#     with/without comparison is on LOEO AUC, not OOB.
+drop_cols <- c("x", "y", "silt", "sand", "other", "grass_origin", "ecoregion")
 vals_cov <- vals[, setdiff(names(vals), drop_cols)]
+
 
 # ---- pairwise correlation ----
 cmat <- cor(vals_cov, method = cor_method, use = "pairwise.complete.obs")
@@ -77,114 +98,152 @@ pairs <- as.data.frame(as.table(cmat)) |>
   arrange(desc(abs(r)))
 
 # ---- VIF screen ----
-# clay, sand and silt are compositional (sum to ~100), so any two of the three
-# describe the same axis. VIF understates this once one component is dropped
-# (clay-sand rho = -0.81 but VIFs of 5.3 / 4.6), so sand and silt are excluded
-# a priori rather than by threshold; clay is retained as the more interpretable.
+# vif_all: VIF for every variable at once, no selection. Each is regressed on
+# all the others; VIF = 1/(1-R^2), so 10 means 90% of that variable is
+# explained by the rest. Diagnostic only -- shows where the collinearity is.
 vif_all  <- vif(vals_cov)
 
-clim_keep <- c("gddgrow_5", "prtot", "tx_mean")
-keep_set  <- c(clim_keep, "clay")
-bio_cols  <- setdiff(names(vals_cov), c(clim_keep, "tn_mean", "nrcdd", "silt", "sand"))
-
-vif_step  <- vifstep(vals_cov[, c(clim_keep, bio_cols)], th = vif_th, keep = keep_set)
+# vif_step: iterative removal. Computes all VIFs, drops the single worst
+# variable, recomputes, repeats until every VIF < th. Because it drops one at
+# a time, the surviving set depends on removal order - it gives *a* set below
+# the threshold, not the only one.
+#
+# keep = protects variables from removal regardless of VIF; vifstep drops
+# others to accommodate them.
+#   climate (gddgrow_5, prtot, tx_mean): VIFs of 36/12/30, so vifstep would
+#     strip the climate block. Retained because the CLUES scenario is SSP2-4.5
+#     - without climate terms the model cannot respond to the scenario at all.
+#   clay: the texture closure reference. sand and silt are already dropped
+#     above, so if vifstep also removed clay the predictor set would carry no
+#     texture information. keep pins the one member deliberately chosen.
+#
+# Input is vals_cov: all predictors except the two closure references
+# (sand/silt, other). tn_mean and nrcdd are left in so vifstep decides them
+# here rather than being excluded by hand upstream.
+vif_step <- vifstep(vals_cov, th = vif_th, keep = c("gddgrow_5", "prtot", "tx_mean", "clay"))
 
 # ---- correlation heatmap ----
 hm <- as.data.frame(as.table(cmat)) |>
   ggplot(aes(Var1, Var2, fill = Freq)) +
   geom_tile() +
-  geom_text(aes(label = round(Freq, 2)), size = 3) +
+#  geom_text(aes(label = round(Freq, 2)), size = 3) +
+  geom_text(aes(label = ifelse(abs(Freq) >= cor_th, round(Freq, 2), "")), size = 2.5) +
   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
                        midpoint = 0, limits = c(-1, 1), name = cor_method) +
   labs(x = NULL, y = NULL, title = "Predictor correlation") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-ggsave(file.path(out_dir, "correlation_heatmap.png"), hm, width = 7, height = 6, dpi = 150)
+#ggsave(file.path(out_dir, "correlation_heatmap.png"), hm, width = 7, height = 6, dpi = 150)
+ggsave(file.path(out_dir, "correlation_heatmap.png"), hm, width = 11, height = 10, dpi = 150)
 
 # ---- report ----
 cat("Correlation method:", cor_method, "\n\n")
 # Correlation method spearman 
 cat("Pairs with |r| >=", cor_th, ":\n"); print(pairs, row.names = FALSE)
-# Pairs with r = 0.7 
-# pair      r
-# kp1500 - kp33  0.957
-# tn_mean - tx_mean  0.843
-# nrcdd - prtot -0.760
-# prtot - tsm_growing  0.744
-# bd - nrcdd  0.732
-# ph - tx_mean  0.728
-# bd - prtot -0.719
-# bd - ph  0.705
-cat("\nVIF (all variables):\n"); print(vif_all)
-# VIF (all variables)
-# Variables       VIF
-# 1         prtot 10.381905
-# 2       tn_mean  9.663993
-# 3       tx_mean 28.593982
-# 4     gddgrow_5 33.064449
-# 5         nrcdd  7.861484
-# 6            oc  2.208129
-# 7            bd  4.704270
-# 8          clay  1.942912
-# 9            ph  3.606912
-# 10     drainage  2.720967
-# 11     watertbl  2.109210
-# 12          kp0  2.219194
-# 13         kp33 21.410226
-# 14       kp1500 20.536133
-# 15       ldepth  1.732810
-# 16   ldepth_max  1.402944
-# 17   psssm_mean  2.340798
-# 18     psssm_sd  2.776080
-# 19 tsm_planting  7.728948
-# 20  tsm_growing  6.517994
-# 21         elev 25.048534
-# 22          tri  1.754592
-# 23          tpi  1.156309
-# 24          srr  1.171575
-# 25    northness  1.016802
-# 26     eastness  1.016463
-# 27        slope  1.570622
+# Pairs with |r| >= 0.7 :
+#   pair      r
+# kp1500 - kp33  0.934
+# tn_mean - tx_mean  0.828
+# crop - native -0.796
+# nrcdd - prtot -0.765
+# ph - tx_mean  0.736
+# prtot - tsm_growing  0.730
+# bd - nrcdd  0.715
+# bd - ph  0.709
+cat("\nVIF (all variables):\n"); print(transform(vif_all, VIF = round(VIF, 2)))
+# VIF (all variables):
+#   Variables   VIF
+# 1         prtot 11.61
+# 2       tn_mean 12.02
+# 3       tx_mean 29.79
+# 4     gddgrow_5 35.62
+# 5         nrcdd  8.29
+# 6            oc  2.24
+# 7            bd  4.52
+# 8          clay  2.08
+# 9            ph  3.62
+# 10     drainage  3.13
+# 11     watertbl  2.59
+# 12          kp0  2.58
+# 13         kp33 19.46
+# 14       kp1500 17.86
+# 15       ldepth  1.73
+# 16   ldepth_max  1.42
+# 17   psssm_mean  2.57
+# 18     psssm_sd  2.73
+# 19 tsm_planting  9.01
+# 20  tsm_growing  6.79
+# 21         elev 28.98
+# 22          tri  1.89
+# 23          tpi  1.20
+# 24          srr  1.17
+# 25    northness  1.02
+# 26     eastness  1.02
+# 27        slope  1.69
+# 28   unprot_grs  2.56
+# 29       native 25.88
+# 30         tame  8.67
+# 31         crop 11.03
+# 32          dev  1.37
+# 33         fors  3.58
+# 34   net_return  2.88
+# 35   d_elevator  3.01
+# 36       d_road  1.25
+# 37       d_rail  2.05
+# 38     d_popctr  2.69
+# 39     d_regctr  2.12
 
 cat("\nvifstep (th =", vif_th, ") -- variables flagged for exclusion:\n")
 print(vif_step@excluded)
-# [1] elev         kp33         tsm_planting
+# [1] "elev"         "native"       "kp33"         "tn_mean"      "nrcdd"        "tsm_planting"
 cat("\nRetained set:\n"); print(vif_step@results$Variables)
-# Retained set
-# [1] gddgrow_5   prtot       tx_mean     oc          bd          clay        ph          drainage   
-# [9] watertbl    kp0         kp1500      ldepth      ldepth_max  psssm_mean  psssm_sd    tsm_growing
-# [17] tri         tpi         srr         northness   eastness    slope      
+# Retained set:
+#   [1] "prtot"       "tx_mean"     "gddgrow_5"   "oc"          "bd"          "clay"        "ph"          "drainage"   
+# [9] "watertbl"    "kp0"         "kp1500"      "ldepth"      "ldepth_max"  "psssm_mean"  "psssm_sd"    "tsm_growing"
+# [17] "tri"         "tpi"         "srr"         "northness"   "eastness"    "slope"       "unprot_grs"  "tame"       
+# [25] "crop"        "dev"         "fors"        "net_return"  "d_elevator"  "d_road"      "d_rail"      "d_popctr"   
+# [33] "d_regctr"       
 
 # vifstep output; manual drops are applied after the diagnostics below, which
 # supply the evidence for them
 vif_set <- vif_step@results$Variables
 vif(vals_cov[, vif_set])
 # Variables      VIF
-# 1    gddgrow_5 4.224989
-# 2        prtot 5.169860
-# 3      tx_mean 4.761463
-# 4           oc 2.126393
-# 5           bd 4.258054
-# 6         clay 1.894336
-# 7           ph 3.234788
-# 8     drainage 2.501198
-# 9     watertbl 1.991665
-# 10         kp0 1.699574
-# 11      kp1500 1.925546
-# 12      ldepth 1.447759
-# 13  ldepth_max 1.293947
-# 14  psssm_mean 1.997121
-# 15    psssm_sd 2.406562
-# 16 tsm_growing 2.624866
-# 17         tri 1.832837
-# 18         tpi 1.200611
-# 19         srr 1.136113
-# 20   northness 1.020454
-# 21    eastness 1.018853
-# 22       slope 1.562828
-
+# 1        prtot 6.060397
+# 2      tx_mean 6.232994
+# 3    gddgrow_5 5.365917
+# 4           oc 2.124140
+# 5           bd 4.109704
+# 6         clay 1.901151
+# 7           ph 3.289288
+# 8     drainage 2.947956
+# 9     watertbl 2.506332
+# 10         kp0 1.716421
+# 11      kp1500 2.134001
+# 12      ldepth 1.585835
+# 13  ldepth_max 1.366774
+# 14  psssm_mean 2.156723
+# 15    psssm_sd 2.289552
+# 16 tsm_growing 2.675862
+# 17         tri 1.791996
+# 18         tpi 1.140516
+# 19         srr 1.122572
+# 20   northness 1.024043
+# 21    eastness 1.018543
+# 22       slope 1.688722
+# 23  unprot_grs 2.354606
+# 24        tame 1.523713
+# 25        crop 2.353267
+# 26         dev 1.166490
+# 27        fors 2.176893
+# 28  net_return 2.509276
+# 29  d_elevator 2.950418
+# 30      d_road 1.228350
+# 31      d_rail 1.996731
+# 32    d_popctr 2.646275
+# 33    d_regctr 2.026562
 length(vif_set)
-# [1] 22
+# [1] 33
 
 # ---- variance explained by ecoregion --------------------------------------
 # Not a redundancy check -- ecoregion is included as a regional catch-all, not
@@ -193,9 +252,7 @@ length(vif_set)
 # two correlated continuous predictors do. Worth knowing before reading
 # variable importance.
 
-ecoregions <- st_transform(ecoregions, crs(sa_r))
-ecoregion_r <- rasterize(vect(ecoregions), sa_r, field = "ECOREGION_")
-ecoregion_r <- mask(ecoregion_r, sa_r)
+ecoregion_r <- mask(crop(ecoregion_r, sa_r), sa_r)
 names(ecoregion_r) <- "ecoregion"
 
 d <- vals[, c("x", "y", vif_set)]
@@ -210,12 +267,14 @@ r2_eco <- sapply(setdiff(names(d), c("x", "y", "ecoregion")), function(v) {
   summary(lm(d[[v]] ~ d$ecoregion))$r.squared
 })
 print(round(sort(r2_eco, decreasing = TRUE), 3))
-# prtot     tx_mean          ph          bd   gddgrow_5  psssm_mean tsm_growing          oc    watertbl    psssm_sd 
-# 0.705       0.582       0.564       0.540       0.396       0.385       0.351       0.222       0.220       0.177 
-# drainage         tri        clay         kp0      kp1500       slope  ldepth_max      ldepth         srr    eastness 
-# 0.129       0.113       0.093       0.069       0.060       0.051       0.043       0.025       0.006       0.002 
-# northness         tpi 
-# 0.001       0.000 
+# prtot     tx_mean          ph  d_elevator          bd  psssm_mean   gddgrow_5 tsm_growing        fors    watertbl 
+# 0.708       0.580       0.563       0.537       0.519       0.383       0.382       0.354       0.325       0.300 
+# d_popctr    psssm_sd          oc  net_return    drainage  unprot_grs      d_rail        crop         tri        tame 
+# 0.289       0.222       0.208       0.189       0.184       0.158       0.125       0.124       0.122       0.110 
+# kp0        clay    d_regctr      kp1500       slope      d_road  ldepth_max      ldepth         dev         srr 
+# 0.096       0.085       0.068       0.061       0.055       0.051       0.035       0.029       0.028       0.009 
+# eastness         tpi   northness 
+# 0.004       0.001       0.001 
 
 ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
                                     ecodistricts_filename, "modelling-extent"))
@@ -231,12 +290,14 @@ r2_dist <- sapply(setdiff(names(d), c("x", "y", "ecoregion", "ecodistrict")), fu
   summary(lm(d[[v]] ~ d$ecodistrict))$r.squared
 })
 print(round(sort(r2_dist, decreasing = TRUE), 3))
-# prtot     tx_mean   gddgrow_5    psssm_sd  psssm_mean          ph          bd tsm_growing        clay          oc 
-# 0.930       0.925       0.888       0.868       0.822       0.790       0.776       0.770       0.700       0.658 
-# kp1500  ldepth_max    drainage    watertbl         kp0         tri       slope      ldepth         srr   northness 
-# 0.463       0.383       0.377       0.371       0.357       0.318       0.202       0.121       0.033       0.023 
-# eastness         tpi 
-# 0.012       0.008 
+# prtot     tx_mean   gddgrow_5  d_elevator    psssm_sd  psssm_mean          ph          bd  net_return tsm_growing 
+# 0.933       0.927       0.884       0.873       0.872       0.828       0.783       0.761       0.756       0.752 
+# d_regctr        clay          oc    d_popctr        fors      d_rail      kp1500    watertbl  unprot_grs    drainage 
+# 0.710       0.690       0.650       0.647       0.493       0.474       0.452       0.448       0.418       0.414 
+# crop         kp0  ldepth_max         tri        tame       slope         dev      d_road      ldepth         srr 
+# 0.377       0.372       0.356       0.329       0.314       0.202       0.158       0.137       0.124       0.035 
+# northness    eastness         tpi 
+# 0.026       0.017       0.012 
 
 # ---- variance explained by province ----------------------------------------
 # DSS attributes come from independently-conducted provincial surveys with
@@ -256,12 +317,14 @@ r2_prov <- sapply(setdiff(names(d), c("x", "y", "ecoregion", "ecodistrict", "pro
   summary(lm(d[[v]] ~ d$province))$r.squared
 })
 print(round(sort(r2_prov, decreasing = TRUE), 3))
-# watertbl    psssm_sd  ldepth_max       prtot        clay    drainage   gddgrow_5         kp0     tx_mean  psssm_mean 
-# 0.289       0.282       0.245       0.236       0.202       0.185       0.160       0.132       0.116       0.074 
-# ldepth tsm_growing         tri      kp1500          oc          ph       slope          bd         tpi         srr 
-# 0.062       0.037       0.035       0.033       0.025       0.017       0.011       0.008       0.001       0.001 
-# northness    eastness 
-# 0.000       0.000 
+# net_return    watertbl    psssm_sd       prtot    drainage  ldepth_max        clay   gddgrow_5  unprot_grs     tx_mean 
+# 0.541       0.354       0.312       0.306       0.255       0.239       0.201       0.195       0.195       0.133 
+# fors      d_rail         kp0  psssm_mean  d_elevator      ldepth tsm_growing        tame        crop         tri 
+# 0.129       0.123       0.114       0.113       0.082       0.063       0.061       0.044       0.042       0.042 
+# kp1500      d_road         dev    d_popctr       slope          ph          oc    d_regctr          bd         srr 
+# 0.041       0.034       0.034       0.033       0.024       0.023       0.022       0.020       0.013       0.002 
+# tpi    eastness   northness 
+# 0.002       0.000       0.000 
 # per-province mean and SD for the soil variables: a province with SD near 0
 # (e.g. a depth convention capping at 100 cm) is acting as a province code
 soil_vars <- intersect(c("oc", "bd", "clay", "sand", "ph", "drainage", "watertbl",
@@ -415,31 +478,42 @@ manual_drop <- c("watertbl", "ldepth_max")
 final_set <- setdiff(vif_set, manual_drop)
 
 cat("\nvifstep retained :", length(vif_set), "\n")
-# vifstep retained : 22 
+# vifstep retained : 33 
 cat("manual drops     :", paste(manual_drop, collapse = ", "), "\n")
 # manual drops     : watertbl, ldepth_max
 cat("final set        :", length(final_set), "\n")
-# final set        : 20 
+# final set        : 31 
 print(vif(vals_cov[, final_set]))
 # Variables      VIF
-# 1    gddgrow_5 4.203320
-# 2        prtot 5.141379
-# 3      tx_mean 4.510074
-# 4           oc 2.035176
-# 5           bd 4.341340
-# 6         clay 1.848257
-# 7           ph 3.140972
-# 8     drainage 1.638077
-# 9          kp0 1.547094
-# 10      kp1500 1.651498
-# 11      ldepth 1.486136
-# 12  psssm_mean 1.955382
-# 13    psssm_sd 2.304342
-# 14 tsm_growing 2.747870
-# 15         tri 1.870669
-# 16         tpi 1.252672
-# 17         srr 1.127017
-# 18   northness 1.026080
-# 19    eastness 1.007591
-# 20       slope 1.494822
+# 1        prtot 6.015263
+# 2      tx_mean 6.104209
+# 3    gddgrow_5 5.542645
+# 4           oc 2.174727
+# 5           bd 4.385874
+# 6         clay 1.944330
+# 7           ph 3.343898
+# 8     drainage 1.722802
+# 9          kp0 1.635314
+# 10      kp1500 1.837376
+# 11      ldepth 1.532775
+# 12  psssm_mean 2.184189
+# 13    psssm_sd 2.270419
+# 14 tsm_growing 2.741213
+# 15         tri 1.809182
+# 16         tpi 1.197176
+# 17         srr 1.153202
+# 18   northness 1.024074
+# 19    eastness 1.033287
+# 20       slope 1.665545
+# 21  unprot_grs 2.347722
+# 22        tame 1.550770
+# 23        crop 2.329628
+# 24         dev 1.207536
+# 25        fors 2.047951
+# 26  net_return 2.555316
+# 27  d_elevator 2.979618
+# 28      d_road 1.242466
+# 29      d_rail 1.960998
+# 30    d_popctr 2.530897
+# 31    d_regctr 1.938696
 saveRDS(final_set, file.path(out_sa, "retained-covariates.rds"))
