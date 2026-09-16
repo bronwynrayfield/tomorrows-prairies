@@ -12,8 +12,8 @@ predictor_files <- c(
   oc           = tagged_path("./processeddatasets", soil_filepath, oc_filename, "modelling-extent"),
   bd           = tagged_path("./processeddatasets", soil_filepath, bd_filename, "modelling-extent"),
   clay         = tagged_path("./processeddatasets", soil_filepath, clay_filename, "modelling-extent"),
-  sand         = tagged_path("./processeddatasets", soil_filepath, sand_filename, "modelling-extent"),
-  silt         = tagged_path("./processeddatasets", soil_filepath, silt_filename, "modelling-extent"),
+#  sand         = tagged_path("./processeddatasets", soil_filepath, sand_filename, "modelling-extent"),
+#  silt         = tagged_path("./processeddatasets", soil_filepath, silt_filename, "modelling-extent"),
   ph           = tagged_path("./processeddatasets", soil_filepath, ph_filename, "modelling-extent"),
   drainage     = tagged_path("./processeddatasets", dss_filepath, dss_drainage_filename, "modelling-extent"),
   watertbl     = tagged_path("./processeddatasets", dss_filepath, dss_watertbl_filename, "modelling-extent"),
@@ -43,7 +43,7 @@ predictor_files <- c(
   crop       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "crop_prop_3210m_2010", "modelling-extent"),
   dev        = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "dev_prop_3210m_2010", "modelling-extent"),
   fors       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "fors_prop_3210m", "modelling-extent"),
-  other      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "other_prop_3210m", "modelling-extent"),
+#  other      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "other_prop_3210m", "modelling-extent"),
 
   # socio-economic
   net_return = tagged_path("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009", "modelling-extent"),
@@ -52,8 +52,12 @@ predictor_files <- c(
   d_rail     = tagged_path("./processeddatasets", rail_filepath, "dist_to_rail", "modelling-extent"),
   # d_irig     = tagged_path("./processeddatasets", ..., "modelling-extent"),
   d_popctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_popctr2011", "modelling-extent"),
-  d_regctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_regctr2011", "modelling-extent")
+  d_regctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_regctr2011", "modelling-extent"),
   # popdens    = tagged_path("./processeddatasets", ..., "modelling-extent")
+
+  # extra predictors
+  grs_origin = tagged_path("./processeddatasets", aafc_filepath, "grassland_origin_2010", "modelling-extent"),
+  ecoregion = tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "modelling-extent")
 )
 
 # display names + units for figure panels - verify units before submission
@@ -103,5 +107,9 @@ predictor_labels <- c(
   d_road       = "Distance to road (km)",
   d_rail       = "Distance to railway (km)",
   d_popctr     = "Distance to population centre (km)",
-  d_regctr     = "Distance to regional centre (km)"
+  d_regctr     = "Distance to regional centre (km)",
+  
+  # extra
+  grs_origin   = "Grassland origin",
+  ecoregion    = "Ecoregion"
 )
