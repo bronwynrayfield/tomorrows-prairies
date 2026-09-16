@@ -131,6 +131,7 @@ census <- st_intersection(census_reproj, me)
 # National ecological framework
 ecozones <- st_intersection(ecozones_reproj, me)
 ecoregions <- st_intersection(ecoregions_reproj, me)
+ecoregions_r <- terra::rasterize(terra::vect(ecoregions), me_r, field = "ECOREGION_") # also create a raster version of ecoregions
 ecodistricts <- st_intersection(ecodistricts_reproj, me)
 
 # Protected Areas
@@ -236,6 +237,7 @@ popctr2021 <- st_intersection(popctr2021_reproj, me)
 write_sf_tagged(census, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "modelling-extent")
 write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_filename, "modelling-extent")
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
+write_rast_tagged(ecoregions_r, "./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "modelling-extent", datatype = "INT2U")
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
 write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
 write_sf_tagged(pa_sa, "./processeddatasets", pa_filepath, pa_filename, "study-area", driver = "GPKG")
