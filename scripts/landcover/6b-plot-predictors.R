@@ -71,7 +71,13 @@ panel_order <- c(
   "drainage", "kp0", "kp33", "kp1500", "ldepth", "ldepth_max", "watertbl",
   # soil -- interpolated national products and moisture
   "oc", "bd", "clay", "sand", "ph",
-  "psssm_mean", "psssm_sd", "tsm_planting", "tsm_growing"
+  "psssm_mean", "psssm_sd", "tsm_planting", "tsm_growing",
+  # landscape context -- proportions in a 3210 m window
+  "native", "tame", "unprot_grs", "crop", "dev", "fors", "other",
+  # socio-economic -- market then access
+  "net_return", "d_elevator", "d_road", "d_rail", "d_popctr", "d_regctr",
+  # categorical
+  "grass_origin", "ecoregion"
 )
 
 final_set <- readRDS(retained_file)
@@ -105,18 +111,26 @@ pts <- spatSample(msk, break_n * 20, method = "random",
                   xy = TRUE, values = TRUE, na.rm = FALSE)
 pts <- as.matrix(pts[!is.na(pts[[3]]), c("x", "y")])
 
-rs <- rast(all_files[final_set])
-names(rs) <- final_set   # rast() takes names from the files' internal band
+sa_path <- function(nm) file.path(in_sa, paste0(nm, "_study-area.tif"))
+rs <- rast(sapply(final_set, sa_path))
+names(rs) <- final_set
 # names, which are neither unique nor meaningful
 
-smp <- terra::extract(rs, pts)
-smp$ID <- NULL
-# Drop only all-NA rows, not incomplete ones: for population = "sa" many cells
-# are NA in the DSS variables but valid elsewhere, and requiring complete cases
-# would compute every scale limit from the fully-surveyed subset. Limits are
-# taken per variable with na.rm, so n varies by panel.
-smp <- smp[rowSums(!is.na(smp)) > 0, , drop = FALSE]
-smp <- smp[sample(nrow(smp), min(break_n, nrow(smp))), ]
+smp_file <- file.path(in_sa, sprintf("break-sample_%s.rds", population))
+
+if (file.exists(smp_file) && identical(names(readRDS(smp_file)), final_set)) {
+  smp <- readRDS(smp_file)
+} else {
+  smp <- terra::extract(rs, pts)
+  smp$ID <- NULL
+  # Drop only all-NA rows, not incomplete ones: for population = "sa" many cells
+  # are NA in the DSS variables but valid elsewhere, and requiring complete cases
+  # would compute every scale limit from the fully-surveyed subset. Limits are
+  # taken per variable with na.rm, so n varies by panel.
+  smp <- smp[rowSums(!is.na(smp)) > 0, , drop = FALSE]
+  smp <- smp[sample(nrow(smp), min(break_n, nrow(smp))), ]
+  saveRDS(smp, smp_file)
+}
 
 stopifnot(nrow(smp) > 0, !length(setdiff(final_set, names(smp))))
 
@@ -161,6 +175,11 @@ msk300 <- aggregate(msk, agg_fact, fun = "max", na.rm = TRUE)
 pr     <- crop(pr, msk300, snap = "out")
 msk300 <- resample(msk300, pr, method = "near")
 pr     <- mask(pr, msk300)
+
+# convert distance predictors from m to km for display
+d_vars <- grep("^d_", final_set, value = TRUE)
+pr[[d_vars]] <- pr[[d_vars]] / 1000
+smp[d_vars] <- smp[d_vars] / 1000
 
 # ---- panel builder ----
 fmt <- function(x) formatC(signif(x, 3), format = "fg", big.mark = ",")
