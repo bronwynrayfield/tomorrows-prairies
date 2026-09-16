@@ -1,7 +1,3 @@
-# =============================================================================
-# 5-response.R
-# =============================================================================
-#
 # Purpose:
 #   Derives the binary response variable for the Random Forest conversion risk
 #   model: grassland pixels in 2010 that converted to ANNUAL cropland by 2020.
@@ -160,7 +156,7 @@
 #   - 3-crop-data.R outputs (LUTS 2010/2020 binaries)
 #   - 1h-prep-data-aci.R outputs (ACI 2009-2012, 30 m, aligned)
 # Related:
-#   - 5-response-sensitivity.R : variants min2 / min3 / aci110 / broadout / excl_per
+#   - 7-response-sensitivity.R : variants min2 / min3 / aci110 / broadout / excl_per
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
@@ -207,7 +203,7 @@ names(response) <- "conversion"
 
 # ---- Save to disk ----
 writeRaster(grass2010, file.path("./processeddatasets", aafc_filepath, "binary", "AAFC2010_ACI2009-2012_grass.tif"), datatype = "INT1U", overwrite = TRUE)
-write_rast_tagged(grass_origin, "./processeddatasets", "predictors/30m", "grassland_origin_2010.tif", "30m", datatype = "INT1U")
+write_rast_tagged(grass_origin, "./processeddatasets", "predictors/30m", "grassland_origin_2010_modelling-extent.tif", "30m", datatype = "INT1U")
 write_rast_tagged(response,     "./processeddatasets", "response", "response.tif", "30m", datatype = "INT1U")
 #grass2010 <- rast(file.path("./processeddatasets", aafc_filepath, "binary", "AAFC2010_ACI2009-2012_grass.tif"))
 #grass_origin <- rast(file.path("./processeddatasets", "predictors/30m", "grassland_origin_2010_30m.tif"))

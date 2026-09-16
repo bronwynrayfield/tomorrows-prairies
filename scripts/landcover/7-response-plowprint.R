@@ -1,7 +1,3 @@
-# =============================================================================
-# 7-response-plowprint.R
-# =============================================================================
-#
 # Purpose:
 #   Builds a Plowprint-style benchmark response for comparison against
 #   Olimb & Robinson (2019). This is a PIPELINE CHECK, not a model that feeds
