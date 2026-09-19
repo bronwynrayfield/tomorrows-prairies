@@ -168,7 +168,7 @@ ncc_sa <- st_collection_extract(ncc_sa, "POLYGON")
 ncc_sa <- st_cast(ncc_sa, "MULTIPOLYGON")
 
 # Roads
-roads <- mask(crop(roads_reproj, me), me)
+roads <- mask(crop(roads_reproj, me_r), me_r)
 
 # Cropland
 crop_suit <- mask(crop(crop_suit_reproj, me_r), me_r)

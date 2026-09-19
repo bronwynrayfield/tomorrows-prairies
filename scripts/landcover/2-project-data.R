@@ -131,7 +131,8 @@ roads_crs <- st_crs(st_read(file.path("./existingdatasets", capitalize_first(roa
                             layer="roads_merge", quiet=TRUE, query="SELECT * FROM roads_merge LIMIT 1"))
 
 bb_poly <- st_as_sfc(st_bbox(me))
-bb_poly_roads <- st_transform(bb_poly, roads_crs)
+#bb_poly_roads <- st_transform(bb_poly, roads_crs)
+bb_poly_roads <- st_as_sfc(st_bbox(st_transform(me, roads_crs)))
 
 roads_raw <- st_read(file.path("./existingdatasets", capitalize_first(road_filepath), paste0(road_filename, ".gdb")),
                              layer="roads_merge",
