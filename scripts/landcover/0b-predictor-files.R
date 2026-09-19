@@ -47,12 +47,12 @@ predictor_files <- c(
 
   # socio-economic
   net_return = tagged_path("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009", "modelling-extent"),
-  d_elevator = tagged_path("./processeddatasets", elevator_filepath, "dist_to_elevator", "modelling-extent"),
-  d_road     = tagged_path("./processeddatasets", road_filepath, "dist_to_road", "modelling-extent"),
-  d_rail     = tagged_path("./processeddatasets", rail_filepath, "dist_to_rail", "modelling-extent"),
+  dist_to_elevator = tagged_path("./processeddatasets", elevator_filepath, "dist_to_elevator", "modelling-extent"),
+  dist_to_road     = tagged_path("./processeddatasets", road_filepath, "dist_to_road", "modelling-extent"),
+  dist_to_rail     = tagged_path("./processeddatasets", rail_filepath, "dist_to_rail", "modelling-extent"),
   # d_irig     = tagged_path("./processeddatasets", ..., "modelling-extent"),
-  d_popctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_popctr2011", "modelling-extent"),
-  d_regctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_regctr2011", "modelling-extent"),
+  dist_to_popctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_popctr2011", "modelling-extent"),
+  dist_to_regctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_regctr2011", "modelling-extent"),
   # popdens    = tagged_path("./processeddatasets", ..., "modelling-extent")
 
   # extra predictors
@@ -103,11 +103,11 @@ predictor_labels <- c(
   
   # socio-economic
   net_return   = "Net returns of cropping (CAD)",
-  d_elevator   = "Distance to grain elevator (km)",
-  d_road       = "Distance to road (km)",
-  d_rail       = "Distance to railway (km)",
-  d_popctr     = "Distance to population centre (km)",
-  d_regctr     = "Distance to regional centre (km)",
+  dist_to_elevator   = "Distance to grain elevator (km)",
+  dist_to_road       = "Distance to road (km)",
+  dist_to_rail       = "Distance to railway (km)",
+  dist_to_popctr     = "Distance to population centre (km)",
+  dist_to_regctr     = "Distance to regional centre (km)",
   
   # extra
   grs_origin   = "Grassland origin",
