@@ -1,48 +1,42 @@
-# =============================================================================
-# 5-spatial-predictors.R
-# =============================================================================
-#
 # Purpose:
-#   Derives spatial predictor variables at a target resolution for use in
-#   the Random Forest grassland conversion risk model. Includes landscape context
-#   variables (moving window proportions) and cropland suitability imputation.
-#   Change target_res to 30 for final model run.
+#   Distance, capacity and net-return predictors for the RF conversion risk
+#   model: Canfax net returns (2005-2009, 2020-2024, standardised within
+#   period), distance to elevators, large elevators, roads, rails, population
+#   and regional centres (2011, 2021), capacity of nearest elevator.
+#   Ends with a collinearity/range check and figures.
 #
 # Inputs:
-#   - Modelling extent raster template (me_r)
-#   - AAFC LUTS binary rasters (2010, 2015) from 4-prepare-spatial-inputs.R
-#   - Protected areas binary rasters from 4-prepare-spatial-inputs.R
-#   - Olimb & Robinson 2019 cropland suitability
-#   - Ecodistricts (for cropland suitability imputation)
+#   - Modelling extent and study area raster templates (me_r, sa_r)
+#   - Canfax polygons, elevator points, road/rail rasters, popctr polygons,
+#     all clipped to extent by 4-prepare-spatial-inputs.R
 #
 # Outputs:
-#   - Landscape context proportion rasters at target resolution
-#     saved to processeddatasets/predictors/{target_res}m/
-#   - Cropland suitability (gap-filled) at target resolution
+#   - Canfax rasters (raw and _z) to predictors dir, tagged {res_m}m
+#   - dist_to_* and elevator capacity rasters to their source dirs,
+#     tagged "modelling-extent"
+#   - Predictor maps and correlation matrix to fig_dir
 #
 # Notes:
-#   - Window sizes defined in win_sizes_m
-#   - target_res = 300 for prototyping, change to 30 for final run
-#   - At 300m, AAFC binary layers become proportions after resampling;
-#     results are for prototyping only and not directly comparable to
-#     30m final run
-#   - pa_hard threshold at >0.5 : cell treated as protected if majority
-#     of underlying 30m pixels are protected
-#   - Cropland suitability NA imputation uses ecodistrict means
-#   - crop class not present in 2010 AAFC LUTS : crop2010 will be
-#     all zeros, included for completeness
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
-#   - 4-prepare-spatial-inputs.R outputs
-# =============================================================================
+#   - Regional centres = PCTYPE 1, 6 (CMA/CA cores, >=10,000 in core);
+#     distinct from popctr (Spearman ~0.54 within year)
+#   - Same predictor across years is near-identical (0.94 popctr,
+#     0.97 regctr) - don't use both years of one variable
+#   - Large elevator threshold 50,000 t (n = 6), at the curvature change in
+#     sorted CAP_T; Spearman 0.32 with distance to any elevator
+#   - Canfax z-scored within period: 62% of raw 2024 cells above the 2009 max
+#     where RF cannot extrapolate, 2.4% after. Assumes conversion responds to
+#     relative, not absolute, profitability
+#   - Distances in metres
 
 source(file.path("scripts/landcover", "0a-setup.R"))
 
 # ---- Load files ----
 # Modelling extent
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
+sa <- st_read(file.path(sa_filepath, sa_filename))
 sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
+r <- nrow(sa_r) / ncol(sa_r)  # needed for plots
+fig_dir <- "./output/landcover/figures"
 
 # Ecodistricts
 ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
@@ -73,34 +67,184 @@ popctr2021 <- st_read(tagged_path("./processeddatasets", popctr_filepath,
 # 2005 - 2009
 canfax2009_v <- vect(canfax2009)
 canfax2009_r <- rasterize(canfax2009_v, me_r, field = "nt_b_25")
-write_rast_tagged(canfax2009_r, "./processeddatasets", pred_dir, "canfax_nt_b_25_2005-2009.tif", paste0(res_m, "m"))
+canfax2009_r_sa <- mask(crop(canfax2009_r, sa_r), sa_r)
+png(file.path(fig_dir, "canfax2005-2009.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(canfax2009_r_sa, main = "Net returns of cropping 2005 - 2009 (CAD)", axes=FALSE, box=FALSE)
+dev.off()
+
 # 2020 - 2024
 canfax2024_v <- vect(canfax2024)
 canfax2024_r <- rasterize(canfax2024_v, me_r, field = "nt_b_25")
-write_rast_tagged(canfax2024_r, "./processeddatasets", pred_dir, "canfax_nt_b_25_2020-2024.tif", paste0(res_m, "m"))
+canfax2024_r_sa <- mask(crop(canfax2024_r, sa_r), sa_r)
+png(file.path(fig_dir, "canfax2020-2024.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(canfax2024_r_sa, main = "Net returns of cropping 2020 - 2024 (CAD)", axes=FALSE, box=FALSE)
+dev.off()
+
+### Standardize ###
+# Canfax net returns standardised within period: 2005-2009 is entirely negative
+# (95th pct -132) while 2020-2024 is mostly positive (median 814), so 62% of raw
+# 2024 cells fell above the 2009 max, where the RF cannot extrapolate.
+# Distributions have similar spread (IQR 1397 vs 1763), so z-scoring maps each
+# period onto relative position; 2.4% of cells remain above the 2009 z-max
+# (2.19 vs 2.76), 2024 being slightly more right-skewed. Assumes conversion
+# responds to relative, not absolute, profitability.
+z <- function(r) (r - global(r, "mean", na.rm = TRUE)[[1]]) /
+  global(r, "sd", na.rm = TRUE)[[1]]
+
+# standardize across modelling extent
+canfax2009_z <- z(canfax2009_r)
+canfax2024_z <- z(canfax2024_r)
+
+# standardize across study area
+canfax2009_z_sa <- z(canfax2009_r_sa)
+canfax2024_z_sa <- z(canfax2024_r_sa)
+
+png(file.path(fig_dir, "canfax2005-2009_z.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(canfax2009_z_sa, main = "Net returns of cropping 2005 - 2009 (z-score)", axes=FALSE, box=FALSE)
+dev.off()
+
+png(file.path(fig_dir, "canfax2020-2024_z.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(canfax2024_z_sa, main = "Net returns of cropping 2020 - 2024 (z-score)", axes=FALSE, box=FALSE)
+dev.off()
 
 
-# ---- Distance to ----
-# Process elevators
-elev_d <- distance(me_r, vect(elevator))   # metres, one value per cell
+# ---- Distance to process elevators ----
+# Run this for plots
+ev <- vect(elevator)
+ev_sa <- ev[!is.na(terra::extract(sa_r, ev)[, 2]), ]
+
+### Distance to all elevators ###
+elev_d <- distance(me_r, vect(elevator))   # metres
 elev_d <- mask(elev_d, me_r)
-plot(elev_d / 1000, main = "Distance to process elevator (km)")
-points(vect(elevator), pch = 21, bg = "white", col = "black", lwd = 0.8,
-       cex = 0.4 + 2 * sqrt(elevator$CAP_T / max(elevator$CAP_T, na.rm = TRUE)))
 
-# Roads
+# Plot
+elev_d_sa <- mask(crop(elev_d, sa_r), sa_r)
+#plot(elev_d_sa / 1000, main = "Distance to process elevator (km)", axes=FALSE, box=FALSE)
+lim <- quantile(spatSample(elev_d_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_to_elev.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(clamp(elev_d_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to process elevator (km)", axes = FALSE, box = FALSE)
+  points(ev_sa, pch = 21, bg = "white", col = "black", lwd = 0.8,
+       cex = 0.4 + 2 * sqrt(ev_sa$CAP_T / max(ev_sa$CAP_T, na.rm = TRUE)))
+dev.off()
+
+### Distance to large elevators ###
+# Check elevator capacity values
+sort(elevator$CAP_T)
+# [1]    200    370    650    800    820   1024   1465   1500   1950   2040   2100   2400   2500   2780   2850   2950   3000   3100   4150   4170   4500   4870   5000   5000   5254   5860   6000   6600   7694
+# [30]   7900   8250   8400   8500   8500   8700   9390  10000  11030  11750  12000  12125  13000  13230  15390  16800  24000  31570  32000  35000  36252  38300  46800  48990  62700  63500  66470  89330  89640
+# [59] 107380
+plot(sort(elevator$CAP_T))
+# Identify 90th percentile
+quantile(elevator$CAP_T, 0.9, na.rm = TRUE)
+# 90% 
+# 51732
+# Adjacent values are 48990 and 62700 so use 50000 as threshold
+
+# Threshold from the 90th percentile of CAP_T; no external size class available,
+# so this is a distributional cut, not a functional one. Fill in value + n here.
+cap_thresh <- 50000 #quantile(elevator$CAP_T, 0.9, na.rm = TRUE)
+elev_large <- elevator[!is.na(elevator$CAP_T) & elevator$CAP_T >= cap_thresh, ]
+elev_large_d <- mask(distance(me_r, vect(elev_large)), me_r)
+
+# Plot
+elev_large_d_sa <- mask(crop(elev_large_d, sa_r), sa_r)
+#plot(elev_large_d_sa / 1000, main = "Distance to large process elevator (km)", axes=FALSE, box=FALSE)
+
+# elevator labels
+lab <- sub(" (Company|Canada|Inc\\.?|Ltd\\.?|Limited).*", "", elev_large$LICENSEE)
+p <- rep(3, nrow(elev_large))
+p[c(2, 3, 5)] <- c(1, 3, 4)   # one below, one above
+
+lim <- quantile(spatSample(elev_large_d_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_to_elev_large.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(clamp(elev_large_d_sa / 1000, lim[1], lim[2], values = TRUE),
+       range = rng, col = hcl.colors(100, "viridis"),
+       main = "Distance to large process elevator (km)", axes = FALSE, box = FALSE)
+  points(vect(elev_large), pch = 21, bg = "white", col = "black", lwd = 0.8,
+         cex = 0.4 + 2 * sqrt(elev_large$CAP_T / max(elev_large$CAP_T, na.rm = TRUE)))
+  text(vect(elev_large), labels = lab, pos = p, cex = 0.45,
+       halo = TRUE, hc = "white", hw = 0.15)
+dev.off()
+
+
+# does the threshold matter? - yes!
+# th <- quantile(elevator$CAP_T, c(0.75, 0.9, 0.95), na.rm = TRUE)
+# d <- rast(lapply(th, function(t) {
+#   distance(me_r, vect(elevator[!is.na(elevator$CAP_T) & elevator$CAP_T >= t, ]))
+# }))
+# s <- spatSample(c(d, elev_d), 1e5, method = "regular", na.rm = TRUE, as.df = TRUE)
+# round(cor(s, method = "spearman"), 3)
+
+
+### Capacity of the nearest elevator: voronoi cells are exactly the nearest-point ###
+# assignment used by distance(), so elev_cap and elev_d refer to the same elevator
+elev_vor <- voronoi(vect(elevator), bnd = ext(vect(elevator)) + 1e5)
+elev_cap <- mask(rasterize(elev_vor, me_r, field = "CAP_T"), me_r)
+
+# Plot
+elev_cap_sa <- mask(crop(elev_cap, sa_r), sa_r)
+png(file.path(fig_dir, "cap_nearest_elev.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(elev_cap_sa / 1000, main = "Capacity of nearest elevator (kt)", axes=FALSE, box=FALSE)
+  points(ev_sa, pch = 21, bg = "white", col = "black", lwd = 0.8,
+         cex = 0.4 + 2 * sqrt(ev_sa$CAP_T / max(ev_sa$CAP_T, na.rm = TRUE)))
+dev.off()
+
+
+# ---- Distance to roads ----
 roads_for_dist <- ifel(roads == 1, 1, NA)
 dist_to_road  <- distance(roads_for_dist)
 dist_to_road  <- mask(dist_to_road, me_r)
-plot(dist_to_road / 1000, main = "Distance to roads (km)")
+# plot(dist_to_road / 1000, main = "Distance to roads (km)")
+# Plot
+dist_to_road_sa <- mask(crop(dist_to_road, sa_r), sa_r)
+lim <- quantile(spatSample(dist_to_road_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_to_road.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(dist_to_road_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to roads (km)", axes = FALSE, box = FALSE)
+dev.off()
 
-# Rails
+v <- spatSample(dist_to_road_sa / 1000, 1e5, method = "regular", na.rm = TRUE)[, 1]
+hist(v, breaks = 50, main = "", xlab = "Distance to road (km)")
+
+# ---- Distance to railways ----
 rails_for_dist <- ifel(rails == 1, 1, NA)
 dist_to_rail  <- distance(rails_for_dist)
 dist_to_rail  <- mask(dist_to_rail, me_r)
-plot(dist_to_rail / 1000, main = "Distance to railways (km)")
+# plot(dist_to_rail / 1000, main = "Distance to railways (km)")
+# Plot
+dist_to_rail_sa <- mask(crop(dist_to_rail, sa_r), sa_r)
+lim <- quantile(spatSample(dist_to_rail_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_to_rail.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(dist_to_rail_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to railways (km)", axes = FALSE, box = FALSE)
+dev.off()
 
-# ---- Population centre distance predictors -------------------------------
+
+# ---- Population centre distance predictors ----
 # POPCTR (>=1,000 people, >=400/km2), 2011: 175 polygons in extent.
 # PCTYPE: 1 core (28), 2 fringe (30), 4 outside any CMA/CA (112), 6 secondary core (5).
 # PCCLASS by population: 2 small (1,000-29,999), 3 medium (30,000-99,999), 4 large (100,000+).
@@ -113,31 +257,94 @@ pc_cma_ca_cores2011 <- popctr2011[popctr2011$PCTYPE %in% c(1, 6), ]
 pc_cma_ca_cores2021 <- popctr2021[popctr2021$PCTYPE %in% c(1, 6), ]
 
 # Distance to nearest population centre and distance to nearest regional centre
-# 2011
+### 2011 ###
 pc_d_all_2011 <- distance(me_r, vect(popctr2011), rasterize = TRUE, unit = "m")
 pc_d_all_2011 <- mask(pc_d_all_2011, me_r)
-plot(pc_d_all_2011/1000, main = "Distance to nearest population centre (km)")
+#plot(pc_d_all_2011/1000, main = "Distance to nearest population centre (km)")
+#plot(st_geometry(popctr2011), border = "white", lwd = 0.4, add = TRUE)
+# Plot
+pc_d_all_2011_sa <- mask(crop(pc_d_all_2011, sa_r), sa_r)
+lim <- quantile(spatSample(pc_d_all_2011_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_popctr_2011.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(pc_d_all_2011_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to population centre 2011 (km)", axes = FALSE, box = FALSE)
 plot(st_geometry(popctr2011), border = "white", lwd = 0.4, add = TRUE)
+dev.off()
 
 pc_d_core_2011 <- distance(me_r, vect(pc_cma_ca_cores2011), rasterize = TRUE, unit = "m")
 pc_d_core_2011 <- mask(pc_d_core_2011, me_r)
-plot(pc_d_core_2011/1000, main = "Distance to nearest regional centre (km)")
-plot(st_geometry(pc_cma_ca_cores2011), border = "white", lwd = 0.4, add = TRUE)
+#plot(pc_d_core_2011/1000, main = "Distance to nearest regional centre (km)")
+#plot(st_geometry(pc_cma_ca_cores2011), border = "white", lwd = 0.4, add = TRUE)
+# Plot
+pc_d_core_2011_sa <- mask(crop(pc_d_core_2011, sa_r), sa_r)
+lim <- quantile(spatSample(pc_d_core_2011_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_regctr_2011.png"), width = 2400, height = round(2400 * r), res = 300)
+  plot(clamp(pc_d_core_2011_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to regional centre 2011 (km)", axes = FALSE, box = FALSE)
+  plot(st_geometry(pc_cma_ca_cores2011), border = "white", lwd = 0.4, add = TRUE)
+dev.off()
 
-# 2021
+### 2021 ###
 pc_d_all_2021 <- distance(me_r, vect(popctr2021), rasterize = TRUE, unit = "m")
 pc_d_all_2021 <- mask(pc_d_all_2021, me_r)
-plot(pc_d_all_2021/1000, main = "Distance to nearest population centre (km)")
+# plot(pc_d_all_2021/1000, main = "Distance to nearest population centre (km)")
+# plot(st_geometry(popctr2021), border = "white", lwd = 0.4, add = TRUE)
+# Plot
+pc_d_all_2021_sa <- mask(crop(pc_d_all_2021, sa_r), sa_r)
+lim <- quantile(spatSample(pc_d_all_2021_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_popctr_2021.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(pc_d_all_2021_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to population centre 2021 (km)", axes = FALSE, box = FALSE)
 plot(st_geometry(popctr2021), border = "white", lwd = 0.4, add = TRUE)
+dev.off()
 
 pc_d_core_2021 <- distance(me_r, vect(pc_cma_ca_cores2021), rasterize = TRUE, unit = "m")
 pc_d_core_2021 <- mask(pc_d_core_2021, me_r)
-plot(pc_d_core_2021/1000, main = "Distance to nearest regional centre (km)")
+# plot(pc_d_core_2021/1000, main = "Distance to nearest regional centre (km)")
+# plot(st_geometry(pc_cma_ca_cores2021), border = "white", lwd = 0.4, add = TRUE)
+# Plot
+pc_d_core_2021_sa <- mask(crop(pc_d_core_2021, sa_r), sa_r)
+lim <- quantile(spatSample(pc_d_core_2021_sa / 1000, 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+# clamp() piles the clipped tails onto lim exactly; plot() leaves cells at the
+# range boundary outside the last colour interval and draws them as NA, so pad
+# range by 0.1% of the span
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "dist_regctr_2021.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(pc_d_core_2021_sa / 1000, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Distance to regional centre 2021 (km)", axes = FALSE, box = FALSE)
 plot(st_geometry(pc_cma_ca_cores2021), border = "white", lwd = 0.4, add = TRUE)
+dev.off()
 
-
-# Save
+# ---- Save rasters ----
+write_rast_tagged(canfax2009_r, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009.tif", "modelling-extent")
+write_rast_tagged(canfax2024_r, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024.tif", "modelling-extent")
+write_rast_tagged(canfax2009_z, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009_z.tif", "modelling-extent")
+write_rast_tagged(canfax2024_z, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024_z.tif", "modelling-extent")
+write_rast_tagged(canfax2009_z_sa, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009_z.tif", "study-area")
+write_rast_tagged(canfax2024_z_sa, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024_z.tif", "study-area")
 write_rast_tagged(elev_d, "./processeddatasets", elevator_filepath, "dist_to_elevator.tif", "modelling-extent")
+write_rast_tagged(elev_large_d, "./processeddatasets", elevator_filepath, "dist_to_elevator_large.tif", "modelling-extent")
+write_rast_tagged(elev_cap, "./processeddatasets", elevator_filepath, "cap_nearest_elevator.tif", "modelling-extent")
 write_rast_tagged(dist_to_road,  "./processeddatasets", road_filepath, "dist_to_road.tif", "modelling-extent")
 write_rast_tagged(dist_to_rail,  "./processeddatasets", rail_filepath, "dist_to_rail.tif", "modelling-extent")
 write_rast_tagged(pc_d_all_2011,  "./processeddatasets", popctr_filepath, "dist_to_popctr2011.tif", "modelling-extent")
@@ -145,189 +352,70 @@ write_rast_tagged(pc_d_all_2021,  "./processeddatasets", popctr_filepath, "dist_
 write_rast_tagged(pc_d_core_2011,  "./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
 write_rast_tagged(pc_d_core_2021,  "./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
 
+# ---- Correlation ----
+# Read files back in and check for correlation and ranges across study area extent
+read_sa <- function(...) {
+  r <- rast(tagged_path(...))
+  mask(crop(r, sa_r), sa_r)
+}
 
-# Read files back in and check for correlation and ranges
-f <- file.path(pred_dir, paste0("dist_to_", c("popctr", "regctr"), 
-                                rep(c(2011, 2021), each = 2), "_30m.tif"))
-pc <- rast(f)
-names(pc) <- c("popctr2011", "regctr2011", "popctr2021", "regctr2021")
+canfax2009_r <- read_sa("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009.tif", "modelling-extent")
+canfax2024_r <- read_sa("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024.tif", "modelling-extent")
+elev_d <- read_sa("./processeddatasets", elevator_filepath, "dist_to_elevator.tif", "modelling-extent")
+elev_large_d <- read_sa("./processeddatasets", elevator_filepath, "dist_to_elevator_large.tif", "modelling-extent")
+elev_cap <- read_sa("./processeddatasets", elevator_filepath, "cap_nearest_elevator.tif", "modelling-extent")
+dist_to_road <- read_sa("./processeddatasets", road_filepath, "dist_to_road.tif", "modelling-extent")
+dist_to_rail <- read_sa("./processeddatasets", rail_filepath, "dist_to_rail.tif", "modelling-extent")
+pc_d_all_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2011.tif", "modelling-extent")
+pc_d_all_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2021.tif", "modelling-extent")
+pc_d_core_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
+pc_d_core_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
 
-# 100k regular sample - full vectors are 1.1e9 elements
-s <- spatSample(pc, 1e5, method = "regular", na.rm = TRUE, as.df = TRUE)
-round(cor(s, method = "spearman"), 3)
-#            popctr2011 regctr2011 popctr2021 regctr2021
-# popctr2011      1.000      0.537      0.944      0.536
-# regctr2011      0.537      1.000      0.538      0.972
-# popctr2021      0.944      0.538      1.000      0.541
-# regctr2021      0.536      0.972      0.541      1.000
 
+socio <- c(canfax2009_r, elev_d,
+           dist_to_road, dist_to_rail,
+           pc_d_all_2011, pc_d_core_2011)
+names(socio) <- c("canfax2009", "d_elev", 
+                  "d_road", "d_rail", "popctr2011",
+                  "regctr2011")
+
+s <- spatSample(socio, 1e4, method = "regular", na.rm = TRUE, as.df = TRUE)
+m <- round(cor(s, method = "spearman"), 3)
+
+
+o <- hclust(as.dist(1 - m))$order
+m <- m[o, o]
+m[lower.tri(m)] <- NA
+
+png(file.path(fig_dir, "socio_cor.png"), width = 1800, height = 1800, res = 300)
+par(mar = c(8, 8, 1, 3))
+image(seq_len(ncol(m)), seq_len(nrow(m)), t(m)[, nrow(m):1],
+      col = rev(hcl.colors(200, "RdBu")), zlim = c(-1, 1),
+      axes = FALSE, xlab = "", ylab = "")
+axis(1, seq_len(ncol(m)), colnames(m), las = 2, tick = FALSE)
+axis(2, seq_len(nrow(m)), rev(rownames(m)), las = 2, tick = FALSE)
+text(rep(seq_len(ncol(m)), each = nrow(m)),
+     rep(nrow(m):1, ncol(m)),
+     round(t(m), 2), cex = 0.6)
+dev.off()
+
+
+# Check range of dynamic predictors
+### population and regional centres ###
+pc <- c(pc_d_all_2011, pc_d_all_2021, pc_d_core_2011, pc_d_core_2021)
+names(pc) <- c("popctr2011", "popctr2021", "regctr2011", "regctr2021")
 # range: 2021 values outside the 2011 range could be a problem for RF model
-sapply(s, range)
-# popctr2011 regctr2011 popctr2021 regctr2021
-# [1,]        0.0        0.0        0.0        0.0
-# [2,]   175968.3   290293.9   175215.1   291176.6
+minmax(pc)
+# popctr2011 popctr2021 regctr2011 regctr2021
+# min        0.0        0.0        0.0        0.0
+# max   118994.2   118994.4   187207.3   190408.7
 
-
-
-
-
-
-
-# ---- Moving window focal statistics ----
-# Define layers and names for focal loop
-focal_layers <- list(
-  native2015_unprot  = native2015_unprot,
-  tame2015_unprot    = tame2015_unprot,
-  crop2015           = crop2015_bin,
-  settlement2015     = settlement2015_bin,
-  forest2015         = forest2015_bin,
-  water2015          = water2015_bin,
-  native2010_unprot  = native2010_unprot,
-  tame2010           = tame2010_bin,
-  settlement2010     = settlement2010_bin,
-  forest2010         = forest2010_bin,
-  water2010          = water2010_bin,
-  provpasture        = pa_provpasture_bin
-)
-
-# Loop over window sizes and layers
-terraOptions(progress = 1, memfrac = 0.8)
-
-for (win_m in win_sizes_m) {
-  message("Processing window size: ", win_m, "m")
-  win_cells <- round(win_m / res(me_r)[1])
-  w         <- matrix(1, nrow = win_cells, ncol = win_cells)
-  
-  for (layer_name in names(focal_layers)) {
-    message("  Layer: ", layer_name)
-    out_filename <- paste0(layer_name, "_prop_", win_m, "m_", target_res, "m.tif")
-    out_path     <- file.path(outdir, out_filename)
-    
-    focal(focal_layers[[layer_name]],
-          w         = w,
-          fun       = "mean",
-          na.policy = "omit",
-          na.rm     = TRUE,
-          filename  = out_path,
-          overwrite = TRUE)
-  }
-}
-
-# ---- Distance to cropland edge ----
-crop2015_for_dist <- ifel(crop2015_bin == 1, 1, NA)
-dist_to_crop2015  <- distance(crop2015_for_dist)
-dist_to_crop2015  <- mask(dist_to_crop2015, me_r)
-
-# Always save 30m version
-writeRaster(dist_to_crop2015,
-            file.path("./processeddatasets", predictors_filepath, "30m", "dist_to_crop2015_30m.tif"),
-            overwrite = TRUE,
-            wopt = list(datatype = "FLT4S", gdal = c("COMPRESS=LZW", "TILED=YES")))
-
-# Resample and save at target resolution if different from 30m
-if (agg_fact > 1) {
-  dist_to_crop2015_target <- resample(dist_to_crop2015, me_r, method = "bilinear")
-  writeRaster(dist_to_crop2015_target,
-              file.path(outdir, paste0("dist_to_crop2015_", target_res, "m.tif")),
-              overwrite = TRUE,
-              wopt = list(datatype = "FLT4S", gdal = c("COMPRESS=LZW", "TILED=YES")))
-} 
-
-
-# ---- Resample predictors to study area grid and save ----
-outdir_sa <- file.path("./processeddatasets", predictors_filepath,
-                       paste0(target_res, "m"), "sa")
-
-if (agg_fact > 1) {
-  sa_r_target <- aggregate(sa_r, fact = agg_fact, fun = "modal")
-} else {
-  sa_r_target <- sa_r
-}
-
-pred_files <- list.files(outdir, pattern = "\\.tif$", full.names = TRUE)
-for (f in pred_files) {
-  r_sa <- resample(rast(f), sa_r_target, method = "average")
-  r_sa <- mask(r_sa, sa_r_target)
-  writeRaster(r_sa, file.path(outdir_sa, basename(f)),
-              overwrite = TRUE,
-              wopt = list(datatype = "FLT4S", gdal = c("COMPRESS=LZW", "TILED=YES")))
-}
-
-# ---- QA/QC visualization ----
-# ---- Helper function for QA/QC visualization ----
-plot_predictors <- function(dir, title = "") {
-  files <- list.files(dir, pattern = "\\.tif$", full.names = TRUE)
-  stack <- rast(files)
-  names(stack) <- tools::file_path_sans_ext(basename(files))
-  message(title, ": ", nlyr(stack), " layers")
-  global(stack, fun = c("min", "max", "mean"), na.rm = TRUE) |> print()
-  plot(stack,
-       col  = hcl.colors(100, "viridis"),
-       axes = FALSE,
-       mar  = c(0.5, 0.5, 1.5, 2),
-       main = names(stack))
-  invisible(stack)
-}
-
-pred_stack_me <- plot_predictors(outdir,    title = "Modelling extent")
-pred_stack_sa <- plot_predictors(outdir_sa, title = "Study area")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#--- Setup ----
-source(file.path("scripts/landcover", "0-setup.R"))
-source(file.path("scripts/landcover/functions", "0-functions-general.R"))
-
-# Resolution setting
-target_res <- 30
-agg_fact   <- target_res / 30
-
-#--- Load files ----
-# Study area
-sa <- st_read(file.path(sa_filepath, sa_filename))
-me <- st_read(file.path(sa_filepath, me_filename))
-me_r <- rast(file.path(sa_filepath, me_raster_filename))
-
-# Land cover (AAFC LUTS)
-lulc2010 <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2010_filename, "modelling-extent"))
-lulc2015 <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2015_filename, "modelling-extent"))
-lulc2020 <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "modelling-extent"))
-
-# Protected areas
-pa_hard <- rast(tagged_path("./processeddatasets", pa_filepath, pa_filename, "modelling-extent", "hard", "binary"))
-pa_provpasture <- rast(tagged_path("./processeddatasets", pa_filepath, pa_filename, "modelling-extent", "provpasture", "binary"))
-
-# Olimb & Robinson 2019 cropland suitability
-crop_suit <- rast(tagged_path("./processeddatasets", crop_suit_2019_filepath, crop_suit_2019_filename, "modelling-extent"))
-
-# ---- Resample to target resolution (skip if target_res == 30) ----
-if (agg_fact > 1) {
-  me_r      <- aggregate(me_r, fact = agg_fact, fun = "modal")
-  lulc2010  <- resample(lulc2010, me_r, method = "near")
-  lulc2015  <- resample(lulc2015, me_r, method = "near")
-  lulc2020  <- resample(lulc2020, me_r, method = "near")
-  crop_suit <- resample(crop_suit, me_r, method = "bilinear")
-  # For binary pa rasters, average then threshold; mask if >50% protected
-  pa_hard   <- resample(pa_hard, me_r, method = "average")
-  pa_hard   <- ifel(pa_hard > 0.5, 1, 0)
-  pa_provpasture <- resample(pa_provpasture, me_r, method = "average")
-  pa_provpasture <- ifel(pa_provpasture > 0.5, 1, 0)
-}
-
-
-
+### canfax ###
+cf <- c(canfax2009_r, canfax2024_r)
+names(cf) <- c("canfax2009", "canfax2024")
+# range: 2021 values outside the 2011 range could be a problem for RF model
+minmax(cf)
+# canfax2009 canfax2024
+# min -3895.5894  -1284.636
+# max   341.7303   3743.167
+global(cf[[2]] > minmax(cf)[2, 1], "mean", na.rm = TRUE)

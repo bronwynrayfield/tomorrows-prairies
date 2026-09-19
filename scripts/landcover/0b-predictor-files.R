@@ -103,7 +103,7 @@ predictor_labels <- c(
   
   # socio-economic
   net_return   = "Net returns of cropping (CAD)",
-  dist_to_elevator   = "Distance to grain elevator (km)",
+  dist_to_elevator   = "Distance to process elevator (km)",
   dist_to_road       = "Distance to road (km)",
   dist_to_rail       = "Distance to railway (km)",
   dist_to_popctr     = "Distance to population centre (km)",
