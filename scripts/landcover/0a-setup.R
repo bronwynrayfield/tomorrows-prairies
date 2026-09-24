@@ -12,6 +12,7 @@ library(usdm)
 library(patchwork)
 library(geodata)
 library(foreign)
+library(ncf)
 
 # check available space on different mount points and memory
 system("df -h")
