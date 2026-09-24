@@ -21,8 +21,8 @@
 #     distinct from popctr (Spearman ~0.54 within year)
 #   - Same predictor across years is near-identical (0.94 popctr,
 #     0.97 regctr) - don't use both years of one variable
-#   - Large elevator threshold 50,000 t (n = 6), at the curvature change in
-#     sorted CAP_T; Spearman 0.32 with distance to any elevator
+#   - Large elevator threshold 50,000 t (n = 6), at 90th percentile; 
+#     Spearman 0.32 with distance to any elevator
 #   - Canfax z-scored within period: 62% of raw 2024 cells above the 2009 max
 #     where RF cannot extrapolate, 2.4% after. Assumes conversion responds to
 #     relative, not absolute, profitability
@@ -371,7 +371,7 @@ pc_d_all_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr
 pc_d_core_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
 pc_d_core_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
 
-
+# Correlation between main s-e predictors
 socio <- c(canfax2009_r, elev_d,
            dist_to_road, dist_to_rail,
            pc_d_all_2011, pc_d_core_2011)
@@ -399,6 +399,16 @@ text(rep(seq_len(ncol(m)), each = nrow(m)),
      round(t(m), 2), cex = 0.6)
 dev.off()
 
+
+# Correlation between elevator predictors
+ev <- c(elev_d, elev_large_d, elev_cap)
+names(ev) <- c("d_elev", "d_elev_large", "cap_elev")
+s <- spatSample(ev, 1e4, method = "regular", na.rm = TRUE, as.df = TRUE)
+round(cor(s, method = "spearman"), 3)
+#               d_elev d_elev_large cap_elev
+# d_elev        1.000        0.355    0.270
+# d_elev_large  0.355        1.000   -0.284
+# cap_elev      0.270       -0.284    1.000
 
 # Check range of dynamic predictors
 ### population and regional centres ###
