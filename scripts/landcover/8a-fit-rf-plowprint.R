@@ -32,7 +32,7 @@ source(file.path("scripts/landcover", "0b-predictor-files.R"))
 
 # ---- inputs ----
 in_sa         <- file.path("./processeddatasets", "predictors", "30m")
-out_dir       <- "output/landcover/model"
+out_dir       <- "output/landcover/model/plowprint"
 retained_file <- file.path(in_sa, "retained-covariates.rds")
 mask_file     <- file.path(in_sa, "predictor-valid-mask_study-area.tif")
 resp_file     <- tagged_path("./processeddatasets", "response/response-plowprint",
