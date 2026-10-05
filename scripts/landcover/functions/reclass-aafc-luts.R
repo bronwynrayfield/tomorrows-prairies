@@ -1,6 +1,7 @@
 #' Reclassify AAFC LUTS raster to named groups
 #'
 #' @param lulc        A terra SpatRaster — raw AAFC LUTS raster (factor or numeric)
+#' @param group       List defined in 0a-setup.R
 #' @param scheme      One of "4class", "5class", or "binary"
 #' @param binary_class For scheme = "binary": which group to code as 1.
 #'                    One of "native", "crop", "tame", "settlement", "other"
@@ -20,29 +21,7 @@
 #' reclass_aafc(lulc2010, scheme = "binary", binary_class = "native", check = TRUE)
 #' reclass_aafc(lulc2020, scheme = "binary", binary_class = "crop",   check = TRUE)
 
-reclass_aafc <- function(lulc, scheme = "5class", binary_class = NULL, check = FALSE) {
-  
-  # ---- Define groups ----
-  # native     : Prairie/Temperate/Boreal/Montane/Alpine grassland (63-68)
-  # tame       : Cropland (51), Land Converted to Cropland (55)
-  # crop       : Annual Cropland (52), Land Converted to Annual Cropland (56)
-  #              NOTE: annual cropland classes only present in 2020
-  # settlement : Settlement classes (21,22,24,28,29,81,82,84,88,89)
-  # forest     : Forest (41,42,43,44,47,48,49)
-  # water      : Water (31)
-  # other      : Roads (25),
-  #              Wetland (73,74,75,76), Other Land (91), Snow & Ice (92),
-  #              Newly-Detected Road <10 years (85) [2010 only]
-  # ---- Define groups ----
-  groups <- list(
-    native     = c(63, 64, 65, 66, 67, 68),
-    tame       = c(51, 55),
-    crop       = c(52, 56),
-    settlement = c(21, 22, 24, 28, 29, 81, 82, 84, 88, 89),
-    forest     = c(41, 42, 43, 44, 47, 48, 49),
-    water      = c(31),
-    other      = c(25, 73, 74, 75, 76, 85, 91, 92)
-  )
+reclass_aafc <- function(lulc, groups = groups, scheme = "5class", binary_class = NULL, check = FALSE) {
   
   # ---- Define output codes and labels per scheme ----
   if (scheme == "5class") {

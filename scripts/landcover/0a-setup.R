@@ -68,6 +68,9 @@ crop_gain_year_filename <- "recentchange_2022_gain_c03_crop_b03_year.tif"
 builtup_gain_class_filename <- "recentchange_2022_gain_c06_builtup_b01_class.tif"
 builtup_gain_year_filename <- "recentchange_2022_gain_c06_builtup_b03_year.tif"
 
+# Grassland
+grass_consensus_filename <- "ACI_2025_reclass_for_baseline.tif"
+
 # Agriculture
 crop_suit_2019_filename <- "gp_tillage"
 aci_filename <- "aci_merged.tif"
@@ -160,6 +163,9 @@ crop_loss_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRec
 crop_gain_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/gain/c03_crop"
 builtup_gain_filepath <- "landcover/ECCC_Prairies_Change/Prairies_Change_V1/MostRecentChangeByClass/2022/gain/c06_builtup"
 
+# Grassland
+grass_consensus_filepath <- "landcover/Grassland-consensus"
+
 # Agriculture
 crop_suit_2019_filepath <- "cropland/OlimbRobinson_GrassToGrain_EcologicalIndicators2019_datashare"
 aci_filepath <- "cropland/Annual Crop Inventory"
@@ -218,4 +224,26 @@ lulc_levels <- data.frame(
   value = c(cls_native, cls_tame, cls_annual, cls_settlement, cls_other),
   class = c("native grassland", "tame grassland", "annual cropland",
             "settlement", "other")
+)
+
+# ---- Define groups ----
+# native     : Prairie/Temperate/Boreal/Montane/Alpine grassland (63-68)
+# tame       : Cropland (51), Land Converted to Cropland (55)
+# crop       : Annual Cropland (52), Land Converted to Annual Cropland (56)
+#              NOTE: annual cropland classes only present in 2020
+# settlement : Settlement classes (21,22,24,28,29,81,82,84,88,89)
+# forest     : Forest (41,42,43,44,47,48,49)
+# water      : Water (31)
+# other      : Roads (25),
+#              Wetland (73,74,75,76), Other Land (91), Snow & Ice (92),
+#              Newly-Detected Road <10 years (85) [2010 only]
+# ---- Define groups ----
+groups <- list(
+  native     = c(63, 64, 65, 66, 67, 68),
+  tame       = c(51, 55),
+  crop       = c(52, 56),
+  settlement = c(21, 22, 24, 28, 29, 81, 82, 84, 88, 89),
+  forest     = c(41, 42, 43, 44, 47, 48, 49),
+  water      = c(31),
+  other      = c(25, 73, 74, 75, 76, 85, 91, 92)
 )

@@ -29,6 +29,7 @@ source(file.path("scripts/landcover", "0-setup.R"))
 #--- Load files ----
 # Study area
 sa <- st_read(file.path(sa_filepath, sa_filename))
+sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 me <- st_read(file.path(sa_filepath, me_filename))
 me_r <- rast(file.path(sa_filepath, me_raster_filename))
 
@@ -70,6 +71,9 @@ lulc2020_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aa
 lulc2015_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2015_filename, "proj-naaea"))
 lulc2010_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2010_filename, "proj-naaea"))
 lulc2000_prairies_reproj <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "reprojected", aafc2000_filename, "proj-naaea"))
+
+# Grassland
+lulc2025 <- rast(file.path("./processeddatasets", grass_consensus_filepath, grass_consensus_filename))
 
 # ECCC most recent change
 grass_loss_class_reproj <- rast(tagged_path("./processeddatasets", grass_loss_filepath, grass_loss_class_filename, "proj-naaea"))
@@ -133,6 +137,7 @@ ecozones <- st_intersection(ecozones_reproj, me)
 ecoregions <- st_intersection(ecoregions_reproj, me)
 ecoregions_r <- terra::rasterize(terra::vect(ecoregions), me_r, field = "ECOREGION_") # also create a raster version of ecoregions
 ecodistricts <- st_intersection(ecodistricts_reproj, me)
+ecodistricts_r <- terra::rasterize(terra::vect(ecodistricts), me_r, field = "ECODISTRIC") # also create a raster version of ecodistricts
 
 # Protected Areas
 # CPCAD
@@ -239,6 +244,7 @@ write_sf_tagged(ecozones, "./processeddatasets", ecozones_filepath, ecozones_fil
 write_sf_tagged(ecoregions, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent")
 write_rast_tagged(ecoregions_r, "./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "modelling-extent", datatype = "INT2U")
 write_sf_tagged(ecodistricts, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "modelling-extent")
+write_rast_tagged(ecodistricts_r, "./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "modelling-extent", datatype = "INT2U")
 write_sf_tagged(pa, "./processeddatasets", pa_filepath, pa_filename, "modelling-extent", driver = "GPKG")
 write_sf_tagged(pa_sa, "./processeddatasets", pa_filepath, pa_filename, "study-area", driver = "GPKG")
 write_sf_tagged(sk_cce, "./processeddatasets", sk_cce_filepath, sk_cce_filename, "modelling-extent", driver = "GPKG")
@@ -321,3 +327,36 @@ for (yr in names(lulc)) {
     bin_layers[[yr]][[cls]] <- r
   }
 }
+
+#--- Crop select layers to study area ----
+# Binary LUTS layers for 2010 and 2020
+classes <- list(
+  `2010` = c("native", "tame&crop", "settlement", "forest", "water"),
+  `2020` = c("native", "tame", "crop", "settlement", "forest", "water")
+)
+
+for (yr in names(classes)) for (cl in classes[[yr]]) {
+  f <- file.path("./processeddatasets", aafc_filepath, "binary", sprintf("AAFC%s_%s.tif", yr, cl))
+  writeRaster(mask(crop(rast(f), sa_r), sa_r), sub("\\.tif$", "_studyarea.tif", f),
+              overwrite = TRUE, datatype = "INT1U", gdal = c("COMPRESS=DEFLATE", "PREDICTOR=2"))   # 0/1 fits in INT1U, NA flag 255
+}
+
+# LUTS
+mask(crop(lulc2010_prairies_reproj, sa_r), sa_r, filename = tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2010_filename, "studyarea"))
+mask(crop(lulc2020_prairies_reproj, sa_r), sa_r, filename = tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "studyarea"))
+
+# Grassland
+mask(crop(lulc2025, sa_r), sa_r, filename = tagged_path("./processeddatasets", grass_consensus_filepath, grass_consensus_filename, "studyarea"))
+
+# Boundaries
+ecoregions_sa <- ecoregions[ecoregions$ECOZONE_ID == 10,]   # Prairies Ecozone
+write_sf_tagged(ecoregions_sa, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "studyarea")
+mask(crop(ecoregions_r, sa_r), sa_r, filename = tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "studyarea"))
+
+# FIX ERROR: ecodistrict 1018 coded ecozone 10 in the cleaned layer but its ecoregion (214, Northern Continental Divide) is ecozone 14; 515 ha sliver
+ecodistricts$ECOZONE_ID[ecodistricts$ECODISTRIC == 1018] <- 14
+# drop slivers of adjacent ecozones
+ecodistricts_sa <- ecodistricts[ecodistricts$ECOZONE_ID == 10,]   # Prairies Ecozone
+write_sf_tagged(ecodistricts_sa, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "studyarea")
+mask(crop(ecodistricts_r, sa_r), sa_r, filename = tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea"))
+
