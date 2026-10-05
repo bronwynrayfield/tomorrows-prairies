@@ -12,9 +12,10 @@ library(terra)
 library(sf)
 library(tidyverse)
 library(tools)   # for file_path_sans_ext
-library(rnaturalearth)
-library(viridisLite)
-library(ggspatial)
+library(readxl)
+# library(rnaturalearth)
+# library(viridisLite)
+# library(ggspatial)
 
 # Set the temporary directory to a drive with sufficient space
 terraOptions(tempdir = "R:/CanadianGrasslands/WG_Classification/scratch")
@@ -41,6 +42,7 @@ eco_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecologic
 # grass raster directories
 cm01_dir <- file.path(cons_map_dir, "v4_temporal_modelling_extent_24Jul2026")
 cm02_dir <- file.path(cons_map_dir, "new_fusion_global_norm_modext_26Aug2026")
+cm03_dir <- file.path(cons_map_dir, "new_fusion_global_norm_modext_classdifficultynorm_31Aug2026")
 
 ####--- FILES ---####
 # Pilot area
@@ -56,7 +58,8 @@ sap_file <- file.path(sa_dir, "modelling_study_area_aligned_cnvc_Jan2026.shp")
 gt_file <- file.path(gt_dir, "gt_points_mod_Mar26_cleanJul26.shp")
 
 # ecodistricts
-eco_file <- file.path(eco_dir, "ecodistricts_clean_class_sa.shp")
+eco_vect_file <- file.path(eco_dir, "ecodistricts_clean_class_sa.shp")
+eco_rast_file <- file.path(eco_dir, "ecodistricts_clean_rast.tif")
 
 # grass raster files
 cm01_file <- file.path(cm01_dir, "grass_3class.tif")
@@ -1488,39 +1491,12 @@ readr::write_csv(
 accuracy_with_fallback_cons %>%
   count(acc_source)
 
-# without ACI2025:
-#   acc_source            n
-# 1 Balanced_Accuracy    51
-# 2 Macro_F1           1554
-
-# with ACI2025:
-#   acc_source            n
-# 1 Balanced_Accuracy    52
-# 2 Macro_F1           1641
-
-# exact match (not lenient):
-#   acc_source            n
-# 1 Balanced_Accuracy    58
-# 2 Macro_F1           1142
-
 accuracy_with_fallback_cons %>%
   filter(acc_source == "Balanced_Accuracy") %>%
   summarise(
     n = n(),
     pct = 100 * n() / nrow(accuracy_with_fallback_cons)
   )
-
-# without ACI2025:
-#  n   pct
-# 51  3.18
-
-# with ACI2025:
-# n   pct
-# 52  3.07
-
-# exact match (not lenient):
-#  n   pct
-# 58  4.83
 
 #------ Why is Macro_F1 undefined? ------#
 
@@ -1538,24 +1514,6 @@ accuracy_with_fallback %>%
   ) %>%
   print(width = Inf)
 
-# without ACI2025:
-# n_rows one_truth_class two_truth_classes three_truth_classes one_pred_class two_pred_classes
-#     51              28                23                   0             25               26
-# three_pred_classes
-#                  0
-
-# with ACI2025:
-# n_rows one_truth_class two_truth_classes three_truth_classes one_pred_class two_pred_classes
-#     52              29                23                   0             27               25
-# three_pred_classes
-#                  0
-
-# exact match (not lenient):
-# n_rows one_truth_class two_truth_classes three_truth_classes one_pred_class two_pred_classes
-#     58              34                24                   0             30               28
-# three_pred_classes
-#                  0
-
 #------ How many fallback rows have extreme BA values? ------#
 
 accuracy_with_fallback_cons %>%
@@ -1564,18 +1522,6 @@ accuracy_with_fallback_cons %>%
     acc %in% c(0, 1)
   ) %>%
   count(acc)
-
-# without ACI2025:
-#   acc     n
-#     0    51
-
-# with ACI2025:
-#  acc     n
-#    0    52
-
-# exact match (not lenient):
-#  acc     n
-#    0    58
 
 #------ Are extreme fallback values concentrated in small n? ------#
 
@@ -1591,18 +1537,6 @@ accuracy_with_fallback_cons %>%
     max_n = max(N_Evaluated)
   )
 
-# without ACI2025:
-#   n min_n median_n max_n
-#  51     1       32   239
-
-# with ACI2025:
-#   n min_n median_n max_n
-#  52     1       32   239
-
-# exact match (not lenient):
-#   n min_n median_n max_n
-#  58     1     31.5   239
-
 #------ Distribution of n among fallback rows ------#
 
 accuracy_with_fallback_cons %>%
@@ -1612,86 +1546,6 @@ accuracy_with_fallback_cons %>%
   ) %>%
   count(N_Evaluated, sort = TRUE) %>%
   print(n = Inf)
-
-# without ACI2025:
-#   N_Evaluated     n
-# 1          40     8
-# 2          11     6
-# 3          27     4
-# 4          32     4
-# 5          45     4
-# 6          21     3
-# 7           1     2
-# 8          20     2
-# 9          34     2
-# 10          43     2
-# 11           2     1
-# 12          22     1
-# 13          24     1
-# 14          26     1
-# 15          30     1
-# 16          31     1
-# 17          35     1
-# 18          38     1
-# 19          41     1
-# 20          51     1
-# 21          60     1
-# 22          74     1
-# 23         202     1
-# 24         239     1
-
-# with ACI2025:
-#   N_Evaluated     n
-# 1          40     8
-# 2          11     6
-# 3           1     4
-# 4          27     4
-# 5          32     4
-# 6          45     4
-# 7          21     3
-# 8          20     2
-# 9          34     2
-# 10          43     2
-# 11           2     1
-# 12          22     1
-# 13          24     1
-# 14          30     1
-# 15          31     1
-# 16          35     1
-# 17          38     1
-# 18          41     1
-# 19          51     1
-# 20          60     1
-# 21          74     1
-# 22         202     1
-# 23         239     1
-
-# exact match (not lenient):
-#   N_Evaluated     n
-# 1          40     7
-# 2           1     6
-# 3          11     6
-# 4          32     5
-# 5           2     4
-# 6          27     4
-# 7          45     4
-# 8          21     3
-# 9          20     2
-# 10          34     2
-# 11          43     2
-# 12          17     1
-# 13          22     1
-# 14          24     1
-# 15          31     1
-# 16          35     1
-# 17          38     1
-# 18          41     1
-# 19          44     1
-# 20          51     1
-# 21          60     1
-# 22          74     1
-# 23         202     1
-# 24         239     1
 
 #------ Inspect all fallback rows ------#
 
@@ -1726,513 +1580,6 @@ accuracy_with_fallback_cons %>%
   ) %>%
   print(n = Inf, width = Inf)
 
-# without ACI2025:
-#   raster Ecds_ID Ecrgn_n                     Ecprv source_level N_Evaluated Truth_Classes_Present
-# 1 ngi        731 Aspen Parkland               10.2 ecodistrict          239                     1
-# 2 ngi        740 Aspen Parkland               10.2 ecodistrict          202                     1
-# 3 cnvc      1017 Northern Continental Divide  14.4 ecodistrict           74                     2
-# 4 pudl       678 Boreal Transition             9.2 ecodistrict           60                     2
-# 5 pudl       727 Aspen Parkland               10.2 ecodistrict           51                     2
-# 6 ngi        683 Boreal Transition             9.2 ecoregion             45                     2
-# 7 ngi        692 Boreal Transition             9.2 ecoregion             45                     2
-# 8 ngi        701 Boreal Transition             9.2 ecoregion             45                     2
-# 9 ngi        708 Boreal Transition             9.2 ecoregion             45                     2
-# 10 pudl       684 Boreal Transition             9.2 ecodistrict           43                     2
-# 11 pudl       760 Aspen Parkland               10.2 ecodistrict           43                     1
-# 12 cnvc       380 Lake of the Woods             6.5 ecoregion             41                     1
-# 13 cnvc       622 Western Alberta Upland        9.1 ecoregion             40                     2
-# 14 cnvc       623 Western Alberta Upland        9.1 ecoregion             40                     2
-# 15 cnvc       628 Western Alberta Upland        9.1 ecoregion             40                     2
-# 16 cnvc       629 Western Alberta Upland        9.1 ecoregion             40                     2
-# 17 cnvc       630 Western Alberta Upland        9.1 ecoregion             40                     2
-# 18 cnvc       631 Western Alberta Upland        9.1 ecoregion             40                     2
-# 19 gpw        601 Mid-Boreal Uplands            9.2 ecodistrict           40                     1
-# 20 pudl       592 Peace Lowland                 9.2 ecodistrict           40                     2
-# 21 eccc      1017 Northern Continental Divide  14.4 ecodistrict           38                     1
-# 22 pudl       703 Boreal Transition             9.2 ecodistrict           35                     2
-# 23 ngi        727 Aspen Parkland               10.2 ecodistrict           34                     1
-# 24 ngi        744 Aspen Parkland               10.2 ecodistrict           34                     1
-# 25 cnvc       375 Lake of the Woods             6.5 ecodistrict           32                     1
-# 26 pudl       686 Boreal Transition             9.2 ecodistrict           32                     2
-# 27 pudl       690 Boreal Transition             9.2 ecodistrict           32                     1
-# 28 pudl       728 Aspen Parkland               10.2 ecodistrict           32                     2
-# 29 pudl       692 Boreal Transition             9.2 ecodistrict           31                     2
-# 30 gpw        628 Western Alberta Upland        9.1 ecodistrict           30                     1
-# 31 cnvc       678 Boreal Transition             9.2 ecodistrict           27                     2
-# 32 ngi        684 Boreal Transition             9.2 ecodistrict           27                     1
-# 33 ngi        746 Aspen Parkland               10.2 ecodistrict           27                     1
-# 34 pudl       755 Aspen Parkland               10.2 ecodistrict           27                     1
-# 35 gpw        382 Thunder Bay-Quetico           6.5 ecodistrict           26                     1
-# 36 cnvc       847 Lake Manitoba Plain          10.1 ecodistrict           24                     1
-# 37 cnvc       684 Boreal Transition             9.2 ecodistrict           22                     2
-# 38 cnvc       997 Eastern Continental Ranges   14.4 ecoregion             21                     1
-# 39 cnvc       999 Eastern Continental Ranges   14.4 ecoregion             21                     1
-# 40 pudl       590 Peace Lowland                 9.2 ecodistrict           21                     2
-# 41 cnvc       839 Aspen Parkland               10.2 ecodistrict           20                     1
-# 42 pudl       839 Aspen Parkland               10.2 ecodistrict           20                     1
-# 43 cgr        375 Lake of the Woods             6.5 ecoprovince           11                     2
-# 44 cgr        687 Boreal Transition             9.2 ecoprovince           11                     1
-# 45 cgr        688 Boreal Transition             9.2 ecoprovince           11                     1
-# 46 cgr        695 Boreal Transition             9.2 ecoprovince           11                     1
-# 47 cgr        701 Boreal Transition             9.2 ecoprovince           11                     1
-# 48 cgr        709 Boreal Transition             9.2 ecoprovince           11                     1
-# 49 cnvc       960 Cascade Ranges               13.2 ecoprovince            2                     1
-# 50 ngi        623 Western Alberta Upland        9.1 ecoprovince            1                     1
-# 51 ngi        850 Lake Manitoba Plain          10.1 ecoprovince            1                     1
-
-#   Pred_Classes_Present   acc acc_source        Macro_F1 Balanced_Accuracy Overall_Accuracy Weighted_F1
-# 1                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 2                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 3                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 4                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 5                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 6                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 7                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 8                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 9                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 10                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 11                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 12                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 13                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 14                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 15                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 16                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 17                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 18                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 19                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 20                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 21                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 22                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 23                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 24                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 25                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 26                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 27                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 28                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 29                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 30                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 31                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 32                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 33                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 34                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 35                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 36                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 37                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 38                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 39                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 40                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 41                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 42                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 43                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 44                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 45                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 46                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 47                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 48                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 49                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 50                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 51                    1     0 Balanced_Accuracy      NaN                 0                0           0
-
-#   Support_0 Support_1 Support_2  F1_0  F1_1  F1_2
-# 1         0         0       239    NA    NA    NA
-# 2         0         0       202    NA    NA    NA
-# 3         0         2        72    NA    NA    NA
-# 4         0        53         7    NA    NA    NA
-# 5         0        17        34    NA    NA    NA
-# 6         1         0        44    NA    NA    NA
-# 7         1         0        44    NA    NA    NA
-# 8         1         0        44    NA    NA    NA
-# 9         1         0        44    NA    NA    NA
-# 10         0        14        29    NA    NA    NA
-# 11         0         0        43    NA    NA    NA
-# 12         0         0        41    NA    NA    NA
-# 13         0         3        37    NA    NA    NA
-# 14         0         3        37    NA    NA    NA
-# 15         0         3        37    NA    NA    NA
-# 16         0         3        37    NA    NA    NA
-# 17         0         3        37    NA    NA    NA
-# 18         0         3        37    NA    NA    NA
-# 19        40         0         0    NA    NA    NA
-# 20         0        36         4    NA    NA    NA
-# 21         0         0        38    NA    NA    NA
-# 22         0         8        27    NA    NA    NA
-# 23         0         0        34    NA    NA    NA
-# 24         0         0        34    NA    NA    NA
-# 25         0         0        32    NA    NA    NA
-# 26         0         1        31    NA    NA    NA
-# 27         0         0        32    NA    NA    NA
-# 28         0         3        29    NA    NA    NA
-# 29         0        16        15    NA    NA    NA
-# 30         0        30         0    NA    NA    NA
-# 31         0        24         3    NA    NA    NA
-# 32         0         0        27    NA    NA    NA
-# 33         0         0        27    NA    NA    NA
-# 34         0         0        27    NA    NA    NA
-# 35         0        26         0    NA    NA    NA
-# 36         0         0        24    NA    NA    NA
-# 37         0         3        19    NA    NA    NA
-# 38         0         0        21    NA    NA    NA
-# 39         0         0        21    NA    NA    NA
-# 40         0        20         1    NA    NA    NA
-# 41         0         0        20    NA    NA    NA
-# 42         0         0        20    NA    NA    NA
-# 43         0         4         7    NA    NA    NA
-# 44         0         0        11    NA    NA    NA
-# 45         0         0        11    NA    NA    NA
-# 46         0         0        11    NA    NA    NA
-# 47         0         0        11    NA    NA    NA
-# 48         0         0        11    NA    NA    NA
-# 49         0         0         2    NA    NA    NA
-# 50         0         0         1    NA    NA    NA
-# 51         0         0         1    NA    NA    NA
-
-
-# with ACI2025:
-#   raster  Ecds_ID Ecrgn_n                     Ecprv source_level N_Evaluated Truth_Classes_Present
-# 1 ngi         731 Aspen Parkland               10.2 ecodistrict          239                     1
-# 2 ngi         740 Aspen Parkland               10.2 ecodistrict          202                     1
-# 3 cnvc       1017 Northern Continental Divide  14.4 ecodistrict           74                     2
-# 4 pudl        678 Boreal Transition             9.2 ecodistrict           60                     2
-# 5 pudl        727 Aspen Parkland               10.2 ecodistrict           51                     2
-# 6 ngi         683 Boreal Transition             9.2 ecoregion             45                     2
-# 7 ngi         692 Boreal Transition             9.2 ecoregion             45                     2
-# 8 ngi         701 Boreal Transition             9.2 ecoregion             45                     2
-# 9 ngi         708 Boreal Transition             9.2 ecoregion             45                     2
-# 10 pudl        684 Boreal Transition             9.2 ecodistrict           43                     2
-# 11 pudl        760 Aspen Parkland               10.2 ecodistrict           43                     1
-# 12 cnvc        380 Lake of the Woods             6.5 ecoregion             41                     1
-# 13 cnvc        622 Western Alberta Upland        9.1 ecoregion             40                     2
-# 14 cnvc        623 Western Alberta Upland        9.1 ecoregion             40                     2
-# 15 cnvc        628 Western Alberta Upland        9.1 ecoregion             40                     2
-# 16 cnvc        629 Western Alberta Upland        9.1 ecoregion             40                     2
-# 17 cnvc        630 Western Alberta Upland        9.1 ecoregion             40                     2
-# 18 cnvc        631 Western Alberta Upland        9.1 ecoregion             40                     2
-# 19 gpw         601 Mid-Boreal Uplands            9.2 ecodistrict           40                     1
-# 20 pudl        592 Peace Lowland                 9.2 ecodistrict           40                     2
-# 21 eccc       1017 Northern Continental Divide  14.4 ecodistrict           38                     1
-# 22 pudl        703 Boreal Transition             9.2 ecodistrict           35                     2
-# 23 ngi         727 Aspen Parkland               10.2 ecodistrict           34                     1
-# 24 ngi         744 Aspen Parkland               10.2 ecodistrict           34                     1
-# 25 cnvc        375 Lake of the Woods             6.5 ecodistrict           32                     1
-# 26 pudl        686 Boreal Transition             9.2 ecodistrict           32                     2
-# 27 pudl        690 Boreal Transition             9.2 ecodistrict           32                     1
-# 28 pudl        728 Aspen Parkland               10.2 ecodistrict           32                     2
-# 29 pudl        692 Boreal Transition             9.2 ecodistrict           31                     2
-# 30 gpw         628 Western Alberta Upland        9.1 ecodistrict           30                     1
-# 31 cnvc        678 Boreal Transition             9.2 ecodistrict           27                     2
-# 32 ngi         684 Boreal Transition             9.2 ecodistrict           27                     1
-# 33 ngi         746 Aspen Parkland               10.2 ecodistrict           27                     1
-# 34 pudl        755 Aspen Parkland               10.2 ecodistrict           27                     1
-# 35 cnvc        847 Lake Manitoba Plain          10.1 ecodistrict           24                     1
-# 36 cnvc        684 Boreal Transition             9.2 ecodistrict           22                     2
-# 37 cnvc        997 Eastern Continental Ranges   14.4 ecoregion             21                     1
-# 38 cnvc        999 Eastern Continental Ranges   14.4 ecoregion             21                     1
-# 39 pudl        590 Peace Lowland                 9.2 ecodistrict           21                     2
-# 40 cnvc        839 Aspen Parkland               10.2 ecodistrict           20                     1
-# 41 pudl        839 Aspen Parkland               10.2 ecodistrict           20                     1
-# 42 cgr         375 Lake of the Woods             6.5 ecoprovince           11                     2
-# 43 cgr         687 Boreal Transition             9.2 ecoprovince           11                     1
-# 44 cgr         688 Boreal Transition             9.2 ecoprovince           11                     1
-# 45 cgr         695 Boreal Transition             9.2 ecoprovince           11                     1
-# 46 cgr         701 Boreal Transition             9.2 ecoprovince           11                     1
-# 47 cgr         709 Boreal Transition             9.2 ecoprovince           11                     1
-# 48 cnvc        960 Cascade Ranges               13.2 ecoprovince            2                     1
-# 49 aci2024     374 Lac Seul Upland               6.2 ecoprovince            1                     1
-# 50 aci2025     960 Cascade Ranges               13.2 ecoprovince            1                     1
-# 51 ngi         623 Western Alberta Upland        9.1 ecoprovince            1                     1
-# 52 ngi         850 Lake Manitoba Plain          10.1 ecoprovince            1                     1
-
-#   Pred_Classes_Present   acc acc_source        Macro_F1 Balanced_Accuracy Overall_Accuracy Weighted_F1
-# 1                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 2                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 3                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 4                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 5                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 6                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 7                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 8                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 9                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 10                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 11                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 12                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 13                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 14                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 15                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 16                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 17                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 18                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 19                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 20                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 21                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 22                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 23                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 24                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 25                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 26                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 27                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 28                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 29                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 30                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 31                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 32                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 33                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 34                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 35                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 36                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 37                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 38                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 39                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 40                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 41                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 42                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 43                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 44                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 45                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 46                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 47                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 48                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 49                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 50                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 51                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 52                    1     0 Balanced_Accuracy      NaN                 0                0           0
-
-#   Support_0 Support_1 Support_2  F1_0  F1_1  F1_2
-# 1         0         0       239    NA    NA    NA
-# 2         0         0       202    NA    NA    NA
-# 3         0         2        72    NA    NA    NA
-# 4         0        53         7    NA    NA    NA
-# 5         0        17        34    NA    NA    NA
-# 6         1         0        44    NA    NA    NA
-# 7         1         0        44    NA    NA    NA
-# 8         1         0        44    NA    NA    NA
-# 9         1         0        44    NA    NA    NA
-# 10         0        14        29    NA    NA    NA
-# 11         0         0        43    NA    NA    NA
-# 12         0         0        41    NA    NA    NA
-# 13         0         3        37    NA    NA    NA
-# 14         0         3        37    NA    NA    NA
-# 15         0         3        37    NA    NA    NA
-# 16         0         3        37    NA    NA    NA
-# 17         0         3        37    NA    NA    NA
-# 18         0         3        37    NA    NA    NA
-# 19        40         0         0    NA    NA    NA
-# 20         0        36         4    NA    NA    NA
-# 21         0         0        38    NA    NA    NA
-# 22         0         8        27    NA    NA    NA
-# 23         0         0        34    NA    NA    NA
-# 24         0         0        34    NA    NA    NA
-# 25         0         0        32    NA    NA    NA
-# 26         0         1        31    NA    NA    NA
-# 27         0         0        32    NA    NA    NA
-# 28         0         3        29    NA    NA    NA
-# 29         0        16        15    NA    NA    NA
-# 30         0        30         0    NA    NA    NA
-# 31         0        24         3    NA    NA    NA
-# 32         0         0        27    NA    NA    NA
-# 33         0         0        27    NA    NA    NA
-# 34         0         0        27    NA    NA    NA
-# 35         0         0        24    NA    NA    NA
-# 36         0         3        19    NA    NA    NA
-# 37         0         0        21    NA    NA    NA
-# 38         0         0        21    NA    NA    NA
-# 39         0        20         1    NA    NA    NA
-# 40         0         0        20    NA    NA    NA
-# 41         0         0        20    NA    NA    NA
-# 42         0         4         7    NA    NA    NA
-# 43         0         0        11    NA    NA    NA
-# 44         0         0        11    NA    NA    NA
-# 45         0         0        11    NA    NA    NA
-# 46         0         0        11    NA    NA    NA
-# 47         0         0        11    NA    NA    NA
-# 48         0         0         2    NA    NA    NA
-# 49         1         0         0    NA    NA    NA
-# 50         0         0         1    NA    NA    NA
-# 51         0         0         1    NA    NA    NA
-# 52         0         0         1    NA    NA    NA
-
-
-# exact match (not lenient):
-#   raster  Ecds_ID Ecrgn_n                     Ecprv source_level N_Evaluated Truth_Classes_Present
-# 1 ngi         731 Aspen Parkland               10.2 ecodistrict          239                     1
-# 2 ngi         740 Aspen Parkland               10.2 ecodistrict          202                     1
-# 3 cnvc       1017 Northern Continental Divide  14.4 ecodistrict           74                     2
-# 4 pudl        678 Boreal Transition             9.2 ecodistrict           60                     2
-# 5 pudl        727 Aspen Parkland               10.2 ecodistrict           51                     2
-# 6 ngi         683 Boreal Transition             9.2 ecoregion             45                     2
-# 7 ngi         692 Boreal Transition             9.2 ecoregion             45                     2
-# 8 ngi         701 Boreal Transition             9.2 ecoregion             45                     2
-# 9 ngi         708 Boreal Transition             9.2 ecoregion             45                     2
-# 10 eccc        760 Aspen Parkland               10.2 ecodistrict           44                     2
-# 11 pudl        684 Boreal Transition             9.2 ecodistrict           43                     2
-# 12 pudl        760 Aspen Parkland               10.2 ecodistrict           43                     1
-# 13 cnvc        380 Lake of the Woods             6.5 ecoregion             41                     1
-# 14 cnvc        622 Western Alberta Upland        9.1 ecoregion             40                     2
-# 15 cnvc        623 Western Alberta Upland        9.1 ecoregion             40                     2
-# 16 cnvc        628 Western Alberta Upland        9.1 ecoregion             40                     2
-# 17 cnvc        629 Western Alberta Upland        9.1 ecoregion             40                     2
-# 18 cnvc        630 Western Alberta Upland        9.1 ecoregion             40                     2
-# 19 cnvc        631 Western Alberta Upland        9.1 ecoregion             40                     2
-# 20 pudl        592 Peace Lowland                 9.2 ecodistrict           40                     2
-# 21 eccc       1017 Northern Continental Divide  14.4 ecodistrict           38                     1
-# 22 pudl        703 Boreal Transition             9.2 ecodistrict           35                     2
-# 23 ngi         727 Aspen Parkland               10.2 ecodistrict           34                     1
-# 24 ngi         744 Aspen Parkland               10.2 ecodistrict           34                     1
-# 25 cnvc        375 Lake of the Woods             6.5 ecodistrict           32                     1
-# 26 eccc        690 Boreal Transition             9.2 ecodistrict           32                     1
-# 27 pudl        686 Boreal Transition             9.2 ecodistrict           32                     2
-# 28 pudl        690 Boreal Transition             9.2 ecodistrict           32                     1
-# 29 pudl        728 Aspen Parkland               10.2 ecodistrict           32                     2
-# 30 pudl        692 Boreal Transition             9.2 ecodistrict           31                     2
-# 31 cnvc        678 Boreal Transition             9.2 ecodistrict           27                     2
-# 32 ngi         684 Boreal Transition             9.2 ecodistrict           27                     1
-# 33 ngi         746 Aspen Parkland               10.2 ecodistrict           27                     1
-# 34 pudl        755 Aspen Parkland               10.2 ecodistrict           27                     1
-# 35 cnvc        847 Lake Manitoba Plain          10.1 ecodistrict           24                     1
-# 36 cnvc        684 Boreal Transition             9.2 ecodistrict           22                     2
-# 37 cnvc        997 Eastern Continental Ranges   14.4 ecoregion             21                     1
-# 38 cnvc        999 Eastern Continental Ranges   14.4 ecoregion             21                     1
-# 39 pudl        590 Peace Lowland                 9.2 ecodistrict           21                     2
-# 40 cnvc        839 Aspen Parkland               10.2 ecodistrict           20                     1
-# 41 pudl        839 Aspen Parkland               10.2 ecodistrict           20                     1
-# 42 gpw         631 Western Alberta Upland        9.1 ecoprovince           17                     1
-# 43 cgr         375 Lake of the Woods             6.5 ecoprovince           11                     2
-# 44 cgr         687 Boreal Transition             9.2 ecoprovince           11                     1
-# 45 cgr         688 Boreal Transition             9.2 ecoprovince           11                     1
-# 46 cgr         695 Boreal Transition             9.2 ecoprovince           11                     1
-# 47 cgr         701 Boreal Transition             9.2 ecoprovince           11                     1
-# 48 cgr         709 Boreal Transition             9.2 ecoprovince           11                     1
-# 49 aci2024     960 Cascade Ranges               13.2 ecoprovince            2                     1
-# 50 aci2024     982 Fraser Basin                 14.1 ecoprovince            2                     1
-# 51 cnvc        960 Cascade Ranges               13.2 ecoprovince            2                     1
-# 52 gpw         982 Fraser Basin                 14.1 ecoprovince            2                     1
-# 53 aci2024     850 Lake Manitoba Plain          10.1 ecoprovince            1                     1
-# 54 aci2025     960 Cascade Ranges               13.2 ecoprovince            1                     1
-# 55 gpw         850 Lake Manitoba Plain          10.1 ecoprovince            1                     1
-# 56 gpw         960 Cascade Ranges               13.2 ecoprovince            1                     1
-# 57 ngi         623 Western Alberta Upland        9.1 ecoprovince            1                     1
-# 58 ngi         850 Lake Manitoba Plain          10.1 ecoprovince            1                     1
-
-#   Pred_Classes_Present   acc acc_source        Macro_F1 Balanced_Accuracy Overall_Accuracy Weighted_F1
-# 1                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 2                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 3                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 4                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 5                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 6                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 7                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 8                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 9                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 10                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 11                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 12                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 13                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 14                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 15                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 16                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 17                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 18                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 19                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 20                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 21                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 22                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 23                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 24                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 25                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 26                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 27                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 28                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 29                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 30                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 31                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 32                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 33                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 34                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 35                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 36                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 37                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 38                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 39                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 40                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 41                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 42                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 43                    2     0 Balanced_Accuracy      NaN                 0                0           0
-# 44                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 45                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 46                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 47                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 48                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 49                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 50                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 51                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 52                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 53                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 54                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 55                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 56                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 57                    1     0 Balanced_Accuracy      NaN                 0                0           0
-# 58                    1     0 Balanced_Accuracy      NaN                 0                0           0
-
-#   Support_0 Support_1 Support_2  F1_0  F1_1  F1_2
-# 1         0         0       239    NA    NA    NA
-# 2         0         0       202    NA    NA    NA
-# 3         0         2        72    NA    NA    NA
-# 4         0        53         7    NA    NA    NA
-# 5         0        17        34    NA    NA    NA
-# 6         1         0        44    NA    NA    NA
-# 7         1         0        44    NA    NA    NA
-# 8         1         0        44    NA    NA    NA
-# 9         1         0        44    NA    NA    NA
-# 10         0         1        43    NA    NA    NA
-# 11         0        14        29    NA    NA    NA
-# 12         0         0        43    NA    NA    NA
-# 13         0         0        41    NA    NA    NA
-# 14         0         3        37    NA    NA    NA
-# 15         0         3        37    NA    NA    NA
-# 16         0         3        37    NA    NA    NA
-# 17         0         3        37    NA    NA    NA
-# 18         0         3        37    NA    NA    NA
-# 19         0         3        37    NA    NA    NA
-# 20         0        36         4    NA    NA    NA
-# 21         0         0        38    NA    NA    NA
-# 22         0         8        27    NA    NA    NA
-# 23         0         0        34    NA    NA    NA
-# 24         0         0        34    NA    NA    NA
-# 25         0         0        32    NA    NA    NA
-# 26         0         0        32    NA    NA    NA
-# 27         0         1        31    NA    NA    NA
-# 28         0         0        32    NA    NA    NA
-# 29         0         3        29    NA    NA    NA
-# 30         0        16        15    NA    NA    NA
-# 31         0        24         3    NA    NA    NA
-# 32         0         0        27    NA    NA    NA
-# 33         0         0        27    NA    NA    NA
-# 34         0         0        27    NA    NA    NA
-# 35         0         0        24    NA    NA    NA
-# 36         0         3        19    NA    NA    NA
-# 37         0         0        21    NA    NA    NA
-# 38         0         0        21    NA    NA    NA
-# 39         0        20         1    NA    NA    NA
-# 40         0         0        20    NA    NA    NA
-# 41         0         0        20    NA    NA    NA
-# 42         0         0        17    NA    NA    NA
-# 43         0         4         7    NA    NA    NA
-# 44         0         0        11    NA    NA    NA
-# 45         0         0        11    NA    NA    NA
-# 46         0         0        11    NA    NA    NA
-# 47         0         0        11    NA    NA    NA
-# 48         0         0        11    NA    NA    NA
-# 49         0         0         2    NA    NA    NA
-# 50         0         0         2    NA    NA    NA
-# 51         0         0         2    NA    NA    NA
-# 52         0         0         2    NA    NA    NA
-# 53         0         0         1    NA    NA    NA
-# 54         0         0         1    NA    NA    NA
-# 55         0         0         1    NA    NA    NA
-# 56         0         0         1    NA    NA    NA
-# 57         0         0         1    NA    NA    NA
-# 58         0         0         1    NA    NA    NA
-
-
 accuracy_with_fallback_cons %>%
   filter(acc_source == "Balanced_Accuracy") %>%
   summarise(
@@ -2240,18 +1587,6 @@ accuracy_with_fallback_cons %>%
     no_class1 = sum(Support_1 == 0),
     no_class2 = sum(Support_2 == 0)
   )
-
-# without ACI2025:
-# no_class0 no_class1 no_class2
-#        46        30         3
-
-# with ACI2025:
-# no_class0 no_class1 no_class2
-#        46        32         3
-
-# exact match (not lenient):
-# no_class0 no_class1 no_class2
-#        54        38         0
 
 #------ CLASS-SPECIFIC METRICS ------#
 
@@ -2284,54 +1619,6 @@ class_metrics_long %>%
     q75 = quantile(value, 0.75, na.rm = TRUE),
     .groups = "drop"
   )
-
-# without ACI2025:
-#   class metric        n  mean median    sd    q25   q75
-# 1 0     F1         1016 0.722  0.837 0.280 0.563  0.943
-# 2 0     MCC_OvR    1002 0.512  0.558 0.260 0.356  0.711
-# 3 0     Precision  1595 0.446  0.434 0.419 0      0.914
-# 4 0     Recall     1029 0.860  0.949 0.205 0.833  0.984
-# 5 1     F1         1093 0.499  0.559 0.273 0.272  0.736
-# 6 1     MCC_OvR    1165 0.351  0.359 0.283 0.101  0.590
-# 7 1     Precision  1499 0.458  0.535 0.377 0      0.816
-# 8 1     Recall     1237 0.454  0.469 0.312 0.16   0.733
-# 9 2     F1          966 0.502  0.516 0.294 0.240  0.755
-# 10 2     MCC_OvR     737 0.210  0.122 0.238 0.0333 0.392
-# 11 2     Precision  1340 0.588  0.854 0.445 0      1    
-# 12 2     Recall     1129 0.409  0.382 0.324 0.0954 0.694
-# 13 NA    NA        50230 0.474  0.515 0.348 0.101  0.769
-
-# with ACI2025:
-#   class metric        n   NAs  mean median    sd    q25   q75
-# 1 0     F1         1039   654 0.720  0.836 0.283 0.560  0.944
-# 2 0     MCC_OvR     980   713 0.496  0.550 0.271 0.319  0.704
-# 3 0     Precision  1682    11 0.435  0.395 0.423 0      0.913
-# 4 0     Recall     1052   641 0.842  0.943 0.228 0.812  0.984
-# 5 1     F1         1120   573 0.498  0.534 0.274 0.269  0.733
-# 6 1     MCC_OvR    1150   543 0.343  0.353 0.277 0.101  0.574
-# 7 1     Precision  1575   118 0.455  0.509 0.388 0      0.830
-# 8 1     Recall     1263   430 0.446  0.455 0.304 0.166  0.718
-# 9 2     F1         1004   689 0.506  0.527 0.293 0.243  0.755
-# 10 2     MCC_OvR     758   935 0.217  0.139 0.239 0.0382 0.397
-# 11 2     Precision  1389   304 0.585  0.833 0.443 0      1    
-# 12 2     Recall     1170   523 0.417  0.394 0.326 0.105  0.708
-# 13 NA    NA        51147 16573 0.470  0.503 0.350 0.0910 0.769
-
-# exact match (not lenient):
-#   class metric        n   NAs   mean median    sd     q25   q75
-# 1 0     F1          287   913 0.469  0.48   0.319  0.156  0.775
-# 2 0     MCC_OvR     294   906 0.347  0.325  0.321  0.0367 0.639
-# 3 0     Precision  1184    16 0.0987 0      0.235  0      0    
-# 4 0     Recall      300   900 0.732  0.923  0.331  0.488  0.993
-# 5 1     F1          496   704 0.369  0.376  0.261  0.111  0.598
-# 6 1     MCC_OvR     541   659 0.163  0.0914 0.250 -0.0314 0.353
-# 7 1     Precision  1068   132 0.213  0      0.329  0      0.352
-# 8 1     Recall      638   562 0.365  0.326  0.321  0.0252 0.663
-# 9 2     F1         1040   160 0.565  0.605  0.284  0.345  0.821
-# 10 2     MCC_OvR     551   649 0.173  0.114  0.212  0.0396 0.315
-# 11 2     Precision  1073   127 0.890  1      0.244  0.941  1    
-# 12 2     Recall     1145    55 0.431  0.417  0.307  0.138  0.708
-# 13 NA    NA        31161 16839 0.363  0.25   0.359  0.0255 0.694
 
 # Metric distributions among classes
 class_metrics_long %>%
@@ -2379,18 +1666,6 @@ accuracy_with_fallback %>%
     mean_support2 = mean(Support_2)
   )
 
-# without ACI2025:
-# median_support0 median_support1 median_support2 mean_support0 mean_support1 mean_support2
-#              33              47              33          330.          123.          351.
-
-# with ACI2025:
-# median_support0 median_support1 median_support2 mean_support0 mean_support1 mean_support2
-#              26              46              32          317.          114.          334.
-
-# exact match (not lenient):
-# median_support0 median_support1 median_support2 mean_support0 mean_support1 mean_support2
-#               0               2            122.          23.1          63.3          543.
-
 accuracy_with_fallback %>%
   select(
     Support_0,
@@ -2416,18 +1691,6 @@ accuracy_with_fallback %>%
     no_class2 = sum(Support_2 == 0)
   )
 
-# without ACI2025:
-# no_class0 no_class1 no_class2
-#        46        30         3
-
-# with ACI2025:
-# no_class0 no_class1 no_class2
-#        46        32         3
-
-# exact match (not lenient):
-# no_class0 no_class1 no_class2
-#        54        38         0
-
 accuracy_with_fallback %>%
   filter(is.na(Macro_F1)) %>%
   mutate(
@@ -2438,28 +1701,6 @@ accuracy_with_fallback %>%
     )
   ) %>%
   count(missing_pattern, sort = TRUE)
-
-# without ACI2025:
-#   missing_pattern     n
-# 1 01                 25
-# 2 0                  19
-# 3 1                   4
-# 4 02                  2
-# 5 12                  1
-
-# with ACI2025:
-#   missing_pattern     n
-# 1 01                 26
-# 2 0                  19
-# 3 1                   4
-# 4 12                  2
-# 5 02                  1
-
-# exact match (not lenient):
-#   missing_pattern     n
-# 1 01                 34
-# 2 0                  20
-# 3 1                   4
 
 # Which rasters struggle with native grassland?
 
@@ -2473,50 +1714,6 @@ accuracy_with_fallback %>%
   ) %>%
   arrange(mean_F1_native)
 
-# without ACI2025:
-#   raster mean_F1_native median_F1_native n_valid
-# 1 gpw             0.197            0.133      46
-# 2 aci             0.246            0.136      52
-# 3 plvi            0.316            0.347      13
-# 4 mgi             0.439            0.426      32
-# 5 cnvc            0.484            0.541     175
-# 6 pudl            0.498            0.499     148
-# 7 pli             0.505            0.495      67
-# 8 eccc            0.555            0.561     131
-# 9 cgr             0.578            0.660     118
-# 10 pglc           0.606            0.621      83
-# 11 ngi            0.607            0.702     101
-
-# with ACI2025:
-#   raster  mean_F1_native median_F1_native n_valid
-# 1 gpw              0.197            0.133      46
-# 2 aci2024          0.224            0.136      51
-# 3 plvi             0.316            0.347      13
-# 4 mgi              0.439            0.426      32
-# 5 cnvc             0.482            0.536     175
-# 6 pudl             0.498            0.499     148
-# 7 pli              0.505            0.495      67
-# 8 eccc             0.555            0.561     131
-# 9 cgr              0.578            0.660     118
-# 10 pglc             0.606            0.621      83
-# 11 ngi              0.607            0.702     101
-# 12 aci2025          0.646            0.741      39
-
-# exact match (not lenient):
-#   raster  mean_F1_native median_F1_native n_valid
-# 1 plvi             0.316            0.347      13
-# 2 mgi              0.439            0.426      32
-# 3 cnvc             0.482            0.536     175
-# 4 pudl             0.498            0.499     148
-# 5 pli              0.560            0.5        67
-# 6 cgr              0.578            0.660     118
-# 7 eccc             0.584            0.588     143
-# 8 pglc             0.606            0.621      83
-# 9 ngi              0.607            0.702     101
-# 10 aci2025          0.646            0.741      39
-# 11 aci2024          0.680            0.730      63
-# 12 gpw              0.740            0.738      58
-
 # Average tame-class F1 by source
 accuracy_with_fallback %>%
   group_by(raster) %>%
@@ -2526,50 +1723,6 @@ accuracy_with_fallback %>%
     n_valid = sum(!is.na(F1_1))
   ) %>%
   arrange(mean_F1_tame)
-
-# without ACI2025:
-#   raster mean_F1_tame median_F1_tame n_valid
-# 1 pudl         0.0547         0.0401      50
-# 2 ngi          0.0952         0.0547      30
-# 3 cnvc         0.119          0.127       42
-# 4 cgr          0.154          0.166       54
-# 5 plvi         0.224          0.207        7
-# 6 mgi          0.397          0.377       39
-# 7 pli          0.411          0.412       45
-# 8 gpw          0.432          0.420      271
-# 9 aci          0.625          0.692      275
-# 10 pglc        0.679          0.680       86
-# 11 eccc        0.742          0.770      194
-
-# with ACI2025:
-#   raster  mean_F1_tame median_F1_tame n_valid
-# 1 pudl          0.0547         0.0401      50
-# 2 ngi           0.0952         0.0547      30
-# 3 cnvc          0.119          0.127       42
-# 4 cgr           0.154          0.166       54
-# 5 plvi          0.224          0.207        7
-# 6 mgi           0.397          0.377       39
-# 7 pli           0.411          0.412       45
-# 8 gpw           0.427          0.412      272
-# 9 aci2024       0.576          0.640      225
-# 10 pglc          0.679          0.680       86
-# 11 aci2025       0.722          0.807       76
-# 12 eccc          0.742          0.770      194
-
-# exact match (not lenient):
-#   raster  mean_F1_tame median_F1_tame n_valid
-# 1 pudl          0.0547         0.0401      50
-# 2 ngi           0.0952         0.0547      30
-# 3 cnvc          0.119          0.127       42
-# 4 cgr           0.154          0.166       54
-# 5 plvi          0.224          0.207        7
-# 6 eccc          0.376          0.380       92
-# 7 mgi           0.397          0.377       39
-# 8 aci2025       0.465          0.508       24
-# 9 pli           0.560          0.557       20
-# 10 gpw           0.611          0.629       52
-# 11 pglc          0.679          0.680       86
-# 12 aci2024     NaN             NA            0
 
 # Identify systematic omission vs commission errors
 # Recall < Precision = class is being omitted
@@ -2585,18 +1738,6 @@ accuracy_with_fallback %>%
     not_precision = mean(Precision_0, na.rm = TRUE),
     not_recall = mean(Recall_0, na.rm = TRUE)
   )
-
-# without ACI2025:
-# native_precision native_recall tame_precision tame_recall not_precision not_recall
-#            0.588         0.409          0.458       0.454         0.446      0.860
-
-# with ACI2025:
-# native_precision native_recall tame_precision tame_recall not_precision not_recall
-#            0.585         0.417          0.455       0.446         0.435      0.842
-
-# exact match (not lenient):
-# native_precision native_recall tame_precision tame_recall not_precision not_recall
-#            0.890         0.431          0.213       0.365        0.0987      0.732
 
 # Relationship between sample size and class-specific performance
 accuracy_with_fallback %>%
@@ -2631,18 +1772,6 @@ accuracy_with_fallback %>%
     median_F1_2 = median(F1_2, na.rm = TRUE)
   )
 
-# with ACI2025:
-# mean_F1_0 mean_F1_1 mean_F1_2 median_F1_0 median_F1_1 median_F1_2
-#     0.720     0.498     0.506       0.836       0.534       0.527
-# Non-grassland consistently the easiest class to classify (mean F1 = 0.72, median F1 = 0.84). 
-# In contrast, tame and native grassland show substantially lower and nearly identical performance 
-# (mean F1 ≈ 0.50; median F1 ≈ 0.53). These results suggest that the primary classification challenge 
-# is distinguishing between grassland subtypes.
-
-# exact match (not lenient):
-# mean_F1_0 mean_F1_1 mean_F1_2 median_F1_0 median_F1_1 median_F1_2
-#     0.469     0.369     0.565        0.48       0.376       0.605
-
 # Sample size plot
 accuracy_with_fallback %>%
   summarise(
@@ -2658,18 +1787,6 @@ accuracy_with_fallback %>%
       cor(log10(N_Evaluated), F1_0,
           use = "complete.obs")
   )
-
-# without ACI2025:
-# cor_native cor_tame cor_not
-#      0.108   -0.202  0.0477
-
-# with ACI2025:
-# cor_native cor_tame cor_not
-#     0.0844   -0.212  0.0827 - sample size not major driver of F1 values
-
-# exact match (not lenient):
-# cor_native cor_tame cor_not
-#      0.112   -0.348  -0.373
 
 #---- Class-specific metrics (class-specific F1 or fallbacks if NA) ----
 accuracy_with_fallback_cons2 <- accuracy_with_fallback %>%
@@ -2712,14 +1829,6 @@ accuracy_with_fallback_cons2 %>%
     median_tame   = median(tame_metric, na.rm = TRUE),
     median_not    = median(not_metric, na.rm = TRUE)
   )
-
-# with ACI2025:
-# mean_native mean_tame mean_not median_native median_tame median_not
-#       0.567     0.513    0.628         0.627       0.563      0.738
-
-# exact match (not lenient):
-# mean_native mean_tame mean_not median_native median_tame median_not
-#       0.537     0.482    0.507         0.581       0.508      0.526
 
 accuracy_with_fallback_cons2 %>%
   select(native_metric, tame_metric, not_metric) %>%
@@ -2907,17 +2016,6 @@ accuracy_with_fallback_cons2 %>%
           use = "complete.obs")
   )
 
-# with ACI2025:
-# cor_native cor_tame cor_not
-#      0.857    0.863   0.845
-# Class-specific metrics and Macro F1 generally tell the same story, but not
-# so much so that they are redundant - class-specific weighting is introducing 
-# meaningful additional information
-
-# exact match (not lenient):
-# cor_native cor_tame cor_not
-#      0.896    0.941   0.940
-
 # How often do native and tame disagree?
 accuracy_with_fallback_cons2 %>%
   summarise(
@@ -2929,19 +2027,6 @@ accuracy_with_fallback_cons2 %>%
       median(native_metric - tame_metric,
              na.rm = TRUE)
   )
-
-# with ACI2025:
-# mean_diff median_diff
-#    0.0536           0
-# Native and tame differ more than the overall F1 summaries suggested
-# Median of 0 indicates that in at least half of ecodistricts, native 
-# and tame metrics are identitical - probably because both are falling
-# back to same macro F1 value
-# Positive mean indicates tat when they differ, native tends to be higher
-
-# exact match (not lenient):
-# mean_diff median_diff
-#    0.0548           0
 
 accuracy_with_fallback_cons2 %>%
   ggplot(
@@ -2974,14 +2059,6 @@ accuracy_with_fallback_cons2 %>%
           use = "complete.obs")
   )
 
-# with ACI2025:
-# native    tame   not
-#  0.183 -0.0277 0.208 - not driving class-specific metrics
-
-# exact match (not lenient):
-# native    tame    not
-#  0.218 -0.0150 0.0283
-
 # Do datasets tend to be conservative about predicting native grass?
 # If native metrics are frequently higher despite lower recall, the
 # consensus weighting scheme could favor datasets that are very
@@ -2996,22 +2073,6 @@ accuracy_with_fallback_cons2 %>%
       mean(tame_metric > native_metric,
            na.rm = TRUE)
   )
-
-# with ACI2025:
-# native_gt_tame tame_gt_native
-#          0.419          0.215
-# Native greater than tame in 41.9% of cases 
-# Tame greater than native in 21.5% of cases
-# Remainder (36.6%) are ties?
-# Suggests a systematic tendency for datasets to achieve higher native scores than tame scores
-# Even though mean F1_native ≈ 0.506 and mean F1_tame ≈ 0.498 (almost identical)
-# Indicates that similarity in means is hiding a directional tendency?
-# Native classifications more often scored as better than tame classifications, 
-# although the advantage is usually small?
-
-# exact match (not lenient):
-# native_gt_tame tame_gt_native
-#          0.238          0.125
 
 #----- Ecodistrict diagnostics ----
 
@@ -3158,89 +2219,332 @@ accuracy_with_fallback_cons2 %>%
 # 17) Create rasters of accuracy by ecodistrict
 # ----------------------------
 
-summary_by_ecodistrict <- summarize_block_multiclass(
-  eval_data,
-  key_cols = c("raster", "Ecds_ID")
-)
+#----- create accuracy metrics rasters -----#
 
-# ---- global MCC fallback (FIXED) ----
-global_mcc <- metrics_by_dataset %>%
-  select(raster, MCC_global = MCC_Multiclass) %>%
-  rename(raster = raster)
+# load accuracy data if needed
+cm03_file <- file.path(cm03_dir, "accuracy/accuracy_by_ecodistrict_nattam_ecoregprovfallback_consensus_maps_3Sep2026_for_raster.xlsx") 
+acc <- read_xlsx(cm03_file, sheet = "clean")
 
-# ---- weights ----
-weights_ecodist_mcc <- summary_by_ecodistrict %>%
-  select(raster, Ecds_ID, MCC_Multiclass, N_Evaluated) %>%
-  
-  rename(
-    MCC = MCC_Multiclass,
-    N_Evaluated = N_Evaluated
-  ) %>%
-  
+metric_cols <- c("Balanced_Accuracy", "MCC_Multiclass", "F1_0", "F1_1", "F1_2")
+
+acc <- acc %>%
   mutate(
-    MCC = ifelse(N_Evaluated < 30, NA, MCC)
-  ) %>%
-  
-  left_join(global_mcc, by = "raster") %>%
-  
-  mutate(
-    MCC_final = case_when(
-      is.na(MCC) ~ MCC_global,
-      TRUE ~ 0.7 * MCC + 0.3 * MCC_global
-    ),
-    
-    MCC_final = (MCC_final + 1) / 2,
-    MCC_final = pmin(pmax(MCC_final, 0), 1)
-  ) %>%
-  
-  select(raster, Ecds_ID, MCC_final)
+    across(all_of(metric_cols), as.numeric),
+    Ecds_ID = as.integer(Ecds_ID)
+  )
 
-library(terra)
+eco_rast <- rast(eco_file)
+eco_rast
+plot(eco_rast)
 
-eco_vect <- vect("R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_class_sa.shp")
-eco_vect$Ecds_ID <- as.character(eco_vect$ECODISTRIC)
+# set up output directory
+out_dir <- "R:/CanadianGrasslands/WG_Classification/results/consensus_mapping/new_fusion_global_norm_modext_classdifficultynorm_31Aug2026/accuracy"
 
-weights_ecodist_mcc$Ecds_ID <- as.character(weights_ecodist_mcc$Ecds_ID)
+#define function
+raster_names <- unique(acc$raster)
 
-template <- rast("R:/CanadianGrasslands/WG_Classification/processed/aafc_aci/aligned/aafc_aci_merged_reproj_algn_binary_noshrub.tif")
+for (r_name in raster_names) {
 
-raster_names <- unique(weights_ecodist_mcc$raster)
+  cat("Processing:", r_name, "\n")
 
-mcc_rasters <- vector("list", length(raster_names))
-names(mcc_rasters) <- raster_names
+  acc_sub <- acc %>%
+    filter(raster == r_name)
+
+  # create one raster per metric
+  for (metric in metric_cols) {
+
+    lookup <- acc_sub[, c("Ecds_ID", metric)]
+
+    out_rast <- classify(
+      eco_rast,
+      as.matrix(lookup),
+      others = NA
+    )
+
+    writeRaster(
+      out_rast,
+      file.path(
+        out_dir,
+        paste0(r_name, "_", metric, ".tif")
+      ),
+      overwrite = TRUE
+    )
+  }
+}
+
+plot(out_rast)
+
+#----- create accuracy metrics shapefiles -----#
+
+# read ecodistrict polygons
+eco_vect <- vect(eco_vect_file)
+
+# ensure matching data types
+eco_vect$ECODISTRIC <- as.integer(as.character(eco_vect$ECODISTRIC))
+
+# run function
+raster_names <- unique(acc$raster)
 
 for (r_name in raster_names) {
   
-  w_df <- weights_ecodist_mcc %>% filter(raster == r_name)
+  cat("Processing:", r_name, "\n")
   
-  eco_joined <- merge(eco_vect, w_df, by = "Ecds_ID", all.x = TRUE)
+  acc_sub <- acc %>%
+    filter(raster == r_name)
   
-  fallback_val <- global_mcc$MCC_global[global_mcc$raster == r_name]
-  fallback_val <- (fallback_val + 1) / 2
-  
-  eco_joined$MCC_final[is.na(eco_joined$MCC_final)] <- fallback_val
-  
-  r_mcc <- rasterize(
-    eco_joined,
-    template,
-    field = "MCC_final",
-    touches = TRUE
-  )
-  
-  names(r_mcc) <- r_name
-  
-  mcc_rasters[[r_name]] <- r_mcc
+  for (metric in metric_cols) {
+    
+    # make a fresh copy of polygons
+    out_vect <- eco_vect
+    
+    # join metric values
+    out_vect[[metric]] <- acc_sub[[metric]][
+      match(out_vect$ECODISTRIC, acc_sub$Ecds_ID)
+    ]
+    
+    # export
+    writeVector(
+      out_vect,
+      file.path(
+        out_dir,
+        paste0(r_name, "_", metric, ".shp")
+      ),
+      overwrite = TRUE
+    )
+  }
 }
 
-mcc_stack <- rast(mcc_rasters)
+plot(out_vect)
 
-writeRaster(
-  mcc_stack,
-  file.path(out_dir, "mcc_weight_stack_triclass.tif"),
-  overwrite = TRUE,
-  wopt = list(datatype = "FLT4S",
-              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES"))
+#----- create source_level categorical raster -----#
+template <- eco_rast
+
+# data check
+cats(eco_rast)
+#range(values(eco_rast), na.rm = TRUE)
+range(acc$Ecds_ID, na.rm = TRUE)
+
+# create source_level lookup table
+source_df <- acc %>%
+  select(Ecds_ID, source_level) %>%
+  distinct()
+
+# check that each ecodistrict has only one source level
+source_df %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+# convert categories to integer codes
+source_levels <- sort(unique(source_df$source_level))
+
+source_lut <- data.frame(
+  value = seq_along(source_levels),
+  source_level = source_levels
 )
+
+source_df <- source_df %>%
+  left_join(source_lut, by = "source_level")
+
+# create the new raster
+rcl <- as.matrix(
+  source_df[, c("Ecds_ID", "value")]
+)
+
+source_rast <- classify(
+  eco_rast,
+  rcl = rcl,
+  others = NA
+)
+
+# attach category labels
+#levels(source_rast) <- source_lut
+
+#visualize
+plot(source_rast)
+
+#export
+writeRaster(source_rast, file.path(out_dir, "source_level.tif"), overwrite = TRUE)
+
+#----- create source_level categorical shapefile -----#
+
+# read ecodistrict polygons
+eco_vect <- vect(eco_vect_file)
+
+# create source_level lookup table
+source_df <- acc %>%
+  select(Ecds_ID, source_level) %>%
+  distinct()
+
+# check that each ecodistrict has only one source level
+source_df %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+# make sure join fields have same type
+source_df$Ecds_ID <- as.integer(source_df$Ecds_ID)
+eco_vect$ECODISTRIC <- as.integer(as.character(eco_vect$ECODISTRIC))
+
+# join source_level to polygons
+eco_vect$source_level <- source_df$source_level[
+  match(eco_vect$ECODISTRIC, source_df$Ecds_ID)
+]
+
+# visualize
+plot(eco_vect, "source_level")
+
+# export shapefile
+writeVector(eco_vect, file.path(out_dir, "source_level.shp"), overwrite = TRUE)
+
+#----- create N_Evaluated raster -----#
+
+# one record per ecodistrict
+n_eval_df <- acc %>%
+  select(Ecds_ID, N_Evaluated) %>%
+  distinct()
+
+# check for duplicate values per ecodistrict
+n_eval_df %>%
+  count(Ecds_ID) %>%
+  filter(n > 1)
+
+# define lookup
+rcl <- as.matrix(
+  n_eval_df[, c("Ecds_ID", "N_Evaluated")]
+)
+
+n_eval_rast <- classify(
+  eco_rast,
+  rcl,
+  others = NA
+)
+
+# make numeric
+n_eval_rast_num <- as.numeric(n_eval_rast)
+plot(n_eval_rast_num)
+
+freq(eco_rast)[1:10, ]
+
+# inspect
+plot(as.numeric(n_eval_rast))
+plot(n_eval_rast)
+n_eval_rast_num
+n_eval_rast
+
+plot(n_eval_df)
+
+# export
+writeRaster(n_eval_rast, file.path(out_dir, "N_evaluated.tif"), overwrite = TRUE)
+
+#----- create N_Evaluated shapefile -----#
+
+# read ecodistrict polygons
+eco_vect <- vect(eco_vect_file)
+
+# create lookup table
+n_eval_df <- acc %>%
+  select(Ecds_ID, N_Evaluated) %>%
+  distinct()
+
+# make sure IDs have same type
+eco_vect$ECODISTRIC <- as.integer(as.character(eco_vect$ECODISTRIC))
+
+# join N_Evaluated to polygons
+eco_vect$N_Evaluated <- n_eval_df$N_Evaluated[
+  match(eco_vect$ECODISTRIC, n_eval_df$Ecds_ID)
+]
+
+# inspect
+summary(eco_vect$N_Evaluated)
+
+plot(eco_vect, "N_Evaluated")
+
+# export
+writeVector(eco_vect, file.path(out_dir, "N_Evaluated.shp"), overwrite = TRUE)
+
+# acc <- acc %>%
+#   left_join(source_lookup, by = "source_level")
+# 
+# eco_vect <- vect("R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_class_sa.shp")
+# eco_vect$Ecds_ID <- as.character(eco_vect$ECODISTRIC)
+# 
+# weights_ecodist_mcc$Ecds_ID <- as.character(weights_ecodist_mcc$Ecds_ID)
+# 
+# template <- rast("R:/CanadianGrasslands/WG_Classification/processed/aafc_aci/aligned/aafc_aci_merged_reproj_algn_binary_noshrub.tif")
+# 
+# raster_names <- unique(weights_ecodist_mcc$raster)
+# 
+# mcc_rasters <- vector("list", length(raster_names))
+# names(mcc_rasters) <- raster_names
+# 
+# for (r_name in raster_names) {
+#   
+#   w_df <- weights_ecodist_mcc %>% filter(raster == r_name)
+#   
+#   eco_joined <- merge(eco_vect, w_df, by = "Ecds_ID", all.x = TRUE)
+#   
+#   fallback_val <- global_mcc$MCC_global[global_mcc$raster == r_name]
+#   fallback_val <- (fallback_val + 1) / 2
+#   
+#   eco_joined$MCC_final[is.na(eco_joined$MCC_final)] <- fallback_val
+#   
+#   r_mcc <- rasterize(
+#     eco_joined,
+#     template,
+#     field = "MCC_final",
+#     touches = TRUE
+#   )
+#   
+#   names(r_mcc) <- r_name
+#   
+#   mcc_rasters[[r_name]] <- r_mcc
+# }
+# 
+# mcc_stack <- rast(mcc_rasters)
+# 
+# writeRaster(
+#   mcc_stack,
+#   file.path(out_dir, "mcc_weight_stack_triclass.tif"),
+#   overwrite = TRUE,
+#   wopt = list(datatype = "FLT4S",
+#               gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES"))
+# )
+
+# summary_by_ecodistrict <- summarize_block_multiclass(
+#   eval_data,
+#   key_cols = c("raster", "Ecds_ID")
+# )
+# 
+# # ---- global MCC fallback (FIXED) ----
+# global_mcc <- metrics_by_dataset %>%
+#   select(raster, MCC_global = MCC_Multiclass) %>%
+#   rename(raster = raster)
+# 
+# # ---- weights ----
+# weights_ecodist_mcc <- summary_by_ecodistrict %>%
+#   select(raster, Ecds_ID, MCC_Multiclass, N_Evaluated) %>%
+#   
+#   rename(
+#     MCC = MCC_Multiclass,
+#     N_Evaluated = N_Evaluated
+#   ) %>%
+#   
+#   mutate(
+#     MCC = ifelse(N_Evaluated < 30, NA, MCC)
+#   ) %>%
+#   
+#   left_join(global_mcc, by = "raster") %>%
+#   
+#   mutate(
+#     MCC_final = case_when(
+#       is.na(MCC) ~ MCC_global,
+#       TRUE ~ 0.7 * MCC + 0.3 * MCC_global
+#     ),
+#     
+#     MCC_final = (MCC_final + 1) / 2,
+#     MCC_final = pmin(pmax(MCC_final, 0), 1)
+#   ) %>%
+#   
+#   select(raster, Ecds_ID, MCC_final)
 
 # ----------------------------
 # 15) Plots: Map by ecodistrict
