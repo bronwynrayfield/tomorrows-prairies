@@ -10,6 +10,10 @@
 #         grassland data products regardless of extent and calculates metrics at
 #         the ecodistrict level (in addition to global).
 
+# NEED TO UPDATE TO PLI SEP SO METADATA IS CORRECT
+
+# CROP TO A STUDY AREA?
+
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
 # ran using ml.m5d.8xlarge
 # Prefer instances with NVMe local storage

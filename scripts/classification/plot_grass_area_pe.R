@@ -119,7 +119,7 @@ p
 
 #----------------------- export ----------------------------
 ggsave(
-  filename = file.path(data_dir, "grass_area_by_dataset_noprov_v10.png"),
+  filename = file.path(data_dir, "grass_area_by_dataset_pe_noprov_v10.png"),
   plot = p,
   width = 14,
   height = 6,

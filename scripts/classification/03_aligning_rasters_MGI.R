@@ -214,6 +214,59 @@ writeRaster(mgi_algn_binary, mgi_binary_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+# reclassify to binary (0 = not grass, 1 = grass) - WITH SHRUB
+mgi_algn_final_file <- file.path(mgi_aligned_dir, "mgi_reproj_algn_fix.tif")
+mgi_algn_final <- rast(mgi_algn_final_file)
+mgi_algn_final
+plot(mgi_algn_final)
+
+mgi_algn_binary_shrub <- classify(mgi_algn_final, 
+                            rcl = matrix(c(
+                              2, 0, # Forest
+                              3, 0, # Urban
+                              4, 0, # Water
+                              5, 0, # Cropland
+                              6, 1, # Native
+                              7, 1, # Shrub
+                              8, 1, # Tame
+                              9, 1, # Mixed
+                              10, 0), # Wetland
+                              ncol = 2, byrow = TRUE))
+
+mgi_algn_binary_shrub
+plot(mgi_algn_binary_shrub)
+
+# Save the raster as 8-bit unsigned integer
+mgi_binary_out_path <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_binary_withshrub.tif")
+writeRaster(mgi_algn_binary_shrub, mgi_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to binary (0 = not grass, 1 = grass) - WITH SHRUB (SEP)
+mgi_algn_binary_shrub_sep <- classify(mgi_algn_final, 
+                                  rcl = matrix(c(
+                                    2, 0, # Forest
+                                    3, 0, # Urban
+                                    4, 0, # Water
+                                    5, 0, # Cropland
+                                    6, 1, # Native
+                                    7, 3, # Shrub
+                                    8, 1, # Tame
+                                    9, 1, # Mixed
+                                    10, 0), # Wetland
+                                    ncol = 2, byrow = TRUE))
+
+mgi_algn_binary_shrub_sep
+plot(mgi_algn_binary_shrub_sep)
+
+# Save the raster as 8-bit unsigned integer
+mgi_binary_out_path <- file.path(mgi_aligned_dir, "mb_mgi_reproj_algn_binary_withshrub_sep.tif")
+writeRaster(mgi_algn_binary_shrub_sep, mgi_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
 # reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native)
 mgi_algn_nattam <- classify(mgi_algn_final, 
                             rcl = matrix(c(
@@ -234,6 +287,30 @@ mgi_algn_nattam
 # Save the raster as 8-bit unsigned integer
 mgi_nattam_out_path <- file.path(mgi_aligned_dir, "mb_mgi_merged_reproj_algn_natvtam_noshrub.tif")
 writeRaster(mgi_algn_nattam, mgi_nattam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to native vs. tame (0 = not grass, 1 = tame, 2 = native) - WITH SHRUB
+mgi_algn_nattam_shrub <- classify(mgi_algn_final, 
+                            rcl = matrix(c(
+                              2, 0, # Forest
+                              3, 0, # Urban
+                              4, 0, # Water
+                              5, 0, # Cropland
+                              6, 2, # Native
+                              7, 3, # Shrub
+                              8, 1, # Tame
+                              9, 1, # Mixed
+                              10, 0), # Wetland
+                              ncol = 2, byrow = TRUE))
+
+plot(mgi_algn_nattam_shrub, main = "Native vs tame MGI raster with shrub")
+mgi_algn_nattam_shrub
+
+# Save the raster as 8-bit unsigned integer
+mgi_nattam_out_path <- file.path(mgi_aligned_dir, "mb_mgi_merged_reproj_algn_natvtam_withshrub.tif")
+writeRaster(mgi_algn_nattam_shrub, mgi_nattam_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
