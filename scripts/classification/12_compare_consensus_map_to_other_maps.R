@@ -1,3 +1,4 @@
+
 library(tidyverse)
 library(terra)
 library(sf)
@@ -10,7 +11,7 @@ hard_class_m1_file <- file.path(results_dir, "new_fusion_global_norm_modext_clas
 hard_class_m2_file <- file.path(results_dir, "new_fusion_global_norm_modext_classdifficultynorm_31Aug2026/hard_class_m2_moderate_nongrass_penalty.tif")
 hard_class_m3_file <- file.path(results_dir, "new_fusion_global_norm_modext_classdifficultynorm_31Aug2026/hard_class_m3_strong_nongrass_penalty.tif")
 hard_class_m4_file <- file.path(results_dir, "new_fusion_global_norm_modext_classdifficultynorm_31Aug2026/hard_class_m4_boost_all_grass.tif")
-hard_class_m5_file <- file.path(results_dir, "new_fusion_global_norm_modext_classdifficultynorm_31Aug2026/hard_class_m4_boost_tame_grass.tif")
+hard_class_m5_file <- file.path(results_dir, "new_fusion_global_norm_modext_classdifficultynorm_31Aug2026/hard_class_m5_boost_tame_grass.tif")
 
 aci_file  <- file.path(proc_data_dir, "aafc_aci/aligned/aafc_aci_2025_merged_reproj_algn_natvtam_noshrub.tif")
 luts_file <- file.path(proc_data_dir, "aafc_luts_2020_30m_v5/masked/luts30_reproj_algn_binary_masked.tif")
@@ -695,4 +696,597 @@ write.csv(
   row.names = FALSE
 )
 
+######################################################################################
+######################################################################################
 
+# same analysis but with chosen baseline map (modification 5)
+
+#------- compare ACI and consensus map mod 5 -------#
+
+# reclassify ACI to match
+aci_reclass <- classify(aci, rcl = matrix(c(
+  0, 1, # Non-grass
+  1, 2, # Tame grassland
+  2, 3), # Native grass
+  ncol = 2, byrow = TRUE))
+
+# crop ACI to extent of consensus map
+aci_reclass_crop <- crop(aci_reclass, hard_class)
+aci_reclass_mask <- mask(aci_reclass_crop, hard_class)
+
+# verify alignment
+compareGeom(aci_reclass_mask, hard_class, stopOnError = TRUE)
+
+plot(aci_reclass_mask)
+freq(aci_reclass_mask)
+#   layer value     count
+# 1     1     1 531,272,978 = 77.52% non-grass
+# 2     1     2  49,737,125 =  7.26% tame
+# 3     1     3 104,317,609 = 15.22% native
+
+# define comparison
+comparison_aci_m5 <- ((aci_reclass_mask * 10) + hard_class_m5)
+names(comparison_aci_m5) <- "aci_vs_consensus_m5"
+
+# 11 = LULC non-grass, hard_class non-grass
+# 12 = LULC non-grass, hard_class tame
+# 13 = LULC non-grass, hard_class native
+# 
+# 21 = LULC tame,      hard_class non-grass
+# 22 = LULC tame,      hard_class tame
+# 23 = LULC tame,      hard_class native
+# 
+# 31 = LULC native,    hard_class non-grass
+# 32 = LULC native,    hard_class tame
+# 33 = LULC native,    hard_class native
+
+levels(comparison_aci_m5) <- data.frame(
+  value = c(11,12,13,21,22,23,31,32,33),
+  class = c(
+    "both_non_grass",
+    "ACI_non_CM_tame",
+    "ACI_non_CM_native",
+    "ACI_tame_CM_non",
+    "both_tame",
+    "ACI_tame_CM_native",
+    "ACI_native_CM_non",
+    "ACI_native_CM_tame",
+    "both_native"
+  )
+)
+
+# export
+writeRaster(comparison_aci_m5, file.path(results_dir, "aci_vs_hardclass_m5.tif"),
+            overwrite = TRUE,
+            wopt = list(
+              datatype = "INT2U",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+comparison_aci_m5_export <- comparison_aci_m5
+
+levels(comparison_aci_m5_export) <- NULL
+
+writeRaster(
+  comparison_aci_m5_export,
+  file.path(results_dir, "aci_vs_hardclassm5_numeric.tif"),
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT2U",
+    gdal = c(
+      "COMPRESS=ZSTD",
+      "TILED=YES",
+      "BIGTIFF=YES"
+    )
+  )
+)
+
+# examine
+plot(comparison_aci_m5)
+freq(comparison_aci_m5)
+
+
+#------- compare LUTS and consensus map mod 5 -------#
+
+# BUT can I do it? LUTS classes are wrong
+
+# reclassify LUTS to match
+luts_reclass <- classify(luts, rcl = matrix(c(
+  0, 1, # Non-grass
+  1, 2, # Tame grassland
+  2, 3), # Native grass
+  ncol = 2, byrow = TRUE))
+
+# crop LUTS to extent of consensus map
+luts_reclass_crop <- crop(luts_reclass, hard_class)
+luts_reclass_mask <- mask(luts_reclass_crop, hard_class)
+
+# verify alignment
+compareGeom(luts_reclass_mask, hard_class, stopOnError = TRUE)
+
+plot(luts_reclass_mask)
+freq(luts_reclass_mask)
+
+# define comparison
+comparison_luts_m5 <- ((luts_reclass_mask * 10) + hard_class_m5)
+names(comparison_luts_m5) <- "luts_vs_consensus_m5"
+
+# 11 = LULC non-grass, hard_class non-grass
+# 12 = LULC non-grass, hard_class tame
+# 13 = LULC non-grass, hard_class native
+# 
+# 21 = LULC tame,      hard_class non-grass
+# 22 = LULC tame,      hard_class tame
+# 23 = LULC tame,      hard_class native
+# 
+# 31 = LULC native,    hard_class non-grass
+# 32 = LULC native,    hard_class tame
+# 33 = LULC native,    hard_class native
+
+levels(comparison_luts_m5) <- data.frame(
+  value = c(11,12,13,21,22,23,31,32,33),
+  class = c(
+    "both_non_grass",
+    "luts_non_CM_tame",
+    "luts_non_CM_native",
+    "luts_tame_CM_non",
+    "both_tame",
+    "luts_tame_CM_native",
+    "luts_native_CM_non",
+    "luts_native_CM_tame",
+    "both_native"
+  )
+)
+
+# export
+writeRaster(comparison_luts_m5, file.path(results_dir, "luts_vs_hardclass_m5.tif"),
+            overwrite = TRUE,
+            wopt = list(
+              datatype = "INT2U",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+comparison_luts_m5_export <- comparison_luts_m5
+
+levels(comparison_luts_m5_export) <- NULL
+
+writeRaster(
+  comparison_luts_m5_export,
+  file.path(results_dir, "luts_vs_hardclass_m5_numeric.tif"),
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT2U",
+    gdal = c(
+      "COMPRESS=ZSTD",
+      "TILED=YES",
+      "BIGTIFF=YES"
+    )
+  )
+)
+
+# examine
+plot(comparison_luts_m5)
+freq(comparison_luts_m5)
+
+#------- compare PGLC and consensus map -------#
+
+pglc
+
+# reclassify PGLC to match
+pglc_reclass <- classify(pglc, rcl = matrix(c(
+  0, 1, # Non-grass
+  1, 2, # Tame grassland
+  2, 3), # Native grass
+  ncol = 2, byrow = TRUE))
+
+# crop PGLC to extent of consensus map
+pglc_reclass_crop <- crop(pglc_reclass, hard_class)
+pglc_reclass_mask <- mask(pglc_reclass_crop, hard_class)
+
+# verify alignment
+compareGeom(pglc_reclass_mask, hard_class, stopOnError = TRUE)
+
+plot(pglc_reclass_mask)
+freq(pglc_reclass_mask)
+#   layer value     count
+# 1     1     1 179,307,864 = 63.71%
+# 2     1     2  50,508,298 = 17.95%
+# 3     1     3  51,634,502 = 18.35%
+
+# define comparison
+comparison_pglc_m5 <- ((pglc_reclass_mask * 10) + hard_class_m5)
+names(comparison_pglc_m5) <- "pglc_vs_consensus_m5"
+
+# 11 = LULC non-grass, hard_class non-grass
+# 12 = LULC non-grass, hard_class tame
+# 13 = LULC non-grass, hard_class native
+# 
+# 21 = LULC tame,      hard_class non-grass
+# 22 = LULC tame,      hard_class tame
+# 23 = LULC tame,      hard_class native
+# 
+# 31 = LULC native,    hard_class non-grass
+# 32 = LULC native,    hard_class tame
+# 33 = LULC native,    hard_class native
+
+levels(comparison_pglc_m5) <- data.frame(
+  value = c(11,12,13,21,22,23,31,32,33),
+  class = c(
+    "both_non_grass",
+    "pglc_non_CM_tame",
+    "pglc_non_CM_native",
+    "pglc_tame_CM_non",
+    "both_tame",
+    "pglc_tame_CM_native",
+    "pglc_native_CM_non",
+    "pglc_native_CM_tame",
+    "both_native"
+  )
+)
+
+# export
+writeRaster(comparison_pglc_m5, file.path(results_dir, "pglc_vs_hardclass_m5.tif"),
+            overwrite = TRUE,
+            wopt = list(
+              datatype = "INT2U",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+comparison_pglc_m5_export <- comparison_pglc_m5
+
+levels(comparison_pglc_m5_export) <- NULL
+
+writeRaster(
+  comparison_pglc_m5_export,
+  file.path(results_dir, "pglc_vs_hardclass_m5_numeric.tif"),
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT2U",
+    gdal = c(
+      "COMPRESS=ZSTD",
+      "TILED=YES",
+      "BIGTIFF=YES")))
+
+# examine
+plot(comparison_pglc_m5)
+freq(comparison_pglc_m5)
+
+#------- compare NGI and consensus map mod 5 -------#
+
+# reclassify NGI to match
+ngi_reclass <- classify(ngi, rcl = matrix(c(
+  0, 1, # Non-grass
+  1, 2, # Tame grassland
+  2, 3), # Native grass
+  ncol = 2, byrow = TRUE))
+
+# crop NGI to extent of consensus map
+ngi_reclass_crop <- crop(ngi_reclass, hard_class)
+ngi_reclass_mask <- mask(ngi_reclass_crop, hard_class)
+
+# verify alignment
+compareGeom(ngi_reclass_mask, hard_class, stopOnError = TRUE)
+
+plot(ngi_reclass_mask)
+freq(ngi_reclass_mask)
+#   layer value       count
+# 1     1     1 310,074,752 = 58.34% non-grass
+# 2     1     2 124,425,184 = 23.41% tame grass
+# 3     1     3  97,023,669 = 18.25% native grass
+
+# define comparison
+comparison_ngi_m5 <- ((ngi_reclass_mask * 10) + hard_class_m5)
+names(comparison_ngi_m5) <- "ngi_vs_consensus_m5"
+
+# 11 = LULC non-grass, hard_class non-grass
+# 12 = LULC non-grass, hard_class tame
+# 13 = LULC non-grass, hard_class native
+# 
+# 21 = LULC tame,      hard_class non-grass
+# 22 = LULC tame,      hard_class tame
+# 23 = LULC tame,      hard_class native
+# 
+# 31 = LULC native,    hard_class non-grass
+# 32 = LULC native,    hard_class tame
+# 33 = LULC native,    hard_class native
+
+levels(comparison_ngi_m5) <- data.frame(
+  value = c(11,12,13,21,22,23,31,32,33),
+  class = c(
+    "both_non_grass",
+    "ngi_non_CM_tame",
+    "ngi_non_CM_native",
+    "ngi_tame_CM_non",
+    "both_tame",
+    "ngi_tame_CM_native",
+    "ngi_native_CM_non",
+    "ngi_native_CM_tame",
+    "both_native"
+  )
+)
+
+# export
+writeRaster(comparison_ngi_m5, file.path(results_dir, "ngi_vs_hardclass_m5.tif"),
+            overwrite = TRUE,
+            wopt = list(
+              datatype = "INT2U",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+comparison_ngi_m5_export <- comparison_ngi_m5
+
+levels(comparison_ngi_m5_export) <- NULL
+
+writeRaster(
+  comparison_ngi_m5_export,
+  file.path(results_dir, "ngi_vs_hardclass_m5_numeric.tif"),
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT2U",
+    gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+# examine
+plot(comparison_ngi_m5)
+freq(comparison_ngi_m5)
+
+#------- compare GPW and consensus map mod 5 -------#
+
+# reclassify GPW to match
+gpw_reclass <- classify(gpw, rcl = matrix(c(
+  0, 1, # Non-grass
+  1, 2, # Tame grassland
+  2, 3), # Native grass
+  ncol = 2, byrow = TRUE))
+
+# crop GPW to extent of consensus map
+gpw_reclass_crop <- crop(gpw_reclass, hard_class)
+gpw_reclass_mask <- mask(gpw_reclass_crop, hard_class)
+
+# verify alignment
+compareGeom(gpw_reclass_mask, hard_class, stopOnError = TRUE)
+
+plot(gpw_reclass_mask)
+freq(gpw_reclass_mask)
+#   layer value     count
+# 1     1     1 401,695,078 = 64.49%
+# 2     1     2  79,645,851 = 12.79%
+# 3     1     3 141,494,500 = 22.72%
+
+# define comparison
+comparison_gpw_m5 <- ((gpw_reclass_mask * 10) + hard_class_m5)
+names(comparison_gpw_m5) <- "gpw_vs_consensus_m5"
+
+# 11 = LULC non-grass, hard_class non-grass
+# 12 = LULC non-grass, hard_class tame
+# 13 = LULC non-grass, hard_class native
+# 
+# 21 = LULC tame,      hard_class non-grass
+# 22 = LULC tame,      hard_class tame
+# 23 = LULC tame,      hard_class native
+# 
+# 31 = LULC native,    hard_class non-grass
+# 32 = LULC native,    hard_class tame
+# 33 = LULC native,    hard_class native
+
+levels(comparison_gpw_m5) <- data.frame(
+  value = c(11,12,13,21,22,23,31,32,33),
+  class = c(
+    "both_non_grass",
+    "gpw_non_CM_tame",
+    "gpw_non_CM_native",
+    "gpw_tame_CM_non",
+    "both_tame",
+    "gpw_tame_CM_native",
+    "gpw_native_CM_non",
+    "gpw_native_CM_tame",
+    "both_native"
+  )
+)
+
+# export
+writeRaster(comparison_gpw_m5, file.path(results_dir, "gpw_vs_hardclass_m5.tif"),
+            overwrite = TRUE,
+            wopt = list(
+              datatype = "INT2U",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+comparison_gpw_m5_export <- comparison_gpw_m5
+
+levels(comparison_gpw_m5_export) <- NULL
+
+writeRaster(
+  comparison_gpw_m5_export,
+  file.path(results_dir, "gpw_vs_hardclass_m5_numeric.tif"),
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT2U",
+    gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+# examine
+plot(comparison_gpw_m5)
+freq(comparison_gpw_m5)
+
+#------- compare ECCC and consensus map -------#
+
+# reclassify ECCC to match
+eccc_reclass <- classify(eccc, rcl = matrix(c(
+  0, 1, # Non-grass
+  1, 2, # Tame grassland
+  2, 3), # Native grass
+  ncol = 2, byrow = TRUE))
+
+# crop ECCC to extent of consensus map
+eccc_reclass_crop <- crop(eccc_reclass, hard_class)
+eccc_reclass_mask <- mask(eccc_reclass_crop, hard_class)
+
+# verify alignment
+compareGeom(eccc_reclass_mask, hard_class, stopOnError = TRUE)
+
+plot(eccc_reclass_mask)
+freq(eccc_reclass_mask)
+# layer value     count
+# 1     1     1 512,288,174 = 75.17% non
+# 2     1     2  97,398,954 = 14.29% tame
+# 3     1     3  71,853,680 = 10.54% native
+
+# define comparison
+comparison_eccc_m5 <- ((eccc_reclass_mask * 10) + hard_class_m5)
+names(comparison_eccc_m5) <- "eccc_vs_consensus_m5"
+
+# 11 = LULC non-grass, hard_class non-grass
+# 12 = LULC non-grass, hard_class tame
+# 13 = LULC non-grass, hard_class native
+# 
+# 21 = LULC tame,      hard_class non-grass
+# 22 = LULC tame,      hard_class tame
+# 23 = LULC tame,      hard_class native
+# 
+# 31 = LULC native,    hard_class non-grass
+# 32 = LULC native,    hard_class tame
+# 33 = LULC native,    hard_class native
+
+levels(comparison_eccc_m5) <- data.frame(
+  value = c(11,12,13,21,22,23,31,32,33),
+  class = c(
+    "both_non_grass",
+    "eccc_non_CM_tame",
+    "eccc_non_CM_native",
+    "eccc_tame_CM_non",
+    "both_tame",
+    "eccc_tame_CM_native",
+    "eccc_native_CM_non",
+    "eccc_native_CM_tame",
+    "both_native"
+  )
+)
+
+# export
+writeRaster(comparison_eccc_m5, file.path(results_dir, "eccc_vs_hardclass_m5.tif"),
+            overwrite = TRUE,
+            wopt = list(
+              datatype = "INT2U",
+              gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+comparison_eccc_m5_export <- comparison_eccc_m5
+
+levels(comparison_eccc_m5_export) <- NULL
+
+writeRaster(
+  comparison_eccc_m5_export,
+  file.path(results_dir, "eccc_vs_hardclass_m5_numeric.tif"),
+  overwrite = TRUE,
+  wopt = list(
+    datatype = "INT2U",
+    gdal = c("COMPRESS=ZSTD", "TILED=YES", "BIGTIFF=YES")))
+
+# examine
+plot(comparison_eccc_m5)
+freq(comparison_eccc_m5)
+
+#------ grassland retention in consensus map ------#
+
+# what percentage of each grass dataset is included in the consensus layer? 
+
+# focused on grassland inclusion rather than exact class agreement:
+# grass_retention_pct: percentage of all grassland pixels (tame + native) in the source 
+#                      dataset that are still grassland in the consensus.
+# tame_retention_pct: percentage of source tame pixels that remain grassland (either 
+#                     tame or native) in the consensus.
+# native_retention_pct: percentage of source native pixels that remain grassland (either 
+#                      tame or native) in the consensus.
+
+#define function
+calc_retention <- function(comp_raster, dataset_name){
+  
+  f <- freq(comp_raster)
+  
+  counts <- setNames(
+    f$count,
+    as.character(f$value)
+  )
+  
+  # helper
+  get_count <- function(x){
+    ifelse(x %in% names(counts), counts[x], 0)
+  }
+  
+  tame_non    <- get_count(paste0(dataset_name, "_tame_CM_non"))
+  tame_native <- get_count(paste0(dataset_name, "_tame_CM_native"))
+  
+  native_non  <- get_count(paste0(dataset_name, "_native_CM_non"))
+  native_tame <- get_count(paste0(dataset_name, "_native_CM_tame"))
+  
+  both_tame   <- get_count("both_tame")
+  both_native <- get_count("both_native")
+  
+  # totals in source dataset
+  tame_total <-
+    tame_non +
+    both_tame +
+    tame_native
+  
+  native_total <-
+    native_non +
+    native_tame +
+    both_native
+  
+  grass_total <-
+    tame_total +
+    native_total
+  
+  # retained as grass in consensus
+  tame_retained <-
+    both_tame +
+    tame_native
+  
+  native_retained <-
+    native_tame +
+    both_native
+  
+  grass_retained <-
+    tame_retained +
+    native_retained
+  
+  data.frame(
+    dataset = dataset_name,
+    
+    grass_total = grass_total,
+    grass_retained = grass_retained,
+    grass_retention_pct =
+      100 * grass_retained / grass_total,
+    
+    tame_total = tame_total,
+    tame_retained = tame_retained,
+    tame_retention_pct =
+      100 * tame_retained / tame_total,
+    
+    native_total = native_total,
+    native_retained = native_retained,
+    native_retention_pct =
+      100 * native_retained / native_total
+  )
+}
+
+# run
+retention_summary_m5 <- rbind(
+  calc_retention(comparison_aci_m5,  "ACI"),
+  calc_retention(comparison_pglc_m5, "pglc"),
+  calc_retention(comparison_ngi_m5,  "ngi"),
+  calc_retention(comparison_gpw_m5,  "gpw"),
+  calc_retention(comparison_eccc_m5, "eccc")
+)
+
+retention_summary_m5
+
+
+# cleaner output
+retention_summary_m5 <- retention_summary_m5 |>
+  transform(
+    grass_retention_pct  = round(grass_retention_pct, 1),
+    tame_retention_pct   = round(tame_retention_pct, 1),
+    native_retention_pct = round(native_retention_pct, 1)
+  )
+
+retention_summary_m5
+
+write.csv(
+  retention_summary_m5,
+  file.path(results_dir, "grassland_retention_summary_m5.csv"),
+  row.names = FALSE
+)
