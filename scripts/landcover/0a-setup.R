@@ -69,7 +69,7 @@ builtup_gain_class_filename <- "recentchange_2022_gain_c06_builtup_b01_class.tif
 builtup_gain_year_filename <- "recentchange_2022_gain_c06_builtup_b03_year.tif"
 
 # Grassland
-grass_consensus_filename <- "ACI_2025_reclass_for_baseline.tif"
+grass_consensus_filename <- "TP_baseline_map_3Sep2026.tif"
 
 # Agriculture
 crop_suit_2019_filename <- "gp_tillage"
@@ -247,3 +247,40 @@ groups <- list(
   water      = c(31),
   other      = c(25, 73, 74, 75, 76, 85, 91, 92)
 )
+
+# Shared LULC builder: 3b and the response variants in 7-response-sensitivity.R.
+# Order matters: tame is tested before annual, so `annual` may be the whole
+# LUTS ag domain (2010) and resolves to ag minus tame.
+# LUTS binaries are mutually exclusive.
+build_lulc <- function(native, tame, annual, settlement) {
+  r <- ifel(native == 1, cls_native,
+            ifel(tame, cls_tame,
+                 ifel(annual, cls_annual,
+                      ifel(settlement == 1, cls_settlement, cls_other))))
+  levels(r) <- lulc_levels
+  r
+}
+
+# Scoring for one transition: rows for the origin class only;
+# 1 = focal, 0 = persistence, NA = competing. classify() sends all other codes to NA.
+score_response <- function(from_cls, to_cls) {
+  d <- data.frame(from = from_cls, to = lulc_levels[[1]])
+  d$score <- ifelse(d$to == to_cls, 1, ifelse(d$to == from_cls, 0, NA))
+  d
+}
+
+# One pass: pixel counts by stratum x from x to (classes 1-5)
+tabulate_lulc <- function(l10, l20, strata) {
+  f <- freq(strata * 100 + l10 * 10 + l20)
+  data.frame(stratum_id = f$value %/% 100, from = f$value %/% 10 %% 10,
+             to = f$value %% 10, n = f$count)
+}
+
+# Ecodistrict -> ecoregion lookup (moved from 3b)
+eco_lut <- function(ecoregions_sa, ecodistricts_sa) {
+  eco_names <- as.data.frame(ecoregions_sa) |>
+    distinct(ecoregion = ECOREGION_, ecoregion_name = ECOREGION1)
+  as.data.frame(ecodistricts_sa) |>
+    distinct(stratum_id = as.numeric(ECODISTRIC), ecoregion = ECOREGION_) |>
+    left_join(eco_names, by = "ecoregion")
+}
