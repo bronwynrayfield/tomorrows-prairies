@@ -100,7 +100,7 @@ dir.create(file.path(".", pred_dir), recursive = TRUE, showWarnings = FALSE)
 dir.create(tile_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ---- Load ----
-lulc_2010 <- rast(tagged_path("./processeddatasets", "landcover", "lulc_2010.tif", "30m"))
+lulc_2010 <- rast(file.path("./processeddatasets", "landcover", "lulc_2010.tif"))
 forest    <- rast(file.path(binary_dir, "AAFC2010_forest.tif"))
 sa_r      <- rast(file.path(sa_filepath, sa_raster_filename))
 pa_2010   <- rast(file.path("processeddatasets", "management", "Protected Areas Combined", "CPCAD_pa_2010.tif")) 
