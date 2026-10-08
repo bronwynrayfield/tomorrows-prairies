@@ -65,15 +65,27 @@ log_file_local <- file.path(
   paste0("spatial_agreement_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log")
 )
 
+log_con <- file(log_file_local, open = "wt")
+
+sink(log_con, split = TRUE)          # captures console output
+sink(log_con, type = "message")      # captures message(), warning(), stop()
+
+on.exit({
+  sink(type = "message")
+  sink()
+  close(log_con)
+}, add = TRUE)
+
 log_msg <- function(..., level = "INFO") {
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-  msg <- paste0("[", level, "] ", ts, " : ", paste(..., collapse = ""))
+  msg <- paste0(
+    "[", level, "] ",
+    ts,
+    " : ",
+    paste(..., collapse = "")
+  )
   
-  # Console
   message(msg)
-  
-  # Append to log file
-  cat(msg, "\n", file = log_file_local, append = TRUE)
 }
 
 log_msg("Starting spatial agreement analysis")
@@ -321,9 +333,14 @@ log_msg("Starting blockwise processing")
 # Block size determined by terraOptions(memfrac=...), available RAM, and number of layers
 # Can force smaller chunks for lower RAM per iteration (increase # of blocks)
 bs <- blocks(r_stack) #, n = 10000) # Try 8-20k
-str(bs)
 total_blocks <- bs$n
-summary(bs$nrows)
+
+log_msg(
+  "Block count: ", bs$n,
+  "; min rows=", min(bs$nrows),
+  "; max rows=", max(bs$nrows),
+  "; mean rows=", round(mean(bs$nrows), 1)
+)
 
 # Derive block size from terra's default
 #bs_default <- blocks(r_stack)
