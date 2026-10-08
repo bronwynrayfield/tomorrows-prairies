@@ -32,6 +32,7 @@ source(file.path("scripts/landcover/functions", "reclass-aafc-luts.R"))
 #--- Parameters ----
 # Resolution of rasters in m
 res_m <- 30
+cell_ha <- (res_m^2) / 1e4
 
 #--- File names ----
 # Study Area
@@ -53,6 +54,13 @@ aafc2020_filename <- "AAFC2020_merged.tif"
 aafc2015_filename <- "AAFC2015_merged.tif"
 aafc2010_filename <- "AAFC2010_merged.tif"
 aafc2000_filename <- "AAFC2000_merged.tif"
+luts_filenames <- c(native2010     = "AAFC2010_native.tif",
+                    tamecrop2010   = "AAFC2010_tame&crop.tif",
+                    settlement2010 = "AAFC2010_settlement.tif",
+                    native2020     = "AAFC2020_native.tif",
+                    annual2020     = "AAFC2020_crop.tif",       # Annual Cropland + Land Converted to Annual Cropland
+                    tame2020       = "AAFC2020_tame.tif",       # Cropland + Land Converted to Cropland
+                    settlement2020 = "AAFC2020_settlement.tif")
 road_filename <- "roads"
 rail_filename <- "rails"
 grass_loss_class_filename <- "recentchange_2022_loss_c05_grass_b01_class.tif"
@@ -153,6 +161,7 @@ census_subdivision_filepath <- "boundaries/census-subdivisions"
 
 # LULC
 aafc_filepath <- "landcover/AAFC LUTS 30m"
+binary_filepath <- file.path(aafc_filepath, "binary")
 #road_filepath <- "landcover/National Road Network/NRN_RRN_SK_GPKG"
 road_filepath <- "landcover/Roads - Poley et al 2021"
 rail_filepath <- "landcover/National Railway Network"
@@ -197,6 +206,11 @@ canfax_filepath <- "socio-economic/canfax"
 elevator_filepath <- "socio-economic/process-elevators"
 popctr_filepath <- "socio-economic/StatsCan Population Centres"
 
+# Outputs
+predictors_filepath <- "predictors"
+response_summary_filepath <- "output/landcover/conversion-response"
+
+
 #--- Scale ----
 oc_scale <- 10
 bd_scale <- 100
@@ -226,7 +240,11 @@ lulc_levels <- data.frame(
             "settlement", "other")
 )
 
-# ---- Define groups ----
+cls <- c(other = cls_other, native = cls_native, tame = cls_tame,
+         annual = cls_annual, settlement = cls_settlement)
+
+
+# Define grouping of LUTS classes 
 # native     : Prairie/Temperate/Boreal/Montane/Alpine grassland (63-68)
 # tame       : Cropland (51), Land Converted to Cropland (55)
 # crop       : Annual Cropland (52), Land Converted to Annual Cropland (56)
@@ -248,39 +266,36 @@ groups <- list(
   other      = c(25, 73, 74, 75, 76, 85, 91, 92)
 )
 
-# Shared LULC builder: 3b and the response variants in 7-response-sensitivity.R.
-# Order matters: tame is tested before annual, so `annual` may be the whole
-# LUTS ag domain (2010) and resolves to ag minus tame.
-# LUTS binaries are mutually exclusive.
-build_lulc <- function(native, tame, annual, settlement) {
-  r <- ifel(native == 1, cls_native,
-            ifel(tame, cls_tame,
-                 ifel(annual, cls_annual,
-                      ifel(settlement == 1, cls_settlement, cls_other))))
-  levels(r) <- lulc_levels
-  r
-}
+# Define parameters for incorporating ACI as evidence of tame grass
+tame_min_years <- 2        # 2010 tame rule only; sensitivity: 3 (min3)
 
-# Scoring for one transition: rows for the origin class only;
-# 1 = focal, 0 = persistence, NA = competing. classify() sends all other codes to NA.
-score_response <- function(from_cls, to_cls) {
-  d <- data.frame(from = from_cls, to = lulc_levels[[1]])
-  d$score <- ifelse(d$to == to_cls, 1, ifelse(d$to == from_cls, 0, NA))
-  d
-}
+# ACI evidence windows
+aci_years_2010 <- 2009:2012  # brackets 2010
+aci_years_2020 <- 2019:2022  # brackets 2020; used by aci_out variant and QA
 
-# One pass: pixel counts by stratum x from x to (classes 1-5)
-tabulate_lulc <- function(l10, l20, strata) {
-  f <- freq(strata * 100 + l10 * 10 + l20)
-  data.frame(stratum_id = f$value %/% 100, from = f$value %/% 10 %% 10,
-             to = f$value %% 10, n = f$count)
-}
+# ACI codes counted as tame evidence
+# 110 is Grassland: grassland not used for forage production, so largely natural or semi-natural grass. 
+# ACI doesn't distinguish native from seeded. Most 110 (68%) falls in LUTS native grassland.
+# 122 is Pasture/Forages: managed grass and legume cover for hay or grazing. 78% of it falls in LUTS Cropland.
+aci_count_codes <- c(110, 122)  # counted separately in both windows
+aci_tame_code <- "122"          # 2010 tame evidence; string in the variant-table format ("110+122")
 
-# Ecodistrict -> ecoregion lookup (moved from 3b)
-eco_lut <- function(ecoregions_sa, ecodistricts_sa) {
-  eco_names <- as.data.frame(ecoregions_sa) |>
-    distinct(ecoregion = ECOREGION_, ecoregion_name = ECOREGION1)
-  as.data.frame(ecodistricts_sa) |>
-    distinct(stratum_id = as.numeric(ECODISTRIC), ecoregion = ECOREGION_) |>
-    left_join(eco_names, by = "ecoregion")
-}
+
+# Response variables for suitability modelling
+responses <- tibble::tribble(
+  ~response,           ~from,      ~to,
+  "native_annual",     cls_native, cls_annual,
+  "tame_annual",       cls_tame,   cls_annual,
+  "native_settlement", cls_native, cls_settlement,
+  "tame_settlement",   cls_tame,   cls_settlement,
+  "native_tame",       cls_native, cls_tame
+)
+
+# Scoring table for all five responses, one block of rows per response:
+# from, to, score (1 = focal transition, 0 = persistence in the origin class,
+# NA = competing transition from the same origin). Only the origin's rows are listed
+scores <- bind_rows(Map(\(r, f, t) mutate(score_response(f, t), response = r),
+                        responses$response, responses$from, responses$to))
+
+
+

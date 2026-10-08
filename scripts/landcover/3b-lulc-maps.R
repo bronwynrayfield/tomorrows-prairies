@@ -27,27 +27,7 @@
 source(file.path("scripts/landcover", "0a-setup.R"))
 
 # ---- Parameters ----
-tame_min_years <- 2        # 2010 tame rule only; sensitivity: 3 (min3)
-
-# ACI evidence windows
-aci_years_2010 <- 2009:2012  # brackets 2010
-aci_years_2020 <- 2019:2022  # brackets 2020; used by aci_out variant and QA
-
-# ACI codes counted as tame evidence
-aci_count_codes <- c(110, 122)  # counted separately in both windows
-aci_tame_code   <- 122          # 2010 tame evidence
-
-# ---- Paths ----
-binary_dir  <- file.path("./processeddatasets", aafc_filepath, "binary")
-aci_dir <- file.path("./processeddatasets", file.path(aci_filepath, "30m"))
-
-f_2010_native    <- "AAFC2010_native_studyarea.tif"
-f_2010_tamecrop  <- "AAFC2010_tame&crop_studyarea.tif"
-f_2010_settlement <- "AAFC2010_settlement_studyarea.tif"
-f_2020_native    <- "AAFC2020_native_studyarea.tif"
-f_2020_annual    <- "AAFC2020_crop_studyarea.tif"        # Annual Cropland + Land Converted to Annual Cropland
-f_2020_tame <- "AAFC2020_tame_studyarea.tif"   # Cropland + Land Converted to Cropland
-f_2020_settlement <- "AAFC2020_settlement_studyarea.tif"
+# See 0a-setup.R
 
 # ---- Load ----
 # Boundaries (study area)
@@ -61,36 +41,32 @@ ecodistricts_r <- rast(tagged_path("./processeddatasets", ecodistricts_filepath,
 lulc2025       <- rast(tagged_path("./processeddatasets", grass_consensus_filepath, grass_consensus_filename, "studyarea"))
 luts2010       <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2010_filename, "studyarea"))
 luts2020       <- rast(tagged_path(file.path("./processeddatasets", aafc_filepath), "cropped", aafc2020_filename, "studyarea"))
-native2010     <- rast(file.path(binary_dir, f_2010_native))
-tamecrop2010   <- rast(file.path(binary_dir, f_2010_tamecrop))
-settlement2010 <- rast(file.path(binary_dir, f_2010_settlement))
-native2020     <- rast(file.path(binary_dir, f_2020_native))
-annual2020     <- rast(file.path(binary_dir, f_2020_annual))
-tame2020_luts  <- rast(file.path(binary_dir, f_2020_tame))
-settlement2020 <- rast(file.path(binary_dir, f_2020_settlement))
+
+# LUTS binaries (study area)
+sa_name <- function(f) sub("\\.tif$", "_studyarea.tif", f)
+native2010     <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["native2010"])))
+tamecrop2010   <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["tamecrop2010"])))
+settlement2010 <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["settlement2010"])))
+native2020     <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["native2020"])))
+annual2020     <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["annual2020"])))
+tame2020_luts  <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["tame2020"])))
+settlement2020 <- rast(file.path("./processeddatasets", binary_filepath, sa_name(luts_filenames["settlement2020"])))
 
 # LUTS binaries (modelling extent) - used by the build
-luts_me <- lapply(c(native2010 = f_2010_native, tamecrop2010 = f_2010_tamecrop,
-                    settlement2010 = f_2010_settlement, native2020 = f_2020_native,
-                    annual2020 = f_2020_annual, tame2020 = f_2020_tame,
-                    settlement2020 = f_2020_settlement),
-                  \(f) rast(file.path(binary_dir, sub("_studyarea", "", f))))
+luts_me <- lapply(luts_filenames, \(f) rast(file.path("./processeddatasets", binary_filepath, f)))
 
-# Define total cropland: 
-# 2010: undifferentiated Cropland 
-# 2020: union of annual and perennial cropland
+# Define total cropland in 2010 (tame and annual crop) 
 luts_ag_2010 <- luts_me$tamecrop2010 == 1
-luts_ag_2020 <- luts_me$annual2020 == 1 | luts_me$tame2020 == 1
 
 # ACI
-aci_2010 <- rast(file.path(aci_dir, sprintf("aci_%d_30m_modelling-extent.tif", aci_years_2010)))
+aci_2010 <- rast(file.path("./processeddatasets", aci_filepath, "30m", sprintf("aci_%d_30m_modelling-extent.tif", aci_years_2010)))
 names(aci_2010) <- paste0("y", aci_years_2010)
 
-aci_2020 <- rast(file.path(aci_dir, sprintf("aci_%d_30m_modelling-extent.tif", aci_years_2020)))
+aci_2020 <- rast(file.path("./processeddatasets", aci_filepath, "30m", sprintf("aci_%d_30m_modelling-extent.tif", aci_years_2020)))
 names(aci_2020) <- paste0("y", aci_years_2020)
 
 
-#--- Check grassland extents and frequencies in raw LUTS ----
+# ---- Check grassland extents and frequencies in raw LUTS ----
 # LUTS 2010
 freq(luts2010)
 # layer                                                     value     count
@@ -251,9 +227,6 @@ native_by_ecoregion <- tr_luts %>%
 # every response variant for sensitivity is a threshold on them. 
 # Each pixel-year carries one ACI code, so count110 + count122 = years coded 110 or 122.
 
-count_name <- function(code, yrs) sprintf("aci_%d_count_%s_%dm", code,
-                                          paste(range(yrs), collapse = "-"), res_m)
-
 aci_counts <- function(aci, yrs) {
   r <- rast(lapply(aci_count_codes, \(cd)
                    app(aci == cd, fun = "sum", na.rm = TRUE,
@@ -264,13 +237,14 @@ aci_counts <- function(aci, yrs) {
   r
 }
 
+# Generate counts for both ACI grass classes and years (some used later in response variants)
 count_2010 <- aci_counts(aci_2010, aci_years_2010)
 count_2020 <- aci_counts(aci_2020, aci_years_2020)
 
 # ---- LULC 2010 (modelling extent) ----
 # LUTS bounds the agricultural domain; ACI only splits it into tame vs annual.
 # Pixels in the domain with forage evidence below the threshold are classified as annual cropland
-tame2010 <- luts_ag_2010 & count_2010[[paste0("aci", aci_tame_code)]] >= tame_min_years
+tame2010 <- luts_ag_2010 & tame_ev(count_2010, aci_tame_code, tame_min_years)
 
 lulc_2010 <- build_lulc(luts_me$native2010, tame2010, luts_ag_2010, luts_me$settlement2010)
 names(lulc_2010) <- "lulc_2010"
@@ -281,9 +255,8 @@ lulc_2020 <- build_lulc(luts_me$native2020, luts_me$tame2020, luts_me$annual2020
 names(lulc_2020) <- "lulc_2020"
 
 # ---- Study area ----
-to_sa <- function(x) mask(crop(x, sa_r), sa_r)
-lulc_2010_sa <- to_sa(lulc_2010)
-lulc_2020_sa <- to_sa(lulc_2020)
+lulc_2010_sa <- mask(crop(lulc_2010, sa_r), sa_r)
+lulc_2020_sa <- mask(crop(lulc_2020, sa_r), sa_r)
 
 # ---- Derived layers (study area) ----
 # grass_origin and grass2010 are both functions of lulc_2010
@@ -299,8 +272,8 @@ write_rast_tagged(lulc_2010, "./processeddatasets", "landcover", "lulc_2010.tif"
 write_rast_tagged(lulc_2020, "./processeddatasets", "landcover", "lulc_2020.tif", "modelling-extent", datatype = "INT1U")
 write_rast_tagged(lulc_2010_sa, "./processeddatasets", "landcover", "lulc_2010.tif", "study-area", datatype = "INT1U")
 write_rast_tagged(lulc_2020_sa, "./processeddatasets", "landcover", "lulc_2020.tif", "study-area", datatype = "INT1U")
-write_rast_tagged(grass_origin, "./processeddatasets", "predictors/30m", "grassland_origin_2010.tif", "study-area", datatype = "INT1U")
-writeRaster(grass2010, file.path(binary_dir, "AAFC2010_ACI2009-2012_grass.tif"), datatype = "INT1U", overwrite = TRUE)
+write_rast_tagged(grass_origin, "./processeddatasets", file.path(predictors_filepath, "30m"), "grassland_origin_2010.tif", "study-area", datatype = "INT1U")
+writeRaster(grass2010, file.path("./processeddatasets", binary_filepath, "AAFC2010_ACI2009-2012_grass.tif"), datatype = "INT1U", overwrite = TRUE)
 
 # ---- QA/QC (study area)----
 f10 <- freq(lulc_2010_sa)
@@ -308,7 +281,7 @@ f10
 # layer            value     count
 # 1     1 native grassland  88924644
 # 2     1   tame grassland  63112790
-# 3     1  annual cropland 270064839
+# 3     1  annual cropland 270067567
 # 4     1       settlement   9628438
 # 5     1            other  86831188
 f20 <- freq(lulc_2020_sa)
@@ -319,7 +292,8 @@ f20
 # 3     1  annual cropland 250325061
 # 4     1       settlement  10987609
 # 5     1            other  85692994
-n_cls <- function(f, cls) f$count[f$value == cls]
+#n_cls <- function(f, cls) f$count[f$value == cls]
+n_cls <- function(f, cls) f$count[f$value == lulc_levels[[2]][lulc_levels[[1]] == cls]]
 n_bin <- function(r) global(r, "sum", na.rm = TRUE)[[1]]
 
 
@@ -342,15 +316,13 @@ freq(grass2010)
 # 1     1     0 366524465
 # 2     1     1 152037434
 
-# Full transition matrix. Script 7 reduces this to a binary; every response and
-# sensitivity variant should be expressible as a selection on it.
+# Full transition matrix
 tx <- crosstab(c(lulc_2010_sa, lulc_2020_sa), useNA = FALSE)
-cell_ha <- (res_m^2) / 1e4
 tx_ha <- tx * cell_ha
 print(round(tx_ha))
-#                    class
+#                    lulc_2020
 # lulc_2010          annual cropland native grassland    other settlement tame grassland
-# annual cropland         21466394                0      269      58992        2780181
+# annual cropland         21466558                0      269      58994        2780260
 # native grassland           18085          7920504        0      27726          36903
 # other                      52544                0  7711860       7154          43249
 # settlement                     0                0        0     866559              0

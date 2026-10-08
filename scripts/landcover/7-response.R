@@ -35,21 +35,6 @@
 
 source(file.path("scripts/landcover", "0a-setup.R"))
 
-summary_dir <- "./output/landcover/conversion-response"
-
-# ---- Responses ----
-responses <- tibble::tribble(
-  ~response,           ~from,      ~to,
-  "native_annual",     cls_native, cls_annual,
-  "tame_annual",       cls_tame,   cls_annual,
-  "native_settlement", cls_native, cls_settlement,
-  "tame_settlement",   cls_tame,   cls_settlement,
-  "native_tame",       cls_native, cls_tame
-)
-
-scores <- bind_rows(Map(\(r, f, t) mutate(score_response(f, t), response = r),
-                        responses$response, responses$from, responses$to))
-
 # ---- Load ----
 sa              <- st_read(file.path(sa_filepath, sa_filename))
 ecoregions_sa   <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "studyarea"))
@@ -72,20 +57,9 @@ for (r in responses$response) {
 }
 
 # ---- Summaries ----
-cell_ha <- (res_m^2) / 1e4
-
 summ <- tabulate_lulc(lulc_2010_sa, lulc_2020_sa, ecodistricts_r) |>
   left_join(eco_lut(ecoregions_sa, ecodistricts_sa), by = "stratum_id") |>
   inner_join(scores, by = c("from", "to"), relationship = "many-to-many")
-
-sum_scores <- function(d) summarise(d,
-                                    n_pos       = sum(n[score %in% 1]),
-                                    n_neg       = sum(n[score %in% 0]),
-                                    n_competing = sum(n[is.na(score)]),
-                                    pos_ha      = n_pos * cell_ha,
-                                    rate        = n_pos / (n_pos + n_neg),
-                                    competing_per_pos = n_competing / n_pos,
-                                    .groups = "drop")
 
 by_response <- summ |> group_by(response) |> sum_scores()
 print(by_response)
@@ -97,7 +71,7 @@ print(by_response)
 # 3 native_tame         410030 88005588      509012  36903. 0.00464            1.24  
 # 4 tame_annual       11022980 51770972      318806 992068. 0.176              0.0289
 # 5 tame_settlement     316133 51770972    11025653  28452. 0.00607            34.9 
-write.csv(by_response, file.path(summary_dir, "conversion_by_response.csv"), row.names = FALSE)
+write.csv(by_response, file.path(response_summary_filepath, "conversion_by_response.csv"), row.names = FALSE)
 
 by_ecoregion <- summ |>
   filter(!is.na(ecoregion)) |>
@@ -143,7 +117,7 @@ print(by_ecoregion, n = Inf)
 # 33 tame_settlement         158 Fescue Grassland              3795  1091603      280317    342.   0.00346           73.9    
 # 34 tame_settlement         159 Mixed Grassland              36624 14687413     2468959   3296.   0.00249           67.4    
 # 35 tame_settlement         160 Cypress Upland                 596   811661       90312     53.6  0.000734         152.  
-write.csv(by_ecoregion, file.path(summary_dir, "conversion_by_ecoregion.csv"), row.names = FALSE)
+write.csv(by_ecoregion, file.path(response_summary_filepath, "conversion_by_ecoregion.csv"), row.names = FALSE)
 
 # ---- Map ----
 # Aggregate to 600 m (fact = 20) for plotting
@@ -160,5 +134,5 @@ map <- ggplot() +
   facet_wrap(~ response) +
   theme_void()
 
-ggsave(file.path(summary_dir, "response_maps.png"),
+ggsave(file.path(response_summary_filepath, "response_maps.png"),
        plot = map, width = 14, height = 9, dpi = 300, bg = "white")
