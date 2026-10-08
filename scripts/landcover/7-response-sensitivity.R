@@ -1,13 +1,13 @@
 # Purpose:
 #   Sensitivity of the five responses to the tame definition. Each variant is
 #   a (2010 rule, 2020 rule) pair thresholding the ACI count rasters from 3b.
-#   Canonical is run through the same code and must reproduce 7 exactly.
+#   Reference is run through the same code and must reproduce 7 exactly.
 #   Variants and rationale: tame-definition-variants.xlsx
 #
 #   2010 variants move pixels between tame and annual inside the fixed LUTS ag
 #   domain, so they change the tame and annual focal proportions. Tame
 #   proportion is recomputed per 2010 variant on the modelling extent;
-#   annual = ag - tame, with ag taken from the canonical 4d layers.
+#   annual = ag - tame, with ag taken from the reference 4d layers.
 #   2020-only variants leave every 2010 predictor unchanged.
 #
 #   Only responses a variant changes are written: a 2010 change affects the
@@ -18,7 +18,7 @@
 source(file.path("scripts/landcover", "0a-setup.R"))
 
 prop_dir     <- file.path("./processeddatasets", "predictors/30m")
-f_prop_tame   <- "SET_TO_4D_TAME_PROPORTION.tif"     # canonical 4d layers, modelling extent
+f_prop_tame   <- "SET_TO_4D_TAME_PROPORTION.tif"     # reference 4d layers, modelling extent
 f_prop_annual <- "SET_TO_4D_ANNUAL_PROPORTION.tif"
 
 # ---- Variants ----
@@ -26,12 +26,12 @@ f_prop_annual <- "SET_TO_4D_ANNUAL_PROPORTION.tif"
 variants <- tibble::tribble(
   ~variant,        ~codes_2010, ~min_2010, ~codes_2020, ~min_2020,
   "reference",     aci_tame_code,       tame_min_years,         NA,          NA,
-  "min3",          "122",       3,         NA,          NA,
-#  "aci110",        "110+122",   2,         NA,          NA,
-  "aci_out",       "122",       2,         "122",       2,
-#  "aci_out_drift", "122",       2,         "110+122",   2,
-  "aci_out_min3",  "122",       3,         "122",       3,
-#  "aci110_both",   "110+122",   2,         "110+122",   2
+#  "min3",          "122",       3,         NA,          NA,
+  "aci110",        "110+122",   2,         NA,          NA,
+#  "aci_out",       "122",       2,         "122",       2,
+  "aci_out_drift", "122",       2,         "110+122",   2,
+#  "aci_out_min3",  "122",       3,         "122",       3,
+  "aci110_both",   "110+122",   2,         "110+122",   2
 ) |>
   mutate(chg_2010 = codes_2010 != codes_2010[1] | min_2010 != min_2010[1],
          chg_2020 = !is.na(codes_2020))
@@ -68,21 +68,74 @@ luts_ag_2010_me <- me_2010$tamecrop2010 == 1
 # 2020: annual U perennial. Under an ACI split a LUTS-annual pixel can be tame
 # and a LUTS-perennial pixel can be annual, so the full union is the domain.
 luts_ag_2020_sa <- sa_2020$annual2020 == 1 | sa_2020$tame2020 == 1
-# TBD Focal ag proportion (tame + annual) from 4d's canonical layers. The ag domain
+# TBD Focal ag proportion (tame + annual) from 4d's reference layers. The ag domain
 # doesn't vary, so neither does this; variants recompute tame and get annual = ag - tame.
-ag_prop_me <- rast(file.path(prop_dir, f_prop_tame)) + rast(file.path(prop_dir, f_prop_annual))
+# ag_prop_me <- rast(file.path(prop_dir, f_prop_tame)) + rast(file.path(prop_dir, f_prop_annual))
 
 # ---- Relabelling check (decides aci_out_drift) ----
-# Canonical tame that LUTS still calls perennial in 2020: how does ACI code it
-# in 2019-2022? value: 0 = neither, 1 = 122 only, 10 = 110 only, 11 = both.
-# A large 110-only share means 122 was relabelled 110: keep aci_out_drift.
-# Otherwise drop it and rely on aci110_both.
-# min_ref <- variants$min_2010[1]
-# persist <- lulc_2010_sa == cls_tame & lulc_2020_sa == cls_tame
-# relabel <- freq(ifel(persist, (count_2020_sa$aci110 >= min_ref) * 10 +
-#                        (count_2020_sa$aci122 >= min_ref), NA))
-# relabel$share <- relabel$count / sum(relabel$count)
-# print(relabel)
+# Stable tame: reference tame in 2010 that LUTS still calls perennial in 2020
+# (51,770,979 px). How does ACI code it in 2019-2022?
+# value: 0 = neither, 1 = 122 only, 10 = 110 only, 11 = both (each >= min_ref years)
+# Result: 122 only 47.6%, both 6.4%, 110 only 21.7%, neither 24.3%.
+# 122 alone recognises 54.0%; the summed aci_out_drift rule (110 + 122) 78.4%.
+# 21.7% of stable forage is coded 110 rather than 122 in 2019-2022 (relabelling
+# or forage falling out of management; either way still grass), so aci_out_drift is kept. The 21.6% that
+# fails even the summed rule is ACI/LUTS disagreement no code choice fixes,
+# which is why LUTS is the 2020 reference.
+min_ref <- variants$min_2010[1]
+persist <- lulc_2010_sa == cls_tame & lulc_2020_sa == cls_tame
+relabel <- freq(ifel(persist, (count_2020_sa$aci110 >= min_ref) * 10 +
+                       (count_2020_sa$aci122 >= min_ref), NA))
+relabel$share <- relabel$count / sum(relabel$count)
+print(relabel)
+# layer value    count      share
+# 1     1     0 12567432 0.24275052
+# 2     1     1 24618535 0.47552771
+# 3     1    10 11254132 0.21738302
+# 4     1    11  3330880 0.06433875
+freq(ifel(persist, (count_2020_sa$aci110 + count_2020_sa$aci122) >= min_ref, NA))
+# layer value    count                    
+# 1     1     0 11184973
+# 2     1     1 40586006
+
+# ---- Threshold calibration against LUTS 2020 ----
+# Within the 2020 LUTS ag domain, which ACI evidence threshold best reproduces
+# LUTS perennial? The best k is the evidence-based threshold for 2010, so both
+# dates measure the same kind of land. Tested for 122 alone (the 2010 rule) and
+# 122 only:  kappa 0.580 / 0.484 / 0.364 / 0.208 at k = 1-4; omission 57% at k = 2.
+# 110 + 122: kappa 0.704 / 0.691 / 0.629 / 0.490 at k = 1-4; omission 32% at k = 2.
+# k >= 3 is worse under both code sets; 122 alone misses most of LUTS perennial at 2020.
+calib_one <- function(codes) {
+   tab <- freq(ifel(luts_ag_2020_sa,
+                   subst(sum(count_2020_sa[[paste0("aci", strsplit(codes, "\\+")[[1]])]]), NA, 0) * 10 +
+                     (sa_2020$tame2020 == 1), NA)) |>
+    mutate(n_years = value %/% 10, luts_tame = value %% 10)
+  bind_rows(lapply(seq_along(aci_years_2020), \(k) summarise(tab, codes = codes, k = k,
+                                                             tp = sum(count[n_years >= k & luts_tame == 1]),
+                                                             fp = sum(count[n_years >= k & luts_tame == 0]),
+                                                             fn = sum(count[n_years <  k & luts_tame == 1]),
+                                                             tn = sum(count[n_years <  k & luts_tame == 0]))))
+}
+
+calib_k <- bind_rows(lapply(c("122", "110+122"), calib_one)) |>
+  mutate(n = tp + fp + fn + tn,
+         accuracy   = (tp + tn) / n,
+         omission   = fn / (tp + fn),
+         commission = fp / (tp + fp),
+         pe    = ((tp + fp) * (tp + fn) + (fn + tn) * (fp + tn)) / n^2,
+         kappa = (accuracy - pe) / (1 - pe))
+print(calib_k)
+#     codes k       tp       fp       fn        tn         n  accuracy  omission commission        pe     kappa
+# 1     122 1 48684646 13236353 34868715 237088708 333878422 0.8559204 0.4173227 0.21376194 0.6571123 0.5798053
+# 2     122 2 36105694  6730190 47447667 243594871 333878422 0.8377318 0.5678726 0.15711570 0.6856646 0.4837737
+# 3     122 3 25012996  3732663 58540365 246592398 333878422 0.8134859 0.7006345 0.12985136 0.7067442 0.3639883
+# 4     122 4 13120473  1613122 70432888 248711939 333878422 0.7842148 0.8429689 0.10948597 0.7277070 0.2075259
+# 5 110+122 1 64478199 17819548 19075162 232505513 333878422 0.8894966 0.2282992 0.21652534 0.6266277 0.7040395
+# 6 110+122 2 56579175  8997223 26974186 241327838 333878422 0.8922620 0.3228378 0.13720215 0.6516437 0.6907246
+# 7 110+122 3 47910521  5140920 35642840 245184141 333878422 0.8778485 0.4265877 0.09690444 0.6703816 0.6294153
+# 8 110+122 4 34012910  2340473 49540451 247984588 333878422 0.8446113 0.5929199 0.06438116 0.6953627 0.4899223
+write.csv(calib_k, file.path(response_summary_filepath, "sensitivity", "threshold_calibration_2020.csv"), row.names = FALSE)
+
 
 # ---- Variant loop ----
 tabs <- list()
@@ -156,11 +209,49 @@ by_response <- by_response |>
               select(response, n_pos_ref = n_pos, rate_ref = rate), by = "response") |>
   mutate(d_pos = n_pos - n_pos_ref, d_rate = rate - rate_ref)
 print(by_response, n = Inf)
+# A tibble: 35 × 12
+#   variant       response             n_pos    n_neg n_competing   pos_ha     rate competing_per_pos n_pos_ref rate_ref    d_pos    d_rate
+#   <chr>         <chr>                <dbl>    <dbl>       <dbl>    <dbl>    <dbl>             <dbl>     <dbl>    <dbl>    <dbl>     <dbl>
+# 1 aci110        native_annual       200946 88005588      718096   18085. 0.00228            3.57       200946  0.00228        0  0       
+# 2 aci110        native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 3 aci110        native_tame         410030 88005588      509012   36903. 0.00464            1.24       410030  0.00464        0  0       
+# 4 aci110        tame_annual       14225857 60059823      403211 1280327. 0.192              0.0283   11022980  0.176    3202877  0.0160  
+# 5 aci110        tame_settlement     400162 60059823    14228906   36015. 0.00662           35.6        316133  0.00607    84029  0.000549
+# 6 aci110_both   native_annual       325105 88005588      593937   29259. 0.00368            1.83       200946  0.00228   124159  0.00140 
+# 7 aci110_both   native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 8 aci110_both   native_tame         285871 88005588      633171   25728. 0.00324            2.21       410030  0.00464  -124159 -0.00140 
+# 9 aci110_both   tame_annual       25133347 49152333      403211 2262001. 0.338              0.0160   11022980  0.176   14110367  0.163   
+# 10 aci110_both   tame_settlement     400162 49152333    25136396   36015. 0.00808           62.8        316133  0.00607    84029  0.00201 
+# 11 aci_out       native_annual       513833 88005588      405209   46245. 0.00580            0.789      200946  0.00228   312887  0.00353 
+# 12 aci_out       native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 13 aci_out       native_tame          97143 88005588      821899    8743. 0.00110            8.46       410030  0.00464  -312887 -0.00353 
+# 14 aci_out       tame_annual       33478581 29315371      318806 3013072. 0.533              0.00952  11022980  0.176   22455601  0.358   
+# 15 aci_out       tame_settlement     316133 29315371    33481254   28452. 0.0107           106.         316133  0.00607        0  0.00460 
+# 16 aci_out_drift native_annual       325105 88005588      593937   29259. 0.00368            1.83       200946  0.00228   124159  0.00140 
+# 17 aci_out_drift native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 18 aci_out_drift native_tame         285871 88005588      633171   25728. 0.00324            2.21       410030  0.00464  -124159 -0.00140 
+# 19 aci_out_drift tame_annual       20342531 42451421      318806 1830828. 0.324              0.0157   11022980  0.176    9319551  0.148   
+# 20 aci_out_drift tame_settlement     316133 42451421    20345204   28452. 0.00739           64.4        316133  0.00607        0  0.00132 
+# 21 aci_out_min3  native_annual       561133 88005588      357909   50502. 0.00634            0.638      200946  0.00228   360187  0.00406 
+# 22 aci_out_min3  native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 23 aci_out_min3  native_tame          49843 88005588      869199    4486. 0.000566          17.4        410030  0.00464  -360187 -0.00407 
+# 24 aci_out_min3  tame_annual       25748817 16261639      157256 2317394. 0.613              0.00611  11022980  0.176   14725837  0.437   
+# 25 aci_out_min3  tame_settlement     155737 16261639    25750336   14016. 0.00949          165.         316133  0.00607  -160396  0.00342 
+# 26 min3          native_annual       200946 88005588      718096   18085. 0.00228            3.57       200946  0.00228        0  0       
+# 27 min3          native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 28 min3          native_tame         410030 88005588      509012   36903. 0.00464            1.24       410030  0.00464        0  0       
+# 29 min3          tame_annual        4901862 37108594      157256  441168. 0.117              0.0321   11022980  0.176   -6121118 -0.0589  
+# 30 min3          tame_settlement     155737 37108594     4903381   14016. 0.00418           31.5        316133  0.00607  -160396 -0.00189 
+# 31 reference     native_annual       200946 88005588      718096   18085. 0.00228            3.57       200946  0.00228        0  0       
+# 32 reference     native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
+# 33 reference     native_tame         410030 88005588      509012   36903. 0.00464            1.24       410030  0.00464        0  0       
+# 34 reference     tame_annual       11022980 51770972      318806  992068. 0.176              0.0289   11022980  0.176          0  0       
+# 35 reference     tame_settlement     316133 51770972    11025653   28452. 0.00607           34.9        316133  0.00607        0  0  
 write.csv(by_response, file.path(response_summary_filepath, "sensitivity", "conversion_by_response_by_variant.csv"), row.names = FALSE)
 
-# Canonical must reproduce 7
-canon <- read.csv(file.path(response_summary_filepath, "conversion_by_response.csv")) |>
+# Reference must reproduce response created in 7-response.R
+reference <- read.csv(file.path(response_summary_filepath, "conversion_by_response.csv")) |>
   select(response, ref_pos = n_pos, ref_neg = n_neg) |>
   left_join(filter(by_response, variant == ref_variant), by = "response")
-stopifnot("canonical does not reproduce 7" =
-            all(canon$n_pos == canon$ref_pos & canon$n_neg == canon$ref_neg))
+stopifnot("reference does not reproduce 7" =
+            all(reference$n_pos == reference$ref_pos & reference$n_neg == reference$ref_neg))
