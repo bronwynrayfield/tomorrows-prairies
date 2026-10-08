@@ -23,7 +23,7 @@ tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 
 # Load packages
 library(terra)
-library(future.apply)
+#library(future.apply)
 library(readr)
 library(dplyr)
 library(aws.s3)
@@ -40,7 +40,7 @@ FORCE_REBUILD <- TRUE
 
 ## ---- Parallel (light use only) ---- ##
 #n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
-future::plan(sequential)  # Avoids disk contention
+#future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
 meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_with_path.csv"
