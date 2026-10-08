@@ -37,6 +37,9 @@ terraOptions(
   progress = 1
 )
 
+# Force a fresh run instead of silently re-using old scratch outputs
+FORCE_REBUILD <- TRUE
+
 ## ---- Parallel (light use only) ---- ##
 #n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
 #future::plan(sequential)  # Avoids disk contention
@@ -44,7 +47,7 @@ terraOptions(
 ## ---- Settings ---- ##
 #meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path.csv"
 meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path_plicombined.csv"
-ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast_Oct2026.tif"
+ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
@@ -67,11 +70,9 @@ log_file_local <- file.path(
 
 log_con <- file(log_file_local, open = "wt")
 
-sink(log_con, split = TRUE)          # captures console output
-sink(log_con, type = "message")      # captures message(), warning(), stop()
+sink(log_con, split = TRUE)
 
 on.exit({
-  sink(type = "message")
   sink()
   close(log_con)
 }, add = TRUE)
@@ -86,6 +87,10 @@ log_msg <- function(..., level = "INFO") {
   )
   
   message(msg)
+  
+  cat(msg, "\n",
+      file = log_file_local,
+      append = TRUE)
 }
 
 log_msg("Starting spatial agreement analysis")
@@ -209,7 +214,7 @@ download_files <- function(files_named) {
 rfiles_local <- download_files(rfiles_s3)
 
 # Check file size to ensure correct download
-bad_files <- names(rfiles_local)[file.size(rfiles_local) < 10000]
+bad_files <- names(rfiles_local)[file.size(rfiles_local) < 1000]
 if (length(bad_files) > 0) {
   stop(paste("These rasters failed to download correctly:",
              paste(bad_files, collapse = ", ")))
@@ -724,7 +729,7 @@ for (d in seq_len(n_districts)) {
       }
       
       results_ecodist[[length(results_ecodist)+1]] <- tibble(
-        district = d_name,
+        district = as.character(d_name),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
         c00 = C[1,1], # 9 cells in confusion matrix
@@ -1237,6 +1242,12 @@ validate_spatial_agreement_multiclass(
   classes,
   na_district_pixels
 )
+
+dup_rows <- pairwise_long %>%
+  group_by(district, raster_i, raster_j) %>%
+  filter(n() > 1)
+
+dup_rows
 
 ## ---- Save outputs ---- ##
 out_csv_local <- file.path(tmp_root, "pairwise_results.csv")
