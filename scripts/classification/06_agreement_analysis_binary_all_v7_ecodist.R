@@ -12,8 +12,6 @@
 
 #### SAME AS V4 BUT ADD F1 and MCC AS METRICS ####
 
-# CROP TO A STUDY AREA?
-
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
 # trying ml.m5d.8xlarge
 # Prefer instances with NVMe local storage
@@ -47,7 +45,7 @@ future::plan(sequential)  # Avoids disk contention
 ## ---- Settings ---- ##
 meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_with_path.csv"
 #ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
-ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
+ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 out_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
@@ -514,6 +512,10 @@ for (d in seq_len(n_districts)) {
         district = as.character(d_name),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
+        n11 = tp,
+        n10 = fp,
+        n01 = fn,
+        n00 = tn,
         d_jaccard = d_j,
         d_sorensen = d_s,
         kappa = kappa,
@@ -572,6 +574,10 @@ for (i in 1:(n_rasters - 1)) {
       district = "ALL",
       raster_i = ras_names[i],
       raster_j = ras_names[j],
+      n11 = tp,
+      n10 = fp,
+      n01 = fn,
+      n00 = tn,
       d_jaccard = d_j,
       d_sorensen = d_s,
       kappa = kappa,

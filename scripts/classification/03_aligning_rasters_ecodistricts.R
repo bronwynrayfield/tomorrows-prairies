@@ -34,7 +34,7 @@ ecodist_root <- file.path(raw_data_dir, "Ecodistricts")
 sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 
 # ecodistrict shapefile
-ecodist_file <- file.path(ecodist_root, "ecodistricts_clean_class_sa.shp")
+ecodist_file <- file.path(ecodist_root, "ecodistricts_clean_aligned_Oct2026.shp")
 
 ##### use study area file as snap raster #####
 
