@@ -12,8 +12,6 @@
 
 #### SAME AS V4 BUT ADD F1 and MCC AS METRICS ####
 
-# CROP TO A STUDY AREA?
-
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
 # trying ml.m5d.8xlarge
 # Prefer instances with NVMe local storage
@@ -25,7 +23,7 @@ tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 
 # Load packages
 library(terra)
-library(future.apply)
+#library(future.apply)
 library(readr)
 library(dplyr)
 library(aws.s3)
@@ -42,12 +40,12 @@ FORCE_REBUILD <- TRUE
 
 ## ---- Parallel (light use only) ---- ##
 #n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
-future::plan(sequential)  # Avoids disk contention
+#future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
 meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_with_path.csv"
 #ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
-ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast.tif"
+ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 out_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
@@ -68,15 +66,27 @@ log_file_local <- file.path(
   paste0("spatial_agreement_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log")
 )
 
+log_con <- file(log_file_local, open = "wt")
+
+sink(log_con, split = TRUE)          # captures console output
+sink(log_con, type = "message")      # captures message(), warning(), stop()
+
+on.exit({
+  sink(type = "message")
+  sink()
+  close(log_con)
+}, add = TRUE)
+
 log_msg <- function(..., level = "INFO") {
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-  msg <- paste0("[", level, "] ", ts, " : ", paste(..., collapse = ""))
+  msg <- paste0(
+    "[", level, "] ",
+    ts,
+    " : ",
+    paste(..., collapse = "")
+  )
   
-  # Console
   message(msg)
-  
-  # Append to log file
-  cat(msg, "\n", file = log_file_local, append = TRUE)
 }
 
 log_msg("Starting spatial agreement analysis")
@@ -292,9 +302,14 @@ log_msg("Starting blockwise processing")
 # Block size determined by terraOptions(memfrac=...), available RAM, and number of layers
 # Can force smaller chunks for lower RAM per iteration (increase # of blocks)
 bs <- blocks(r_stack) #, n = 10000) # Try 8-20k
-str(bs)
 total_blocks <- bs$n
-summary(bs$nrows)
+
+log_msg(
+  "Block count: ", bs$n,
+  "; min rows=", min(bs$nrows),
+  "; max rows=", max(bs$nrows),
+  "; mean rows=", round(mean(bs$nrows), 1)
+)
 
 # Derive block size from terra's default
 #bs_default <- blocks(r_stack)
@@ -514,6 +529,10 @@ for (d in seq_len(n_districts)) {
         district = as.character(d_name),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
+        n11 = tp,
+        n10 = fp,
+        n01 = fn,
+        n00 = tn,
         d_jaccard = d_j,
         d_sorensen = d_s,
         kappa = kappa,
@@ -572,6 +591,10 @@ for (i in 1:(n_rasters - 1)) {
       district = "ALL",
       raster_i = ras_names[i],
       raster_j = ras_names[j],
+      n11 = tp,
+      n10 = fp,
+      n01 = fn,
+      n00 = tn,
       d_jaccard = d_j,
       d_sorensen = d_s,
       kappa = kappa,
@@ -731,7 +754,7 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_24Jun2026.csv")
+  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_8Oct2026.csv")
 )
 
 message("Finished pairwise spatial agreement analysis")

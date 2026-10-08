@@ -25,7 +25,7 @@ tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 
 # Load packages
 library(terra)
-library(future.apply)  # running sequentially to avoid disk contention
+#library(future.apply)  # running sequentially to avoid disk contention
 library(readr)
 library(dplyr)
 library(aws.s3)
@@ -39,12 +39,14 @@ terraOptions(
 
 ## ---- Parallel (light use only) ---- ##
 #n_cores <- min(6, parallel::detectCores(logical = FALSE) - 2)
-future::plan(sequential)  # Avoids disk contention
+#future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
 #meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path.csv"
 meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path_plicombined.csv"
-ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
+ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast_Oct2026.tif"
+pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
+sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 out_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
 log_dir    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
 local_dir <- file.path(tmp_root, "data")
@@ -63,15 +65,27 @@ log_file_local <- file.path(
   paste0("spatial_agreement_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".log")
 )
 
+log_con <- file(log_file_local, open = "wt")
+
+sink(log_con, split = TRUE)          # captures console output
+sink(log_con, type = "message")      # captures message(), warning(), stop()
+
+on.exit({
+  sink(type = "message")
+  sink()
+  close(log_con)
+}, add = TRUE)
+
 log_msg <- function(..., level = "INFO") {
   ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-  msg <- paste0("[", level, "] ", ts, " : ", paste(..., collapse = ""))
+  msg <- paste0(
+    "[", level, "] ",
+    ts,
+    " : ",
+    paste(..., collapse = "")
+  )
   
-  # Console
   message(msg)
-  
-  # Append to log file
-  cat(msg, "\n", file = log_file_local, append = TRUE)
 }
 
 log_msg("Starting spatial agreement analysis")
@@ -85,7 +99,37 @@ meta <- aws.s3::s3read_using(read_csv, object = meta_file, show_col_types = FALS
 
 rfiles_s3 <- setNames(meta$file, meta$raster)
 
+stopifnot(!anyDuplicated(meta$raster))
+
 log_msg("Metadata rows loaded: ", nrow(meta))
+
+## ---- Load pilot area ---- ##
+log_msg("Loading pilot area")
+
+pilot_local <- file.path(local_dir, "pilot_area.tif")
+
+aws.s3::save_object(
+  object = pilot_file,
+  file = pilot_local
+)
+
+pilot <- rast(pilot_local)
+
+log_msg("Pilot area loaded")
+
+## ---- Load study area ---- ##
+log_msg("Loading study area")
+
+sa_local <- file.path(local_dir, "study_area.tif")
+
+aws.s3::save_object(
+  object = sa_file,
+  file = sa_local
+)
+
+sa <- rast(sa_local)
+
+log_msg("Study area loaded")
 
 ## ---- Download rasters locally ---- ##
 message("Downloading rasters locally...")
@@ -99,24 +143,70 @@ log_msg("Downloading rasters locally")
 #  dest
 #}, USE.NAMES = TRUE)
 
-rfiles_local <- sapply(names(rfiles_s3), function(nm) {
-  
-  s3_path <- rfiles_s3[[nm]]
-  
-  s3_clean <- sub("^s3://", "", s3_path)
-  parts <- strsplit(s3_clean, "/", fixed = TRUE)[[1]]
-  
-  bucket <- parts[1]
-  key <- paste(parts[-1], collapse = "/")
-  
-  dest <- file.path(local_dir, paste0(nm, ".tif"))
-  
-  aws.s3::save_object(object = key, bucket = bucket, file = dest)
-  
-  dest
-}, USE.NAMES = TRUE)
+# rfiles_local <- sapply(names(rfiles_s3), function(nm) {
+#   
+#   s3_path <- rfiles_s3[[nm]]
+#   
+#   s3_clean <- sub("^s3://", "", s3_path)
+#   parts <- strsplit(s3_clean, "/", fixed = TRUE)[[1]]
+#   
+#   bucket <- parts[1]
+#   key <- paste(parts[-1], collapse = "/")
+#   
+#   dest <- file.path(local_dir, paste0(nm, ".tif"))
+#   
+#   aws.s3::save_object(object = key, bucket = bucket, file = dest)
+#   
+#   dest
+# }, USE.NAMES = TRUE)
+# 
+# log_msg("All rasters downloaded locally")
 
-log_msg("All rasters downloaded locally")
+download_files <- function(files_named) {
+  
+  if (length(files_named) == 0)
+    return(setNames(character(0), character(0)))
+  
+  sapply(names(files_named), function(nm) {
+    
+    raw_file <- file.path(local_dir, paste0(nm, "_raw.tif"))
+    crop_file <- file.path(local_dir, paste0(nm, ".tif"))
+    
+    if (!file.exists(crop_file) || FORCE_REBUILD) {
+      
+      # download original
+      aws.s3::save_object(files_named[[nm]], file = raw_file)
+      
+      # crop + mask to pilot
+      r <- rast(raw_file)
+      
+      r <- crop(r, pilot)
+      r <- mask(r, pilot)
+      
+      writeRaster(
+        r,
+        crop_file,
+        overwrite = TRUE,
+        wopt = list(
+          gdal = c(
+            "COMPRESS=ZSTD",
+            "TILED=YES",
+            "BIGTIFF=YES"
+          )
+        )
+      )
+      
+      rm(r)
+      gc()
+    }
+    
+    crop_file
+    
+  }, USE.NAMES = TRUE)
+  
+}
+
+rfiles_local <- download_files(rfiles_s3)
 
 # Check file size to ensure correct download
 bad_files <- names(rfiles_local)[file.size(rfiles_local) < 10000]
@@ -170,10 +260,18 @@ log_msg("Rasters confirmed aligned — skipping resampling")
 #names(aligned_files) <- names(rfiles_local)
 
 ## ---- Load ecodistrict raster ---- ##
-ecodist_local <- file.path(local_dir, "ecodistricts.tif")
-aws.s3::save_object(ecodist_file, file = ecodist_local)
+log_msg("Loading pilot-clipped ecodistrict raster")
 
-ecodist_rast <- rast(ecodist_local)
+ecodist_r <- rast(ecodist_file)
+
+if (!compareGeom(template, pilot, stopOnError = FALSE)) {
+  stop("Pilot raster is not aligned with template raster")
+}
+
+ecodist_r <- crop(ecodist_r, pilot)
+ecodist_r <- mask(ecodist_r, pilot)
+
+ecodist_rast <- as.int(ecodist_r)
 
 # Ensure alignment
 if (!compareGeom(ecodist_rast, template, stopOnError = FALSE)) {
@@ -192,7 +290,13 @@ ras_names <- names(r_stack)
 ## ---- Initialize ecodistricts ---- ##
 
 # Get unique district IDs (could also delay until first block)
-district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
+#district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
+freq_table <- freq(ecodist_rast)
+district_vals <- as.integer(freq_table$value)
+
+if (anyDuplicated(district_vals)) {
+  stop("Duplicate district IDs found")
+}
 
 # initialize empty set
 #district_vals <- integer(0)
@@ -229,9 +333,14 @@ log_msg("Starting blockwise processing")
 # Block size determined by terraOptions(memfrac=...), available RAM, and number of layers
 # Can force smaller chunks for lower RAM per iteration (increase # of blocks)
 bs <- blocks(r_stack) #, n = 10000) # Try 8-20k
-str(bs)
 total_blocks <- bs$n
-summary(bs$nrows)
+
+log_msg(
+  "Block count: ", bs$n,
+  "; min rows=", min(bs$nrows),
+  "; max rows=", max(bs$nrows),
+  "; mean rows=", round(mean(bs$nrows), 1)
+)
 
 # Derive block size from terra's default
 #bs_default <- blocks(r_stack)
@@ -254,6 +363,11 @@ summary(bs$nrows)
 # OPEN FILE CONNECTIONS
 readStart(r_stack)
 readStart(ecodist_rast)
+
+on.exit({
+  try(readStop(r_stack), silent = TRUE)
+  try(readStop(ecodist_rast), silent = TRUE)
+}, add = TRUE)
 
 for (i in 1:total_blocks) {
   
@@ -278,10 +392,7 @@ for (i in 1:total_blocks) {
   
   # Safe indexing
   districts <- as.integer(districts)
-  
-  # Use integers to avoid double precision overhead and cut RAM
-  storage.mode(vals) <- "integer"
-  
+
   # Skip empty block
   if (all(is.na(vals))) next
   
@@ -299,6 +410,9 @@ for (i in 1:total_blocks) {
   if (length(bad_vals) > 0) {
     stop("Unexpected class values detected: ", paste(bad_vals, collapse = ", "))
   }
+  
+  # Use integers to avoid double precision overhead and cut RAM
+  storage.mode(vals) <- "integer"
   
   if (nrow(vals_global) == 0) {
     rm(vals, vals_global, vals_dist, districts, districts_dist)
@@ -388,6 +502,28 @@ log_msg("Finished block processing")
 
 message("Total pixels where district = NA: ", na_district_pixels)
 log_msg("Total pixels where ecodistrict raster is NA: ", na_district_pixels)
+
+## ---- Check that all classes occur ---- ##
+
+for (k in seq_along(classes)) {
+  
+  row_total <- sum(counts[, , k, ], na.rm = TRUE)
+  col_total <- sum(counts[, , , k], na.rm = TRUE)
+  
+  message(
+    sprintf(
+      "Class %s totals: row=%s col=%s",
+      classes[k],
+      format(row_total, big.mark = ","),
+      format(col_total, big.mark = ",")))
+  
+  if (row_total == 0 && col_total == 0) {
+    warning(
+      sprintf(
+        "Class %s never occurs in any raster",
+        classes[k]))
+  }
+}
 
 ## ---- Compute metrics ---- ##
 message("Computing metrics...")
@@ -483,6 +619,21 @@ for (i in 1:(n_rasters - 1)) {
       district = "ALL",
       raster_i = ras_names[i],
       raster_j = ras_names[j],
+      c00 = C[1,1], # 9 cells in confusion matrix
+      c01 = C[1,2],
+      c02 = C[1,3],
+      c10 = C[2,1],
+      c11 = C[2,2],
+      c12 = C[2,3],
+      c20 = C[3,1],
+      c21 = C[3,2],
+      c22 = C[3,3],
+      row0 = sum(C[1,]), # pixels class 0 in raster_i
+      row1 = sum(C[2,]), # pixels class 1 in raster_i
+      row2 = sum(C[3,]), # pixels class 2 in raster_i
+      col0 = sum(C[,1]), # pixels class 0 in raster_j
+      col1 = sum(C[,2]), # pixels class 1 in raster_j
+      col2 = sum(C[,3]), # pixels class 2 in raster_j
       kappa = kappa,
       accuracy = accuracy,
       jaccard_macro = jaccard_macro,
@@ -576,6 +727,21 @@ for (d in seq_len(n_districts)) {
         district = d_name,
         raster_i = ras_names[i],
         raster_j = ras_names[j],
+        c00 = C[1,1], # 9 cells in confusion matrix
+        c01 = C[1,2],
+        c02 = C[1,3],
+        c10 = C[2,1],
+        c11 = C[2,2],
+        c12 = C[2,3],
+        c20 = C[3,1],
+        c21 = C[3,2],
+        c22 = C[3,3],
+        row0 = sum(C[1,]), # pixels class 0 in raster_i
+        row1 = sum(C[2,]), # pixels class 1 in raster_i
+        row2 = sum(C[3,]), # pixels class 2 in raster_i
+        col0 = sum(C[,1]), # pixels class 0 in raster_j
+        col1 = sum(C[,2]), # pixels class 1 in raster_j
+        col2 = sum(C[,3]), # pixels class 2 in raster_j
         kappa = kappa,
         accuracy = accuracy,
         jaccard_macro = jaccard_macro,
@@ -704,7 +870,7 @@ validate_spatial_agreement_multiclass <- function(
     Cii <- counts[i, i, , ]
     offdiag <- Cii
     diag(offdiag) <- 0
-    
+
     if (any(offdiag != 0)) {
       stop(sprintf(
         "Global diagonal self-comparison failed for raster %s: off-diagonal entries are nonzero",
@@ -755,7 +921,8 @@ validate_spatial_agreement_multiclass <- function(
   }
   
   max_diff <- max(abs(diff), na.rm = TRUE)
-  total_diff <- sum(diff)
+  total_diff <- sum(diff) # sum of pairwise counts located in pixels
+                          # where ecodistrict is NA (not number of NA-district pixels)
   
   message("Max difference (global - summed ecodistrict): ", max_diff)
   message("Total difference (global - summed ecodistrict): ", total_diff)
@@ -945,6 +1112,112 @@ validate_spatial_agreement_multiclass <- function(
   
   message("✓ Output N cross-checks passed")
   
+  ## ---- 12. Validate exported confusion matrix counts ---- ##
+  
+  required_confusion_cols <- c(
+    "c00","c01","c02",
+    "c10","c11","c12",
+    "c20","c21","c22"
+  )
+  
+  missing_confusion_cols <- setdiff(
+    required_confusion_cols,
+    names(pairwise_long)
+  )
+  
+  if (length(missing_confusion_cols) > 0) {
+    stop(
+      "Missing confusion matrix columns: ",
+      paste(missing_confusion_cols, collapse = ", ")
+    )
+  }
+  
+  N_from_confusion <-
+    pairwise_long$c00 +
+    pairwise_long$c01 +
+    pairwise_long$c02 +
+    pairwise_long$c10 +
+    pairwise_long$c11 +
+    pairwise_long$c12 +
+    pairwise_long$c20 +
+    pairwise_long$c21 +
+    pairwise_long$c22
+  
+  mismatch <- which(
+    N_from_confusion != pairwise_long$N
+  )
+  
+  if (length(mismatch) > 0) {
+    stop(
+      sprintf(
+        "Confusion matrix totals do not equal N for %d row(s)",
+        length(mismatch)
+      )
+    )
+  }
+  
+  message("✓ Confusion matrix totals match N")
+  
+  ## ---- 13. Validate row/column marginal totals ---- ##
+  
+  if (any(pairwise_long$row0 !=
+          pairwise_long$c00 +
+          pairwise_long$c01 +
+          pairwise_long$c02)) {
+    stop("row0 does not match confusion matrix")
+  }
+  
+  if (any(pairwise_long$row1 !=
+          pairwise_long$c10 +
+          pairwise_long$c11 +
+          pairwise_long$c12)) {
+    stop("row1 does not match confusion matrix")
+  }
+  
+  if (any(pairwise_long$row2 !=
+          pairwise_long$c20 +
+          pairwise_long$c21 +
+          pairwise_long$c22)) {
+    stop("row2 does not match confusion matrix")
+  }
+  
+  if (any(pairwise_long$col0 !=
+          pairwise_long$c00 +
+          pairwise_long$c10 +
+          pairwise_long$c20)) {
+    stop("col0 does not match confusion matrix")
+  }
+  
+  if (any(pairwise_long$col1 !=
+          pairwise_long$c01 +
+          pairwise_long$c11 +
+          pairwise_long$c21)) {
+    stop("col1 does not match confusion matrix")
+  }
+  
+  if (any(pairwise_long$col2 !=
+          pairwise_long$c02 +
+          pairwise_long$c12 +
+          pairwise_long$c22)) {
+    stop("col2 does not match confusion matrix")
+  }
+  
+  if (any(pairwise_long$N !=
+          (pairwise_long$row0 +
+           pairwise_long$row1 +
+           pairwise_long$row2))) {
+    stop("N does not match row totals")
+  }
+  
+  if (any(pairwise_long$N !=
+          (pairwise_long$col0 +
+           pairwise_long$col1 +
+           pairwise_long$col2))) {
+    stop("N does not match column totals")
+  }
+  
+  message("✓ Row and column totals match confusion matrix")
+  
   message("---- All multiclass validation checks completed ----")
   
   invisible(list(
@@ -954,13 +1227,24 @@ validate_spatial_agreement_multiclass <- function(
   ))
 }
 
+# call the validation function to run checks 
+validate_spatial_agreement_multiclass(
+  counts,
+  counts_ecodist,
+  pairwise_long,
+  district_vals,
+  ras_names,
+  classes,
+  na_district_pixels
+)
+
 ## ---- Save outputs ---- ##
 out_csv_local <- file.path(tmp_root, "pairwise_results.csv")
 write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_02Jun2026.csv")
+  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_ecodist_08Oct2026.csv")
 )
 
 message("Finished pairwise spatial agreement analysis")

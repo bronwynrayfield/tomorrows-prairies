@@ -36,7 +36,8 @@ sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 mod_sa_file <- file.path(sa_dir, "TP_study_area_prairies_ecozone.shp")
 
 # modelling extent
-mod_ext_file <- file.path(sa_dir, "TP_study_area_ecodistrict_buffer.shp")
+#mod_ext_file <- file.path(sa_dir, "TP_study_area_ecodistrict_buffer.shp")
+mod_ext_file <- file.path(sa_dir, "modelling_extent_clean_aligned_Oct2026.shp")
 
 # classification study area (modelling extent + Peace River)
 class_sa_file <- file.path(sa_dir, "class_sa_modext_peacriv.shp")
@@ -90,6 +91,8 @@ crs(mod_sa_rast)
 origin(mod_ext_rast)
 res(mod_ext_rast)
 crs(mod_ext_rast)
+mod_ext_rast
+plot(mod_ext_rast)
 
 # print raster details 
 origin(pa_rast)
@@ -154,7 +157,7 @@ writeRaster(mod_sa_rast_trimmed, mod_sa_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
-mod_ext_out_path <- file.path(sa_dir, "modelling_extent_aligned_cnvc_Jan2026.tif")
+mod_ext_out_path <- file.path(sa_dir, "modelling_extent_aligned_cnvc_Oct2026.tif")
 writeRaster(mod_ext_rast_trimmed, mod_ext_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
