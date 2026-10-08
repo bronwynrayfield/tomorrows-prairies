@@ -254,11 +254,10 @@ names(lulc_2010) <- "lulc_2010"
 lulc_2020 <- build_lulc(luts_me$native2020, luts_me$tame2020, luts_me$annual2020, luts_me$settlement2020)
 names(lulc_2020) <- "lulc_2020"
 
-# ---- Study area ----
+# ---- Derived layers (study area) ----
 lulc_2010_sa <- mask(crop(lulc_2010, sa_r), sa_r)
 lulc_2020_sa <- mask(crop(lulc_2020, sa_r), sa_r)
 
-# ---- Derived layers (study area) ----
 # grass_origin and grass2010 are both functions of lulc_2010
 grass_origin <- ifel(lulc_2010_sa == cls_native, 1,
                      ifel(lulc_2010_sa == cls_tame, 2, NA))
@@ -280,8 +279,8 @@ f10 <- freq(lulc_2010_sa)
 f10
 # layer            value     count
 # 1     1 native grassland  88924644
-# 2     1   tame grassland  63112790
-# 3     1  annual cropland 270067567
+# 2     1   tame grassland  74688926
+# 3     1  annual cropland 258491431
 # 4     1       settlement   9628438
 # 5     1            other  86831188
 f20 <- freq(lulc_2020_sa)
@@ -313,8 +312,8 @@ stopifnot(
 # Cheeck against sum of native and tame in 2010
 freq(grass2010)
 # layer value     count
-# 1     1     0 366524465
-# 2     1     1 152037434
+# 1     1     0 354951057
+# 2     1     1 163613570
 
 # Full transition matrix
 tx <- crosstab(c(lulc_2010_sa, lulc_2020_sa), useNA = FALSE)
@@ -322,10 +321,10 @@ tx_ha <- tx * cell_ha
 print(round(tx_ha))
 #                    lulc_2020
 # lulc_2010          annual cropland native grassland    other settlement tame grassland
-# annual cropland         21466558                0      269      58994        2780260
+# annual cropland         21178300                0      235      51431        2034263
 # native grassland           18085          7920504        0      27726          36903
 # other                      52544                0  7711860       7154          43249
 # settlement                     0                0        0     866559              0
-# tame grassland            992068                0      241      28452        4659390
+# tame grassland           1280327                0      274      36015        5405387
 write.csv(as.data.frame(tx), file.path("./processeddatasets", "landcover", "lulc_transitions_2010_2020_study-area.csv"),
           row.names = FALSE)

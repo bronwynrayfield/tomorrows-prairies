@@ -278,7 +278,7 @@ aci_years_2020 <- 2019:2022  # brackets 2020; used by aci_out variant and QA
 # ACI doesn't distinguish native from seeded. Most 110 (68%) falls in LUTS native grassland.
 # 122 is Pasture/Forages: managed grass and legume cover for hay or grazing. 78% of it falls in LUTS Cropland.
 aci_count_codes <- c(110, 122)  # counted separately in both windows
-aci_tame_code <- "122"          # 2010 tame evidence; string in the variant-table format ("110+122")
+aci_tame_code <- "110+122"          # 2010 tame evidence; string in the variant-table format ("110+122")
 
 
 # Response variables for suitability modelling
