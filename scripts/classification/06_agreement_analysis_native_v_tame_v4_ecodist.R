@@ -20,21 +20,21 @@
 
 # if unable to load terra after R updates:
 system("ldd ~/R/x86_64-pc-linux-gnu-library/4.4/terra/libs/terra.so")
-
 system("find / -name 'libproj.so*' 2>/dev/null")
 system("find / -name 'libgdal.so*' 2>/dev/null")
 system("find / -name 'libgeos_c.so*' 2>/dev/null")
 
 Sys.getenv("CONDA_PREFIX")
+
 system("ls $CONDA_PREFIX/lib | grep -E 'proj|gdal|geos'")
 
 system("which gdalinfo")
 system("gdalinfo --version")
-
 system("which proj")
 system("proj")
 
 # then in terminal:
+
 # sudo apt-get update
 
 # then:
@@ -48,12 +48,13 @@ system("proj")
 # then reinstall terra
 
 # then:
+
 # Sys.setenv(
 #   AWS_ACCESS_KEY_ID     = creds$AccessKeyId,
 #   AWS_SECRET_ACCESS_KEY = creds$SecretAccessKey,
 #   AWS_SESSION_TOKEN     = creds$Token
 # )
-# 
+
 # aws.signature::locate_credentials()
 
 ## ---- Setup ---- ##
@@ -84,7 +85,7 @@ FORCE_REBUILD <- TRUE
 
 ## ---- Settings ---- ##
 #meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path.csv"
-meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path_plicombined.csv"
+meta_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path_plicombinedandseparated.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
@@ -108,7 +109,7 @@ log_file_local <- file.path(
 
 log_con <- file(log_file_local, open = "wt")
 
-sink(log_con, split = TRUE)
+sink(log_con, split = TRUE)          # captures console output
 
 on.exit({
   sink()
@@ -126,10 +127,19 @@ log_msg <- function(..., level = "INFO") {
   
   message(msg)
   
-  cat(msg, "\n",
-      file = log_file_local,
-      append = TRUE)
+  cat(msg, "\n", file = log_file_local, append = TRUE)
 }
+
+on.exit({
+  if (file.exists(log_file_local)) {
+    tryCatch(
+      aws.s3::put_object(file = log_file_local, object = log_file),
+      error = function(e) message("Could not upload log file: ", conditionMessage(e))
+    )
+  }
+}, add = TRUE)
+
+log_msg("---- SESSION INFO ----")
 
 script_name <- tryCatch({
   cmd_args <- commandArgs(trailingOnly = FALSE)
@@ -161,6 +171,8 @@ capture.output(print(terraOptions())) |>
   lapply(log_msg)
 gc_out <- capture.output(gc())
 log_msg(paste(gc_out, collapse = " | "))
+
+log_msg("---- END SESSION INFO ----")
 
 log_msg("Starting spatial agreement analysis")
 #log_msg("Parallel workers detected: ", n_cores)
@@ -283,7 +295,7 @@ download_files <- function(files_named) {
 rfiles_local <- download_files(rfiles_s3)
 
 # Check file size to ensure correct download
-bad_files <- names(rfiles_local)[file.size(rfiles_local) < 1000]
+bad_files <- names(rfiles_local)[file.size(rfiles_local) < 10000]
 if (length(bad_files) > 0) {
   stop(paste("These rasters failed to download correctly:",
              paste(bad_files, collapse = ", ")))
@@ -1311,12 +1323,6 @@ validate_spatial_agreement_multiclass(
   classes,
   na_district_pixels
 )
-
-# dup_rows <- pairwise_long %>%
-#   group_by(district, raster_i, raster_j) %>%
-#   filter(n() > 1)
-# 
-# dup_rows
 
 ## ---- Save outputs ---- ##
 out_csv_local <- file.path(tmp_root, "pairwise_results.csv")
