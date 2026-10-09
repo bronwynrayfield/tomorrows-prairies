@@ -91,6 +91,37 @@ log_msg <- function(..., level = "INFO") {
       append = TRUE)
 }
 
+script_name <- tryCatch({
+  cmd_args <- commandArgs(trailingOnly = FALSE)
+  sub("^--file=", "", cmd_args[grep("^--file=", cmd_args)])
+}, error = function(e) NA_character_)
+
+log_msg("Script name: ", script_name)
+
+session_lines <- capture.output(sessionInfo())
+
+for (ln in session_lines) {
+  log_msg(ln)
+}
+
+log_msg("R version: ", R.version.string)
+log_msg("Platform: ", R.version$platform)
+log_msg("Working directory: ", getwd())
+log_msg("terra version: ", as.character(packageVersion("terra")))
+log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
+log_msg("aws.s3 version: ", packageVersion("aws.s3"))
+log_msg("readr version: ", packageVersion("readr"))
+log_msg("Temp root: ", tmp_root)
+log_msg("GDAL_CACHEMAX: ", Sys.getenv("GDAL_CACHEMAX"))
+log_msg("FORCE_REBUILD: ", FORCE_REBUILD)
+log_msg("Sys.info: ",
+        paste(names(Sys.info()), Sys.info(), collapse = "; "))
+log_msg("terra options:")
+capture.output(print(terraOptions())) |>
+  lapply(log_msg)
+gc_out <- capture.output(gc())
+log_msg(paste(gc_out, collapse = " | "))
+
 log_msg("Starting spatial agreement analysis")
 #log_msg("Parallel workers detected: ", n_cores)
 
