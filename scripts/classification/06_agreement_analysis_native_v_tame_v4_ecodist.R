@@ -18,6 +18,44 @@
 # ran using ml.m5d.8xlarge
 # Prefer instances with NVMe local storage
 
+# if unable to load terra after R updates:
+system("ldd ~/R/x86_64-pc-linux-gnu-library/4.4/terra/libs/terra.so")
+
+system("find / -name 'libproj.so*' 2>/dev/null")
+system("find / -name 'libgdal.so*' 2>/dev/null")
+system("find / -name 'libgeos_c.so*' 2>/dev/null")
+
+Sys.getenv("CONDA_PREFIX")
+system("ls $CONDA_PREFIX/lib | grep -E 'proj|gdal|geos'")
+
+system("which gdalinfo")
+system("gdalinfo --version")
+
+system("which proj")
+system("proj")
+
+# then in terminal:
+# sudo apt-get update
+
+# then:
+# sudo apt-get install -y \
+# gdal-bin \
+# libgdal-dev \
+# proj-bin \
+# libproj-dev \
+# libgeos-dev
+
+# then reinstall terra
+
+# then:
+# Sys.setenv(
+#   AWS_ACCESS_KEY_ID     = creds$AccessKeyId,
+#   AWS_SECRET_ACCESS_KEY = creds$SecretAccessKey,
+#   AWS_SESSION_TOKEN     = creds$Token
+# )
+# 
+# aws.signature::locate_credentials()
+
 ## ---- Setup ---- ##
 # Temp dirs
 tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
@@ -92,6 +130,37 @@ log_msg <- function(..., level = "INFO") {
       file = log_file_local,
       append = TRUE)
 }
+
+script_name <- tryCatch({
+  cmd_args <- commandArgs(trailingOnly = FALSE)
+  sub("^--file=", "", cmd_args[grep("^--file=", cmd_args)])
+}, error = function(e) NA_character_)
+
+log_msg("Script name: ", script_name)
+
+session_lines <- capture.output(sessionInfo())
+
+for (ln in session_lines) {
+  log_msg(ln)
+}
+
+log_msg("R version: ", R.version.string)
+log_msg("Platform: ", R.version$platform)
+log_msg("Working directory: ", getwd())
+log_msg("terra version: ", as.character(packageVersion("terra")))
+#log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
+log_msg("aws.s3 version: ", packageVersion("aws.s3"))
+log_msg("readr version: ", packageVersion("readr"))
+log_msg("Temp root: ", tmp_root)
+log_msg("GDAL_CACHEMAX: ", Sys.getenv("GDAL_CACHEMAX"))
+log_msg("FORCE_REBUILD: ", FORCE_REBUILD)
+log_msg("Sys.info: ",
+        paste(names(Sys.info()), Sys.info(), collapse = "; "))
+log_msg("terra options:")
+capture.output(print(terraOptions())) |>
+  lapply(log_msg)
+gc_out <- capture.output(gc())
+log_msg(paste(gc_out, collapse = " | "))
 
 log_msg("Starting spatial agreement analysis")
 #log_msg("Parallel workers detected: ", n_cores)
@@ -1243,11 +1312,11 @@ validate_spatial_agreement_multiclass(
   na_district_pixels
 )
 
-dup_rows <- pairwise_long %>%
-  group_by(district, raster_i, raster_j) %>%
-  filter(n() > 1)
-
-dup_rows
+# dup_rows <- pairwise_long %>%
+#   group_by(district, raster_i, raster_j) %>%
+#   filter(n() > 1)
+# 
+# dup_rows
 
 ## ---- Save outputs ---- ##
 out_csv_local <- file.path(tmp_root, "pairwise_results.csv")
