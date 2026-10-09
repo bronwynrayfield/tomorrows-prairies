@@ -68,11 +68,9 @@ log_file_local <- file.path(
 
 log_con <- file(log_file_local, open = "wt")
 
-sink(log_con, split = TRUE)          # captures console output
-sink(log_con, type = "message")      # captures message(), warning(), stop()
+sink(log_con, split = TRUE)
 
 on.exit({
-  sink(type = "message")
   sink()
   close(log_con)
 }, add = TRUE)
@@ -87,6 +85,10 @@ log_msg <- function(..., level = "INFO") {
   )
   
   message(msg)
+  
+  cat(msg, "\n",
+      file = log_file_local,
+      append = TRUE)
 }
 
 log_msg("Starting spatial agreement analysis")
