@@ -47,7 +47,8 @@ meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies
 #ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
-sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
+#sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
+sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/temperate_scope_aligned_cnvc_Apr2026.tif"
 out_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
 log_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
 local_dir    <- file.path(tmp_root, "data")
@@ -108,7 +109,7 @@ log_msg("R version: ", R.version.string)
 log_msg("Platform: ", R.version$platform)
 log_msg("Working directory: ", getwd())
 log_msg("terra version: ", as.character(packageVersion("terra")))
-log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
+#log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
 log_msg("aws.s3 version: ", packageVersion("aws.s3"))
 log_msg("readr version: ", packageVersion("readr"))
 log_msg("Temp root: ", tmp_root)
