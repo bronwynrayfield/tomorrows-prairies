@@ -1,4 +1,4 @@
-# set common libraries, parameters, functions, files, and directories
+# Set common libraries, parameters, functions, files, and directories
 
 library(terra)
 library(tidyterra)
@@ -13,6 +13,8 @@ library(patchwork)
 library(geodata)
 library(foreign)
 library(ncf)
+library(rvest)
+library(parallel)
 
 # check available space on different mount points and memory
 system("df -h")
@@ -145,6 +147,10 @@ canfax2024_filename <- "canfax_results_tbl_2020-2024.shp"
 elevator_filename <- "Prairies_ProcessElevators_Aug2026.shp"
 popctr2011_filename <- "gpc_000a11a_e"
 popctr2021_filename <- "lpc_000a21a_e"
+db2011_filename  <- "gdb_000b11a_e"
+db2021_filename  <- "ldb_000b21a_e"
+gaf2011_filename <- "2011_92-151_XBB_TXT"
+gaf2021_filename <- "2021_92-151_X"
 
 #--- Directories ----
 # partial path in either the existing or processed data directories
@@ -205,6 +211,7 @@ climate_filepath <- "climate/CanDCS-M6/geotiff"
 canfax_filepath <- "socio-economic/canfax"
 elevator_filepath <- "socio-economic/process-elevators"
 popctr_filepath <- "socio-economic/StatsCan Population Centres"
+popdens_filepath  <- "socio-economic/StatsCan Population Density"
 
 # Outputs
 predictors_filepath <- "predictors"
