@@ -1,12 +1,14 @@
-https://www12.statcan.gc.ca/census-recensement/alternative_alternatif.cfm?l=eng&dispext=zip&teng=lpc_000a21a_e.zip&k=%20%20%20%20%204664&loc=//www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lpc_000a21a_e.zip
-
-https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm?Year=21
-
-https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lpc_000a21a_e.zip
-https://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/gpc_000a11a_e.zip
-
+# =============================================================================
+# Purpose: download population centres data
+#
+# 2011: https://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/bound-limit-2011-eng.cfm
+# Language=English, Format=ArcGIS(.shp) Boundary Files=Population centres, Digital Boundary File 
+#
+# 2021: https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm?year=21
+# Language=English, Type=Digital Boundary Files
+# Statistical boundaries=Population centres, Format=Shapefile
+# =============================================================================
 source(file.path("scripts/landcover", "0a-setup.R"))
-
 
 popctr_filenames <- c("2011" = popctr2011_filename, "2021" = popctr2021_filename)
 pc_urls <- c(

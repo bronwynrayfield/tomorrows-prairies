@@ -1,7 +1,4 @@
 # =============================================================================
-# 3a-crop-data.R
-# =============================================================================
-#
 # Purpose:
 #   Crops and masks all datasets to the modelling extent.
 #   All outputs are saved to processeddatasets/ with "modelling-extent" tag.
@@ -18,10 +15,6 @@
 # Notes:
 #   - pa uses st_crop() to bounding box rather than st_intersection()
 #     for speed; NA handling deferred to rasterization step
-#
-# Dependencies:
-#   - 0a-setup.R (parameters, file paths, functions)
-#   - 2-project-data.R outputs
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
@@ -126,6 +119,8 @@ canfax2024_reproj <- st_read(tagged_path("./processeddatasets", canfax_filepath,
 elevator_reproj <- st_read(tagged_path("./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea"))
 popctr2011_reproj <- st_read(tagged_path("./processeddatasets", popctr_filepath, paste0(popctr2011_filename, ".shp"), "proj-naaea"))
 popctr2021_reproj <- st_read(tagged_path("./processeddatasets", popctr_filepath, paste0(popctr2021_filename, ".shp"), "proj-naaea"))
+db2011_reproj <- st_read(tagged_path("./processeddatasets", popdens_filepath, paste0(db2011_filename, ".shp"), "proj-naaea"))
+db2021_reproj <- st_read(tagged_path("./processeddatasets", popdens_filepath, paste0(db2021_filename, ".shp"), "proj-naaea"))
 
 #--- Crop and mask to modelling extent ----
 # Census subdivisions
@@ -237,6 +232,12 @@ canfax2024 <- st_intersection(canfax2024_reproj, me)
 elevator <- st_intersection(elevator_reproj, me)
 popctr2011 <- st_intersection(popctr2011_reproj, me)
 popctr2021 <- st_intersection(popctr2021_reproj, me)
+# me's dense outline made [me, ] run for minutes, and rasterize/mask to me_r later drops anything outside the exact exten; 
+# simplify at 1 km, then buffer by the same 1 km so the simplified shape still contains me (simplification moves the boundary at most dTolerance)
+me_s <- st_buffer(st_simplify(me, dTolerance = 1000), 1000)
+db2011 <- db2011_reproj[me_s, ]
+db2021 <- db2021_reproj[me_s, ]
+
 
 #--- Write to disk ----
 write_sf_tagged(census, "./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "modelling-extent")
@@ -297,7 +298,8 @@ write_sf_tagged(canfax2024, "./processeddatasets", canfax_filepath, canfax2024_f
 write_sf_tagged(elevator, "./processeddatasets", elevator_filepath, elevator_filename, "modelling-extent")
 write_sf_tagged(popctr2011, "./processeddatasets", popctr_filepath, paste0(popctr2011_filename, ".shp"), "modelling-extent")
 write_sf_tagged(popctr2021, "./processeddatasets", popctr_filepath, paste0(popctr2021_filename, ".shp"), "modelling-extent")
-
+write_sf_tagged(db2011, "./processeddatasets", popdens_filepath, paste0(db2011_filename, ".shp"), "modelling-extent")
+write_sf_tagged(db2021, "./processeddatasets", popdens_filepath, paste0(db2021_filename, ".shp"), "modelling-extent")
 
 #--- Create binary layers from AAFC LUTS rasters ----
 lulc <- list(

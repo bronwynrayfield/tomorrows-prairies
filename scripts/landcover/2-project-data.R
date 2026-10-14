@@ -1,7 +1,4 @@
 # =============================================================================
-# 2-project-data.R
-# =============================================================================
-#
 # Purpose:
 #   Reprojects all raw datasets to the common CRS (NAE Albers Equal Area).
 #   Also applies scaling factors and NoData values to soil rasters.
@@ -9,16 +6,7 @@
 #
 # Inputs:
 #   - Modelling extent raster template (me_r) defines target CRS and raster grid
-#   - Raw datasets from existingdatasets/:
-#       Olimb & Robinson 2019 cropland suitability
-#       Census subdivisions
-#       National ecological framework (ecozones, ecoregions, ecodistricts)
-#       AAFC LUTS 2000, 2010, 2015, 2020 (merged)
-#       ECCC most recent change layers (grass, improved pasture,
-#         unimproved pasture, crop, built-up)
-#       Protected areas (CPCAD 2024)
-#       Soil (OC, BD, clay, sand, silt, pH)
-#       DEM (NRCan MRDEM 30m)
+#   - Raw datasets from existingdatasets
 #
 # Outputs:
 #   - All datasets reprojected to NAE Albers Equal Area
@@ -35,10 +23,6 @@
 #     resolve geometry misalignment issues before being read in here
 #   - CPCAD geometry cleaning (st_cast, st_make_valid) is done here
 #     before reprojection to avoid propagating invalid geometries
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
-#   - 1-merge-tiled-data.R outputs (AAFC LUTS merged rasters)
 # =============================================================================
 
 source(file.path("scripts/landcover", "0a-setup.R"))
@@ -147,6 +131,11 @@ elevator_raw <- st_read(file.path("./existingdatasets", capitalize_first(elevato
 # Population centres
 popctr2011_raw <- st_read(file.path("./existingdatasets", capitalize_first(popctr_filepath), paste0(popctr2011_filename, ".shp")))
 popctr2021_raw <- st_read(file.path("./existingdatasets", capitalize_first(popctr_filepath), paste0(popctr2021_filename, ".shp")))
+# Dissemination blocks — prairie provinces only (MB 46, SK 47, AB 48) to cut the national file down before transforming
+db2011_raw <- st_read(file.path("./existingdatasets", capitalize_first(popdens_filepath), paste0(db2011_filename, ".shp")),
+                      query = paste0("SELECT * FROM ", db2011_filename, " WHERE PRUID IN ('46','47','48')"))
+db2021_raw <- st_read(file.path("./existingdatasets", capitalize_first(popdens_filepath), paste0(db2021_filename, ".shp")),
+                      query = paste0("SELECT * FROM ", db2021_filename, " WHERE PRUID IN ('46','47','48')"))
 
 #--- Unscale to real units and apply NAs ----
 oc_raw[oc_raw == oc_nodata] <- NA
@@ -259,6 +248,8 @@ canfax2024_reproj <- st_transform(canfax2024_raw, st_crs(sa))
 elevator_reproj <- st_transform(elevator_raw, st_crs(sa))
 popctr2011_reproj <- st_transform(popctr2011_raw, st_crs(sa))
 popctr2021_reproj <- st_transform(popctr2021_raw, st_crs(sa))
+db2011_reproj <- st_transform(db2011_raw, st_crs(sa))
+db2021_reproj <- st_transform(db2021_raw, st_crs(sa))
 
 roads_reproj <- st_transform(roads_raw, st_crs(sa))
 roads_r <- rasterize(
@@ -324,3 +315,5 @@ write_sf_tagged(canfax2024_reproj, "./processeddatasets", canfax_filepath, canfa
 write_sf_tagged(elevator_reproj, "./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea")
 write_sf_tagged(popctr2011_reproj, "./processeddatasets", popctr_filepath, popctr2011_filename, "proj-naaea")
 write_sf_tagged(popctr2021_reproj, "./processeddatasets", popctr_filepath, popctr2021_filename, "proj-naaea")
+write_sf_tagged(db2011_reproj, "./processeddatasets", popdens_filepath, db2011_filename, "proj-naaea")
+write_sf_tagged(db2021_reproj, "./processeddatasets", popdens_filepath, db2021_filename, "proj-naaea")
