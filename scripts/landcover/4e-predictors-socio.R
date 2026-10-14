@@ -1,8 +1,9 @@
+# =============================================================================
 # Purpose:
 #   Distance, capacity and net-return predictors for the RF conversion risk
 #   model: Canfax net returns (2005-2009, 2020-2024, standardised within
 #   period), distance to elevators, large elevators, roads, rails, population
-#   and regional centres (2011, 2021), capacity of nearest elevator.
+#   and regional centres (2011, 2021), population density (2011, 2021), capacity of nearest elevator.
 #   Ends with a collinearity/range check and figures.
 #
 # Inputs:
@@ -27,7 +28,7 @@
 #     where RF cannot extrapolate, 2.4% after. Assumes conversion responds to
 #     relative, not absolute, profitability
 #   - Distances in metres
-
+# =============================================================================
 source(file.path("scripts/landcover", "0a-setup.R"))
 
 # ---- Load files ----
@@ -62,6 +63,23 @@ popctr2011 <- st_read(tagged_path("./processeddatasets", popctr_filepath,
                               paste0(popctr2011_filename, ".shp"), "modelling-extent"))
 popctr2021 <- st_read(tagged_path("./processeddatasets", popctr_filepath, 
                                   paste0(popctr2021_filename, ".shp"), "modelling-extent"))
+
+# Dissemination blocks
+db2011 <- st_read(tagged_path("./processeddatasets", popdens_filepath,
+                              paste0(db2011_filename, ".shp"), "modelling-extent"))
+db2021 <- st_read(tagged_path("./processeddatasets", popdens_filepath,
+                              paste0(db2021_filename, ".shp"), "modelling-extent"))
+# Geographic Attribute Files: DB population and land area (km2, land only)
+f11 <- file.path("./existingdatasets", capitalize_first(popdens_filepath), paste0(gaf2011_filename, ".txt"))
+gaf2011 <- read.fwf(f11, widths = c(10, 8, 8, 8, 13, 1), fileEncoding = "latin1",
+                    col.names = c("DBuid", "DBpop2011", "DBtdwell2011", "DBurdwell2011", "DBarea2011", "DBir2011"),
+                    colClasses = c("character", "numeric", "numeric", "numeric", "numeric", "character"),
+                    na.strings = c(".", "..", "..."), strip.white = TRUE)
+f21 <- file.path("./existingdatasets", capitalize_first(popdens_filepath), paste0(gaf2021_filename, ".csv"))
+keep <- c(DBUID_IDIDU = "character", DBPOP2021_IDPOP2021 = "numeric", DBAREA2021_IDSUP2021 = "numeric", DBIR2021_IDRI2021 = "logical")
+nm <- names(read.csv(f21, nrows = 1, fileEncoding = "latin1"))
+gaf2021 <- read.csv(f21, fileEncoding = "latin1", colClasses = ifelse(nm %in% names(keep), keep[nm], "NULL"))
+
 
 # ---- Rasterize Canfax results ----
 # 2005 - 2009
@@ -335,6 +353,67 @@ plot(clamp(pc_d_core_2021_sa / 1000, lim[1], lim[2], values = TRUE),
 plot(st_geometry(pc_cma_ca_cores2021), border = "white", lwd = 0.4, add = TRUE)
 dev.off()
 
+
+# ---- Population density ----
+# Persons per km2 of land within a square window: DB population spread evenly
+# over each DB's land cells, then window sum of persons / window sum of land area.
+# Land area from the Geographic Attribute File GAF (excludes water), not st_area(). Water-only DBs (area 0)
+# and incompletely enumerated reserves (2011 refusal flag) set to NA.
+i <- match(db2011$DBUID, as.character(gaf2011$DBuid))
+sum(is.na(i))
+db2011$dens <- ifelse(gaf2011$DBir2011[i] == "T" | gaf2011$DBarea2011[i] == 0, NA,
+                      gaf2011$DBpop2011[i] / gaf2011$DBarea2011[i])
+i <- match(db2021$DBUID, as.character(gaf2021$DBUID_IDIDU))
+sum(is.na(i))
+db2021$dens <- ifelse(gaf2021$DBIR2021_IDRI2021[i] | gaf2021$DBAREA2021_IDSUP2021[i] == 0, NA,
+                      gaf2021$DBPOP2021_IDPOP2021[i] / gaf2021$DBAREA2021_IDSUP2021[i])
+
+# Window side = sqrt(median land area of rural DBs, i.e. not touching a 2011 POPCTR),
+# so each window spans more than one block.
+rural <- lengths(st_intersects(db2011, popctr2011)) == 0
+side_m <- sqrt(median(gaf2011$DBarea2011[match(db2011$DBUID[rural], as.character(gaf2011$DBuid))],
+                      na.rm = TRUE) * 1e6)
+fact <- 9
+# Window in quarter-section units (27 cells = 810 m, as for terrain predictors): smallest odd number
+# of quarters >= side of the median rural DB (3.98 km2 -> 1995 m -> 2.46 -> 3 quarters = 81 cells, 2430 m)
+q <- 27
+n_q <- 2 * ceiling((side_m / (q * res(me_r)[1]) - 1) / 2) + 1
+w <- n_q * q / fact   # 9 cells at fact = 9
+cell_km2 <- prod(res(me_r)) / 1e6
+
+pop_dens <- function(db) {
+  d    <- rasterize(vect(db), me_r, field = "dens")
+  pop  <- aggregate(d * cell_km2, fact, sum, na.rm = TRUE)    # persons per 270 m cell
+  land <- aggregate(!is.na(d), fact, sum) * cell_km2          # land km2 per 270 m cell
+  dens <- focal(pop, w, sum, na.rm = TRUE) / focal(land, w, sum, na.rm = TRUE)
+  mask(resample(dens, me_r, "bilinear"), me_r)
+}
+pd_2011 <- pop_dens(db2011)
+pd_2021 <- pop_dens(db2021)
+
+
+# Plot (log10 scale for display only; RF uses raw density)
+pd_2011_sa <- mask(crop(pd_2011, sa_r), sa_r)
+lim <- quantile(spatSample(log10(pd_2011_sa + 1), 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "pop_density_2011.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(log10(pd_2011_sa + 1), lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Population density 2011 (log10 persons/km2 + 1)", axes = FALSE, box = FALSE)
+dev.off()
+
+pd_2021_sa <- mask(crop(pd_2021, sa_r), sa_r)
+lim <- quantile(spatSample(log10(pd_2021_sa + 1), 2e4, method = "regular",
+                           na.rm = TRUE)[, 1], c(.02, .98))
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "pop_density_2021.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(log10(pd_2021_sa + 1), lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Population density 2021 (log10 persons/km2 + 1)", axes = FALSE, box = FALSE)
+dev.off()
+
+
 # ---- Save rasters ----
 write_rast_tagged(canfax2009_r, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009.tif", "modelling-extent")
 write_rast_tagged(canfax2024_r, "./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024.tif", "modelling-extent")
@@ -351,6 +430,8 @@ write_rast_tagged(pc_d_all_2011,  "./processeddatasets", popctr_filepath, "dist_
 write_rast_tagged(pc_d_all_2021,  "./processeddatasets", popctr_filepath, "dist_to_popctr2021.tif", "modelling-extent")
 write_rast_tagged(pc_d_core_2011,  "./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
 write_rast_tagged(pc_d_core_2021,  "./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
+write_rast_tagged(pd_2011, "./processeddatasets", popdens_filepath, "pop_density2011.tif", "modelling-extent")
+write_rast_tagged(pd_2021, "./processeddatasets", popdens_filepath, "pop_density2021.tif", "modelling-extent")
 
 # ---- Correlation ----
 # Read files back in and check for correlation and ranges across study area extent
@@ -370,14 +451,16 @@ pc_d_all_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr
 pc_d_all_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2021.tif", "modelling-extent")
 pc_d_core_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
 pc_d_core_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
+pd_2011 <- read_sa("./processeddatasets", popdens_filepath, "pop_density2011.tif", "modelling-extent")
+pd_2021 <- read_sa("./processeddatasets", popdens_filepath, "pop_density2021.tif", "modelling-extent")
 
 # Correlation between main s-e predictors
 socio <- c(canfax2009_r, elev_d,
            dist_to_road, dist_to_rail,
-           pc_d_all_2011, pc_d_core_2011)
+           pc_d_all_2011, pc_d_core_2011, pd_2011)
 names(socio) <- c("canfax2009", "d_elev", 
                   "d_road", "d_rail", "popctr2011",
-                  "regctr2011")
+                  "regctr2011", "popdens2011")
 
 s <- spatSample(socio, 1e4, method = "regular", na.rm = TRUE, as.df = TRUE)
 m <- round(cor(s, method = "spearman"), 3)
