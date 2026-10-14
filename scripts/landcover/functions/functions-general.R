@@ -1,4 +1,4 @@
-# Functions to write spatial data to disk with helpful tags (e.g. cropped)
+# Functions to support scripts
 
 
 # ---- Generic tagging ----

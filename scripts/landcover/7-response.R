@@ -1,3 +1,4 @@
+# =============================================================================
 # Purpose:
 #   Derives the response rasters from the 3b LULC maps (study area):
 #   - one multiclass response: the 2020 class of every pixel that was native or
