@@ -21,12 +21,16 @@
 tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 #dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
 
+install.packages("terra")
+
 # Load packages
 library(terra)
 #library(future.apply)
 library(readr)
 library(dplyr)
-library(aws.s3)
+#library(aws.s3)
+library(paws)
+library(paws.storage)
 
 # Set terra options
 terraOptions(
@@ -43,11 +47,13 @@ FORCE_REBUILD <- TRUE
 #future::plan(sequential)  # Avoids disk contention
 
 ## ---- Settings ---- ##
-meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_with_path.csv"
+meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_binary_with_path_Oct2026.csv"
 #ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
+ccs_file     <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/census-consolidated-subdivisions/ccs_aligned_class_sa_rast.tif"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
-sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
+#sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
+sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/temperate_scope_aligned_cnvc_Apr2026.tif"
 out_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/results/spatial_agreement_analysis"
 log_dir      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/logs"
 local_dir    <- file.path(tmp_root, "data")
@@ -68,11 +74,9 @@ log_file_local <- file.path(
 
 log_con <- file(log_file_local, open = "wt")
 
-sink(log_con, split = TRUE)          # captures console output
-sink(log_con, type = "message")      # captures message(), warning(), stop()
+sink(log_con, split = TRUE)
 
 on.exit({
-  sink(type = "message")
   sink()
   close(log_con)
 }, add = TRUE)
@@ -87,16 +91,86 @@ log_msg <- function(..., level = "INFO") {
   )
   
   message(msg)
+  
+  cat(msg, "\n",
+      file = log_file_local,
+      append = TRUE)
 }
+
+script_name <- tryCatch({
+  cmd_args <- commandArgs(trailingOnly = FALSE)
+  sub("^--file=", "", cmd_args[grep("^--file=", cmd_args)])
+}, error = function(e) NA_character_)
+
+log_msg("Script name: ", script_name)
+
+session_lines <- capture.output(sessionInfo())
+
+for (ln in session_lines) {
+  log_msg(ln)
+}
+
+log_msg("R version: ", R.version.string)
+log_msg("Platform: ", R.version$platform)
+log_msg("Working directory: ", getwd())
+log_msg("terra version: ", as.character(packageVersion("terra")))
+#log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
+#log_msg("aws.s3 version: ", packageVersion("aws.s3"))
+log_msg("readr version: ", packageVersion("readr"))
+log_msg("Temp root: ", tmp_root)
+log_msg("GDAL_CACHEMAX: ", Sys.getenv("GDAL_CACHEMAX"))
+log_msg("FORCE_REBUILD: ", FORCE_REBUILD)
+log_msg("Sys.info: ",
+        paste(names(Sys.info()), Sys.info(), collapse = "; "))
+log_msg("terra options:")
+capture.output(print(terraOptions())) |>
+  lapply(log_msg)
+gc_out <- capture.output(gc())
+log_msg(paste(gc_out, collapse = " | "))
 
 log_msg("Starting spatial agreement analysis")
 #log_msg("Parallel workers detected: ", n_cores)
 
+## ---- Reusable helper function for reading rasters ---- ##
+
+read_s3_raster <- function(s3_path) {
+  
+  s3_uri <- sub("^s3://", "", s3_path)
+  
+  bucket <- sub("/.*", "", s3_uri)
+  key <- sub("^[^/]*/", "", s3_uri)
+  
+  tmp_file <- tempfile(fileext = tools::file_ext(key))
+  
+  s3 <- paws.storage::s3()
+  
+  obj <- s3$get_object(
+    Bucket = bucket,
+    Key = key
+  )
+  
+  writeBin(obj$Body, tmp_file)
+  
+  terra::rast(tmp_file)
+}
+
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
 
-meta <- aws.s3::s3read_using(read_csv, object = meta_file, show_col_types = FALSE) %>%
+s3_uri <- sub("^s3://", "", meta_file)
+
+bucket <- sub("/.*", "", s3_uri)
+key <- sub("^[^/]*/", "", s3_uri)
+
+s3 <- paws.storage::s3()
+
+obj <- s3$get_object(Bucket = bucket, Key = key)
+
+meta <- readr::read_csv(rawConnection(obj$Body), show_col_types = FALSE) %>%
   rename(file = file_s3)
+
+#meta <- aws.s3::s3read_using(read_csv, object = meta_file, show_col_types = FALSE) %>%
+#  rename(file = file_s3)
 
 rfiles_s3 <- setNames(meta$file, meta$raster)
 
@@ -107,28 +181,32 @@ log_msg("Metadata rows loaded: ", nrow(meta))
 ## ---- Load pilot area ---- ##
 log_msg("Loading pilot area")
 
-pilot_local <- file.path(local_dir, "pilot_area.tif")
+# pilot_local <- file.path(local_dir, "pilot_area.tif")
+# 
+# aws.s3::save_object(
+#   object = pilot_file,
+#   file = pilot_local
+# )
 
-aws.s3::save_object(
-  object = pilot_file,
-  file = pilot_local
-)
-
-pilot <- rast(pilot_local)
+# Read raster
+pilot <- read_s3_raster(pilot_file)
 
 log_msg("Pilot area loaded")
 
 ## ---- Load study area ---- ##
 log_msg("Loading study area")
 
-sa_local <- file.path(local_dir, "study_area.tif")
+# sa_local <- file.path(local_dir, "study_area.tif")
+# 
+# aws.s3::save_object(
+#   object = sa_file,
+#   file = sa_local
+# )
+# 
+# sa <- rast(sa_local)
 
-aws.s3::save_object(
-  object = sa_file,
-  file = sa_local
-)
-
-sa <- rast(sa_local)
+# Read raster
+sa <- read_s3_raster(sa_file)
 
 log_msg("Study area loaded")
 
@@ -136,13 +214,49 @@ log_msg("Study area loaded")
 message("Downloading rasters locally...")
 log_msg("Downloading rasters locally")
 
-# rfiles_local <- sapply(names(rfiles_s3), function(nm) {
-#   dest <- file.path(local_dir, paste0(nm, ".tif"))
-#   if (!file.exists(dest)) {
-#     aws.s3::save_object(rfiles_s3[[nm]], file = dest)
-#   }
-#   dest
-# }, USE.NAMES = TRUE)
+# download_files <- function(files_named) {
+#   
+#   if (length(files_named) == 0)
+#     return(setNames(character(0), character(0)))
+#   
+#   sapply(names(files_named), function(nm) {
+#     
+#     raw_file <- file.path(local_dir, paste0(nm, "_raw.tif"))
+#     crop_file <- file.path(local_dir, paste0(nm, ".tif"))
+#     
+#     if (!file.exists(crop_file) || FORCE_REBUILD) {
+#       
+#       # download original
+#       aws.s3::save_object(files_named[[nm]], file = raw_file)
+#       
+#       # crop + mask to pilot
+#       r <- rast(raw_file)
+#       
+#       r <- crop(r, pilot)
+#       r <- mask(r, pilot)
+#       
+#       writeRaster(
+#         r,
+#         crop_file,
+#         overwrite = TRUE,
+#         wopt = list(
+#           gdal = c(
+#             "COMPRESS=ZSTD",
+#             "TILED=YES",
+#             "BIGTIFF=YES"
+#           )
+#         )
+#       )
+#       
+#       rm(r)
+#       gc()
+#     }
+#     
+#     crop_file
+#     
+#   }, USE.NAMES = TRUE)
+#   
+# }
 
 download_files <- function(files_named) {
   
@@ -151,17 +265,17 @@ download_files <- function(files_named) {
   
   sapply(names(files_named), function(nm) {
     
-    raw_file <- file.path(local_dir, paste0(nm, "_raw.tif"))
+    log_msg("Processing raster: ", nm)
+    log_msg("S3 path: ", files_named[[nm]])
+    
     crop_file <- file.path(local_dir, paste0(nm, ".tif"))
     
     if (!file.exists(crop_file) || FORCE_REBUILD) {
       
-      # download original
-      aws.s3::save_object(files_named[[nm]], file = raw_file)
+      # download and read raster from S3
+      r <- read_s3_raster(files_named[[nm]])
       
       # crop + mask to pilot
-      r <- rast(raw_file)
-      
       r <- crop(r, pilot)
       r <- mask(r, pilot)
       
@@ -233,7 +347,7 @@ log_msg("Rasters confirmed aligned — skipping resampling")
 ## ---- Load ecodistrict raster ---- ##
 log_msg("Loading pilot-clipped ecodistrict raster")
 
-ecodist_r <- rast(ecodist_file)
+ecodist_r <- read_s3_raster(ecodist_file)
 
 if (!compareGeom(template, pilot, stopOnError = FALSE)) {
   stop("Pilot raster is not aligned with template raster")
@@ -250,6 +364,27 @@ if (!compareGeom(ecodist_rast, template, stopOnError = FALSE)) {
 }
 
 log_msg("Loaded ecodistrict raster")
+
+## ---- Load census consolidated subdivision raster ---- ##
+log_msg("Loading pilot-clipped census consolidated subdivision raster")
+
+ccs_r <- read_s3_raster(ccs_file)
+
+if (!compareGeom(template, pilot, stopOnError = FALSE)) {
+  stop("Pilot raster is not aligned with template raster")
+}
+
+ccs_r <- crop(ccs_r, pilot)
+ccs_r <- mask(ccs_r, pilot)
+
+ccs_rast <- as.int(ccs_r)
+
+# Ensure alignment
+if (!compareGeom(ccs_rast, template, stopOnError = FALSE)) {
+  stop("Census consolidated subdivision raster is not aligned with input rasters")
+}
+
+log_msg("Loaded census consolidated subdivision raster")
 
 ## ---- Build raster stack ---- ##
 log_msg("Building raster stack")
@@ -281,19 +416,49 @@ district_index <- setNames(seq_along(district_vals), district_vals)
 #district_vals <- as.integer(district_vals)
 
 # 3D arrays: [raster_i, raster_j, district]
-n11 <- array(0, dim = c(n_rasters, n_rasters, n_districts))
-n10 <- array(0, dim = c(n_rasters, n_rasters, n_districts))
-n01 <- array(0, dim = c(n_rasters, n_rasters, n_districts))
-n00 <- array(0, dim = c(n_rasters, n_rasters, n_districts))
+n11_eco <- array(0, dim = c(n_rasters, n_rasters, n_districts))
+n10_eco <- array(0, dim = c(n_rasters, n_rasters, n_districts))
+n01_eco <- array(0, dim = c(n_rasters, n_rasters, n_districts))
+n00_eco <- array(0, dim = c(n_rasters, n_rasters, n_districts))
+
+# Count pixels where ecodistrict = NA
+na_district_pixels <- 0
+
+## ---- Initialize CCS ---- ##
+
+# Get unique IDs (could also delay until first block)
+#district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
+freq_table <- freq(ccs_rast)
+ccs_vals <- as.integer(freq_table$value)
+
+if (anyDuplicated(ccs_vals)) {
+  stop("Duplicate CCS IDs found")
+}
+
+# initialize empty set
+#district_vals <- integer(0)
+
+n_ccs <- length(ccs_vals)
+
+# Map CCS IDs → index
+ccs_index <- setNames(seq_along(ccs_vals), ccs_vals)
+
+# 3D arrays: [raster_i, raster_j, district]
+n11_ccs <- array(0, dim = c(n_rasters, n_rasters, n_ccs))
+n10_ccs <- array(0, dim = c(n_rasters, n_rasters, n_ccs))
+n01_ccs <- array(0, dim = c(n_rasters, n_rasters, n_ccs))
+n00_ccs <- array(0, dim = c(n_rasters, n_rasters, n_ccs))
+
+# Count pixels where ecodistrict = NA
+na_ccs_pixels <- 0
+
+## ---- Initialize global counts ---- ##
 
 # Global counts 
 n11_global <- matrix(0, n_rasters, n_rasters)
 n10_global <- matrix(0, n_rasters, n_rasters)
 n01_global <- matrix(0, n_rasters, n_rasters)
 n00_global <- matrix(0, n_rasters, n_rasters)
-
-# Count pixels where ecodistrict = NA
-na_district_pixels <- 0
 
 ## ---- Block processing ---- ##
 message("Starting blockwise processing...")
@@ -332,11 +497,32 @@ log_msg(
 # ✅ OPEN FILE CONNECTIONS
 readStart(r_stack)
 readStart(ecodist_rast)
+readStart(ccs_rast)
 
 on.exit({
   try(readStop(r_stack), silent = TRUE)
   try(readStop(ecodist_rast), silent = TRUE)
+  try(readStop(ccs_rast), silent = TRUE)
 }, add = TRUE)
+
+make_binary_matrices <- function(x) {
+  
+  M <- x > 0
+  valid <- !is.na(x)
+  
+  M_int <- M * 1
+  valid_int <- valid * 1
+  
+  M_int[valid_int == 0] <- 0
+  
+  storage.mode(M_int) <- "double"
+  storage.mode(valid_int) <- "double"
+  
+  list(
+    M = M_int,
+    valid = valid_int
+  )
+}
 
 for (i in 1:total_blocks) {
   
@@ -356,39 +542,84 @@ for (i in 1:total_blocks) {
     mat = FALSE
   )
   
-  # Count NA district pixels
+  ccs <- readValues(
+    ccs_rast,
+    row = bs$row[i],
+    nrows = bs$nrows[i],
+    mat = FALSE
+  )
+  
+  # Count NA district & CCS pixels
   na_district_pixels <- na_district_pixels + sum(is.na(districts))
+  na_ccs_pixels      <- na_ccs_pixels + sum(is.na(ccs))
   
   # Safe indexing
   districts <- as.integer(districts)
+  ccs       <- as.integer(ccs)
   
   #storage.mode(vals) <- "integer"
   
   # Drop fully empty rows
-  valid_rows <- rowSums(!is.na(vals)) > 0 & !is.na(districts)
-  vals <- vals[valid_rows, , drop = FALSE]
-  districts <- districts[valid_rows]
+  # valid_rows <- rowSums(!is.na(vals)) > 0 & !is.na(districts)
+  # vals <- vals[valid_rows, , drop = FALSE]
+  # districts <- districts[valid_rows]
+  # 
+  # if (nrow(vals) == 0) next
+  # 
+  # # Binary presence
+  # M <- vals > 0
+  # NA_mask <- is.na(vals)
+  # 
+  # valid_mat <- !NA_mask
+  # M_int <- M * 1
+  # valid_int <- valid_mat * 1
+  # M_int[valid_int == 0] <- 0
   
-  if (nrow(vals) == 0) next
+  # Keep global pixels even if district/CCS is NA
+  valid_rows_global  <- rowSums(!is.na(vals)) > 0
+  valid_rows_ecodist <- valid_rows_global & !is.na(districts)
+  valid_rows_ccs     <- valid_rows_global & !is.na(ccs)
   
-  # Binary presence
-  M <- vals > 0
-  NA_mask <- is.na(vals)
+  vals_global <- vals[valid_rows_global, , drop = FALSE]
+  vals_eco    <- vals[valid_rows_ecodist, , drop = FALSE]
+  vals_ccs    <- vals[valid_rows_ccs, , drop = FALSE]
   
-  valid_mat <- !NA_mask
-  M_int <- M * 1
-  valid_int <- valid_mat * 1
-  M_int[valid_int == 0] <- 0
+  districts_block <- districts[valid_rows_ecodist]
+  ccs_block       <- ccs[valid_rows_ccs]
   
-  storage.mode(valid_int) <- "double"
-  storage.mode(M_int) <- "double"
+  if (nrow(vals_global) == 0) {
+    rm(vals, vals_global, vals_eco, vals_ccs, districts, districts_block, ccs, ccs_block)
+    gc()
+    next
+  }
+  
+  global_obj <- make_binary_matrices(vals_global)
+  M_global <- global_obj$M
+  valid_global <- global_obj$valid
+  
+  eco_obj <- make_binary_matrices(vals_eco)
+  M_eco <- eco_obj$M
+  valid_eco <- eco_obj$valid
+  
+  ccs_obj <- make_binary_matrices(vals_ccs)
+  M_ccs <- ccs_obj$M
+  valid_ccs <- ccs_obj$valid
+  
+  #storage.mode(valid_int) <- "double"
+  #storage.mode(M_int) <- "double"
   
   # ---- GLOBAL (all pixels in block) ----
-  N_block_all <- t(valid_int) %*% valid_int
-  n11_block_all <- t(M_int) %*% M_int
+  # N_block_all <- t(valid_int) %*% valid_int
+  # n11_block_all <- t(M_int) %*% M_int
+  # 
+  # present_i_all <- t(M_int) %*% valid_int
+  # present_j_all <- t(valid_int) %*% M_int
   
-  present_i_all <- t(M_int) %*% valid_int
-  present_j_all <- t(valid_int) %*% M_int
+  N_block_all <- t(valid_global) %*% valid_global
+  n11_block_all <- t(M_global) %*% M_global
+  
+  present_i_all <- t(M_global) %*% valid_global
+  present_j_all <- t(valid_global) %*% M_global
   
   n10_block_all <- present_i_all - n11_block_all
   n01_block_all <- present_j_all - n11_block_all
@@ -417,11 +648,11 @@ for (i in 1:total_blocks) {
   }
   
   ## ---- Split by district ---- ##
-  split_idx <- split(seq_len(nrow(vals)), districts)
+  split_idx_eco <- split(seq_len(nrow(vals_eco)), districts_block)
   
-  for (d in names(split_idx)) {
+  for (d in names(split_idx_eco)) {
     
-    rows <- split_idx[[d]]
+    rows <- split_idx_eco[[d]]
     
     d_id <- district_index[as.character(d)]
     if (is.na(d_id)) {
@@ -431,8 +662,8 @@ for (i in 1:total_blocks) {
     
     d_id <- as.integer(d_id)
     
-    M_d <- M_int[rows, , drop = FALSE]
-    valid_d <- valid_int[rows, , drop = FALSE]
+    M_d <- M_eco[rows, , drop = FALSE]
+    valid_d <- valid_eco[rows, , drop = FALSE]
     
     # ---- Matrix algebra ----
     N_block <- t(valid_d) %*% valid_d
@@ -450,18 +681,66 @@ for (i in 1:total_blocks) {
     }
     
     # ---- Accumulate per district ----
-    n11[,,d_id] <- n11[,,d_id] + n11_block
-    n10[,,d_id] <- n10[,,d_id] + n10_block
-    n01[,,d_id] <- n01[,,d_id] + n01_block
-    n00[,,d_id] <- n00[,,d_id] + n00_block
+    n11_eco[,,d_id] <- n11_eco[,,d_id] + n11_block
+    n10_eco[,,d_id] <- n10_eco[,,d_id] + n10_block
+    n01_eco[,,d_id] <- n01_eco[,,d_id] + n01_block
+    n00_eco[,,d_id] <- n00_eco[,,d_id] + n00_block
   }
   
-  rm(vals, districts, M, M_int, valid_int, split_idx)
-  if (i %% 10 == 0) gc()
+  ## ---- Split by CCS ---- ##
+  
+  if (nrow(vals_ccs) > 0) {
+    
+    split_idx_ccs <- split(
+      seq_len(nrow(vals_ccs)),
+      ccs_block
+    )
+    
+    for (c in names(split_idx_ccs)) {
+      
+      rows <- split_idx_ccs[[c]]
+      
+      c_id <- ccs_index[as.character(c)]
+      
+      if (is.na(c_id)) {
+        warning("Unknown CCS encountered: ", c)
+        next
+      }
+      
+      c_id <- as.integer(c_id)
+      
+      M_c <- M_ccs[rows, , drop = FALSE]
+      valid_c <- valid_ccs[rows, , drop = FALSE]
+      
+      N_block <- t(valid_c) %*% valid_c
+      n11_block <- t(M_c) %*% M_c
+      
+      present_i <- t(M_c) %*% valid_c
+      present_j <- t(valid_c) %*% M_c
+      
+      n10_block <- present_i - n11_block
+      n01_block <- present_j - n11_block
+      n00_block <- N_block - (n11_block + n10_block + n01_block)
+      
+      n11_ccs[,,c_id] <- n11_ccs[,,c_id] + n11_block
+      n10_ccs[,,c_id] <- n10_ccs[,,c_id] + n10_block
+      n01_ccs[,,c_id] <- n01_ccs[,,c_id] + n01_block
+      n00_ccs[,,c_id] <- n00_ccs[,,c_id] + n00_block
+    }
+  }
+  
+  rm(vals, vals_global, vals_eco, vals_ccs, districts, districts_block, 
+     ccs, ccs_block, M_global, valid_global, M_eco, valid_eco, M_ccs, valid_ccs)
+  
+  if (exists("split_idx_eco", inherits = FALSE)) rm(split_idx_eco)
+  if (exists("split_idx_ccs", inherits = FALSE)) rm(split_idx_ccs)
+  if (i %% 10 == 0)
+    gc()
 }
 
 readStop(r_stack)
 readStop(ecodist_rast)
+readStop(ccs_rast)
 
 message("Finished block processing")
 log_msg("Finished block processing")
@@ -478,7 +757,8 @@ message(
   paste(head(district_vals, 10), collapse = ",")
 )
 
-results <- list()
+# ecodistrict results
+ecodist_results <- list()
 
 for (d in seq_len(n_districts)) {
   
@@ -487,10 +767,10 @@ for (d in seq_len(n_districts)) {
   for (i in 1:(n_rasters - 1)) {
     for (j in (i + 1):n_rasters) {
       
-      tp <- n11[i,j,d]
-      fp <- n10[i,j,d]
-      fn <- n01[i,j,d]
-      tn <- n00[i,j,d]
+      tp <- n11_eco[i,j,d]
+      fp <- n10_eco[i,j,d]
+      fn <- n01_eco[i,j,d]
+      tn <- n00_eco[i,j,d]
       
       N <- tp + fp + fn + tn
       
@@ -525,8 +805,9 @@ for (d in seq_len(n_districts)) {
                       (tp*tn - fp*fn)/denom_mcc)
       }
       
-      results[[length(results) + 1]] <- tibble(
-        district = as.character(d_name),
+      ecodist_results[[length(ecodist_results) + 1]] <- tibble(
+        region_type = "ecodistrict",
+        region_id = as.character(d_name),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
         n11 = tp,
@@ -544,6 +825,74 @@ for (d in seq_len(n_districts)) {
   }
 }
 
+# CCS results
+ccs_results <- list()
+
+for (c in seq_len(n_ccs)) {
+  
+  c_name <- ccs_vals[c]
+  
+  for (i in 1:(n_rasters - 1)) {
+    for (j in (i + 1):n_rasters) {
+      
+      tp <- n11_ccs[i,j,c]
+      fp <- n10_ccs[i,j,c]
+      fn <- n01_ccs[i,j,c]
+      tn <- n00_ccs[i,j,c]
+      
+      N <- tp + fp + fn + tn
+      
+      if (is.na(N) || N == 0) {
+        d_j <- 1; d_s <- 1
+        kappa <- NA; f1 <- NA; mcc <- NA
+      } else {
+        denom_j <- tp + fp + fn
+        d_j <- ifelse(denom_j == 0, 0, 1 - tp / denom_j)
+        
+        denom_s <- 2*tp + fp + fn
+        d_s <- ifelse(denom_s == 0, 0, 1 - (2*tp / denom_s))
+        
+        po <- (tp + tn) / N
+        p1_yes <- (tp + fp) / N
+        p1_no  <- (fn + tn) / N
+        p2_yes <- (tp + fn) / N
+        p2_no  <- (fp + tn) / N
+        pe <- p1_yes*p2_yes + p1_no*p2_no
+        
+        kappa <- ifelse(pe == 1, NA, (po - pe)/(1 - pe))
+        
+        precision <- ifelse((tp+fp)==0, NA, tp/(tp+fp))
+        recall    <- ifelse((tp+fn)==0, NA, tp/(tp+fn))
+        
+        f1 <- ifelse(is.na(precision) | is.na(recall) | (precision+recall==0),
+                     NA,
+                     2*precision*recall/(precision+recall))
+        
+        denom_mcc <- sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+        mcc <- ifelse(denom_mcc==0, NA,
+                      (tp*tn - fp*fn)/denom_mcc)
+      }
+      
+      ccs_results[[length(ccs_results) + 1]] <- tibble(
+        region_type = "ccs",
+        region_id = as.character(c_name),
+        raster_i = ras_names[i],
+        raster_j = ras_names[j],
+        n11 = tp,
+        n10 = fp,
+        n01 = fn,
+        n00 = tn,
+        d_jaccard = d_j,
+        d_sorensen = d_s,
+        kappa = kappa,
+        f1 = f1,
+        mcc = mcc,
+        N = N
+      )
+    }
+  }
+}
+# global results
 global_results <- list()
 
 for (i in 1:(n_rasters - 1)) {
@@ -588,7 +937,8 @@ for (i in 1:(n_rasters - 1)) {
     }
     
     global_results[[length(global_results) + 1]] <- tibble(
-      district = "ALL",
+      region_type = as.character("global"),
+      region_id = as.character("ALL"),
       raster_i = ras_names[i],
       raster_j = ras_names[j],
       n11 = tp,
@@ -605,18 +955,22 @@ for (i in 1:(n_rasters - 1)) {
   }
 }
 
-pairwise_long <- bind_rows(
-  bind_rows(global_results) %>% mutate(district = as.character(district)),
-  bind_rows(results) %>% mutate(district = as.character(district)))
+pairwise_long <- bind_rows(global_results, ecodist_results, ccs_results)
+
+# pairwise_long <- bind_rows(
+#   bind_rows(global_results) %>% mutate(district = as.character(district)),
+#   bind_rows(ecodist_results) %>% mutate(district = as.character(district)))
 
 log_msg("Done computing metrics")
 
 ##------ Final checks ----##
 validate_spatial_agreement <- function(
     n11_global, n10_global, n01_global, n00_global,
-    n11, n10, n01, n00,
+    n11_eco, n10_eco, n01_eco, n00_eco,
+    n11_ccs, n10_ccs, n01_ccs, n00_ccs,
     pairwise_long,
     district_vals,
+    ccs_vals,
     tol = 1e-6
 ) {
   
@@ -662,13 +1016,13 @@ validate_spatial_agreement <- function(
   message("✓ Diagonal checks passed")
   
   ## ---- 4. Global vs district totals ---- ##
-  if (length(dim(n11)) == 3) {
+  if (length(dim(n11_eco)) == 3) {
     
     count_checks <- list(
-      n11 = list(global = n11_global, district = n11),
-      n10 = list(global = n10_global, district = n10),
-      n01 = list(global = n01_global, district = n01),
-      n00 = list(global = n00_global, district = n00)
+      n11_eco = list(global = n11_global, district = n11_eco),
+      n10_eco = list(global = n10_global, district = n10_eco),
+      n01_eco = list(global = n01_global, district = n01_eco),
+      n00_eco = list(global = n00_global, district = n00_eco)
     )
     
     for (nm in names(count_checks)) {
@@ -679,21 +1033,21 @@ validate_spatial_agreement <- function(
         sum
       )
       
-      diff <- count_checks[[nm]]$global - district_sum
-      max_diff <- max(abs(diff), na.rm = TRUE)
+      diff_eco <- count_checks[[nm]]$global - district_sum
+      max_diff_eco <- max(abs(diff_eco), na.rm = TRUE)
       
       message(
         sprintf(
           "%s: max difference (global - sum of districts) = %s",
-          nm, max_diff
+          nm, max_diff_eco
         )
       )
       
-      if (max_diff > 0) {
+      if (max_diff_eco > 0) {
         message("  (This should reflect pixels with NA district)")
       }
       
-      if (any(diff < 0)) {
+      if (any(diff_eco < 0)) {
         stop(sprintf("%s district total exceeds global total", nm))
       }
       
@@ -703,25 +1057,85 @@ validate_spatial_agreement <- function(
     }
   }
   
-  ## ---- 5. Empty districts ---- ##
-  if (length(dim(n11)) == 3) {
+  ## ---- 5. Global vs CCS totals ---- ##
+  if (length(dim(n11_ccs)) == 3) {
+    
+    count_checks <- list(
+      n11_ccs = list(global = n11_global, ccs = n11_ccs),
+      n10_ccs = list(global = n10_global, ccs = n10_ccs),
+      n01_ccs = list(global = n01_global, ccs = n01_ccs),
+      n00_ccs = list(global = n00_global, ccs = n00_ccs)
+    )
+    
+    for (nm in names(count_checks)) {
+      
+      ccs_sum <- apply(
+        count_checks[[nm]]$ccs,
+        c(1, 2),
+        sum
+      )
+      
+      diff_ccs <- count_checks[[nm]]$global - ccs_sum
+      max_diff_ccs <- max(abs(diff_ccs), na.rm = TRUE)
+      
+      message(
+        sprintf(
+          "%s: max difference (global - sum of CCS) = %s",
+          nm, max_diff_ccs
+        )
+      )
+      
+      if (max_diff_ccs > 0) {
+        message("  (This should reflect pixels with NA CCS)")
+      }
+      
+      if (any(diff_ccs < 0)) {
+        stop(sprintf("%s CCS total exceeds global total", nm))
+      }
+      
+      # if (max_diff > na_district_pixels) {
+      #   stop(sprintf("%s totals do not reconcile", nm))
+      # }
+    }
+  }
+  
+  ## ---- 6. Empty districts ---- ##
+  if (length(dim(n11_eco)) == 3) {
     
     district_totals <- sapply(seq_along(district_vals), function(d) {
-      sum(n11[,,d] + n10[,,d] + n01[,,d] + n00[,,d])
+      sum(n11_eco[,,d] + n10_eco[,,d] + n01_eco[,,d] + n00_eco[,,d])
       #sum(n11[1,1,d] + n10[1,1,d] + n01[1,1,d] + n00[1,1,d])
     })
     
-    empty <- which(district_totals == 0)
+    empty_eco <- which(district_totals == 0)
     
-    if (length(empty) > 0) {
+    if (length(empty_eco) > 0) {
       warning("Empty districts detected: ",
-              paste(district_vals[empty], collapse = ", "))
+              paste(district_vals[empty_eco], collapse = ", "))
     } else {
       message("✓ All districts contain data")
     }
   }
   
-  ## ---- 6. Metric bounds ---- ##
+  ## ---- 7. Empty CCS ---- ##
+  if (length(dim(n11_ccs)) == 3) {
+    
+    ccs_totals <- sapply(seq_along(ccs_vals), function(c) {
+      sum(n11_ccs[,,c] + n10_ccs[,,c] + n01_ccs[,,c] + n00_ccs[,,c])
+      #sum(n11[1,1,c] + n10[1,1,c] + n01[1,1,c] + n00[1,1,c])
+    })
+    
+    empty_ccs <- which(ccs_totals == 0)
+    
+    if (length(empty_ccs) > 0) {
+      warning("Empty CCS detected: ",
+              paste(ccs_vals[empty_ccs], collapse = ", "))
+    } else {
+      message("✓ All CCS contain data")
+    }
+  }
+  
+  ## ---- 8. Metric bounds ---- ##
   check_range <- function(x, minv, maxv, name) {
     bad <- which(!is.na(x) & (x < minv | x > maxv))
     if (length(bad) > 0) {
@@ -743,9 +1157,11 @@ log_msg("Running validation checks...")
 
 validate_spatial_agreement(
   n11_global, n10_global, n01_global, n00_global,
-  n11, n10, n01, n00,
+  n11_eco, n10_eco, n01_eco, n00_eco,
+  n11_ccs, n10_ccs, n01_ccs, n00_ccs,
   pairwise_long,
-  district_vals
+  district_vals,
+  ccs_vals
 )
 
 ## ---- Save outputs ---- ##
@@ -754,7 +1170,7 @@ write_csv(pairwise_long, out_csv_local)
 
 aws.s3::put_object(
   file = out_csv_local,
-  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_8Oct2026.csv")
+  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv")
 )
 
 message("Finished pairwise spatial agreement analysis")
