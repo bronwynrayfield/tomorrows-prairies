@@ -1,6 +1,9 @@
+# =============================================================================
+# Purpose:
 # Reclassify AAFC LUTS rasters
 # Reclass 2010 and 2020 to 4 classes: 1=Native; 3=Crop; 4=Settlement; 5=Other
 # Reclass 2015 and 2020 to 5 classes: 1=Native; 2= Tame; 3=Crop; 4=Settlement; 5=Other
+# =============================================================================
 
 #--- Setup ----
 source(file.path("scripts", "0-setup.R"))

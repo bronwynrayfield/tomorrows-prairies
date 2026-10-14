@@ -1,7 +1,4 @@
 # =============================================================================
-# 1-prep-data-psssm-summary.R
-# =============================================================================
-#
 # Purpose:
 #   Downloads AAFC Percent Saturated Surface Soil Moisture (PSSSM) anomaly
 #   GeoTIFFs and computes two covariate layers for use in cropland modelling:
@@ -26,9 +23,6 @@
 # Notes:
 #   - Annual growing-season value is the mean across April–August for each
 #     year; SD is then computed across the 10 annual means (purely interannual)
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))

@@ -1,3 +1,4 @@
+# =============================================================================
 # Purpose:
 #   Builds the LULC 2010 and 2020 state maps (classes from 0a-setup.R) on the
 #   modelling extent, masks them to the study area for the response, and writes

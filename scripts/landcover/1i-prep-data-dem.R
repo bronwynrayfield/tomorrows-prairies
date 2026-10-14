@@ -1,4 +1,7 @@
-# session 1: fetch only
+# =============================================================================
+# Purpose: download DEM
+# =============================================================================
+
 source(file.path("scripts/landcover", "0-setup.R"))
 gopt    <- c("COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES")
 

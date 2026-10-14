@@ -1,3 +1,7 @@
+# =============================================================================
+# Purpose: Prep climate data and compare SSPs
+# =============================================================================
+
 library(terra)
 dir  <- "D:/tomorrows-prairies/existingdatasets/Climate/CanDCS-M6/geotiff"
 vars <- c("tx_mean","tn_mean","prtot","gddgrow_5","hddheat_18")

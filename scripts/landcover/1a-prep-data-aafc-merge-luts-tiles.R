@@ -1,7 +1,4 @@
 # =============================================================================
-# 1-merge-tiled-data.R
-# =============================================================================
-#
 # Purpose:
 #   Merges tiled raster datasets into single mosaics for downstream processing.
 #   Currently handles AAFC LUTS only.
@@ -26,9 +23,6 @@
 #   - Years with fewer than 2 tiles are skipped with a warning
 #   - write_rast_tagged() not used here since outputs feed into
 #     2-project-data.R which reads from the merged/ subfolder directly
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))

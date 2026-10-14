@@ -1,7 +1,4 @@
 # =============================================================================
-# 1h-prep-data-aci.R
-# =============================================================================
-#
 # Purpose:
 #   Downloads AAFC Annual Crop Inventory (ACI) GeoTIFFs for AB, SK and MB across
 #   a configurable range of years, merges the province tiles into a single
@@ -72,12 +69,6 @@
 #     "too wet to be seeded" is a cropland concept and rarely lands on forage.
 #   - Fewer than 100 cells per year (<0.01% of the tame pool) are NA in any
 #     single year; these are scattered, not a shared coverage seam.
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
-#   - curl (HEAD probe only)
-# Consumed by:
-#   - 3b-lulc-maps.R (both windows, 30 m)
 # =============================================================================
 
 source(file.path("scripts/landcover", "0a-setup.R"))

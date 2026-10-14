@@ -56,8 +56,6 @@
 #   - seam_cells = 2: sets mask width and focal window. I also tried 3 and 
 #     checked output in QGIS. 2 was sufficient to fix slivers
 #
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
 # ============================================================
 
 source(file.path("scripts/landcover", "0a-setup.R"))

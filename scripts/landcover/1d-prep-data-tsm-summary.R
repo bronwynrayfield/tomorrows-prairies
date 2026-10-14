@@ -28,9 +28,6 @@
 #     filtered to the target year and months.
 #   - Files are cropped to the buffered modelling extent immediately after
 #     download to reduce storage and processing overhead.
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
