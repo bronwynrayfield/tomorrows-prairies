@@ -22,11 +22,13 @@ terraOptions(tempdir = "R:/CanadianGrasslands/WG_classification/scratch")
 sa_dir <- "R:/CanadianGrasslands/processeddatasets/studyarea"
 
 # grasslands
-raw_data_dir  <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada"
+#raw_data_dir  <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada"
 proc_data_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada"
+proc_data_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries"
 
 # file directories
-ecodist_root <- file.path(raw_data_dir, "Ecodistricts")
+ecodist_root <- file.path(proc_data_dir, "Ecodistricts")
+ccs_root     <- file.path(proc_data_dir, "census-consolidated-subdivisions")
 
 ####--- FILES ---####
 
@@ -35,6 +37,9 @@ sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
 
 # ecodistrict shapefile
 ecodist_file <- file.path(ecodist_root, "ecodistricts_clean_aligned_Oct2026.shp")
+
+# CCS shapefile
+ccs_file <- file.path(ccs_root, "CCS_2021_aligned_class_sa.shp")
 
 ##### use study area file as snap raster #####
 
@@ -60,9 +65,22 @@ plot(ecodist_vect_proj)
 # Export aligned shapefile
 writeVector(ecodist_vect_proj, file.path(ecodist_root, "ecodistricts_clean_reproj.shp"))
 
+# CCS
+ccs_vect <- vect(ccs_file)
+plot(ccs_vect)
+ccs_vect
+
+# Reproject CCS shapefile to match reference raster CRS
+ccs_vect_proj <- project(ccs_vect, sa)
+ccs_vect_proj
+plot(ccs_vect_proj)
+
+# Export aligned shapefile
+writeVector(ccs_vect_proj, file.path(ccs_root, "ccs_clean_reproj.shp"))
+
 ####--- ALGIN RASTERS ---#### 
 
-# Rasterize classification study area using CNVC raster as template
+# Rasterize ecodistrict file using CNVC raster as template
 ecodist_rast <- rasterize(ecodist_vect_proj, sa, 
                           field = "ECODISTRIC", 
                           touches = TRUE) # ensures that any cell touched by the polygon is included
@@ -79,6 +97,27 @@ plot(ecodist_rast)
 # Save the raster as 8-bit unsigned integer
 ecodist_out_path <- file.path(proc_data_dir, "Ecodistricts/ecodistricts_clean_rast.tif")
 writeRaster(ecodist_rast, ecodist_out_path, datatype = "INT2U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 65535,
+            overwrite = TRUE)
+
+# Rasterize CCS file using CNVC raster as template
+ccs_rast <- rasterize(ccs_vect_proj, sa, 
+                          field = "CCSUID", 
+                          touches = TRUE) # ensures that any cell touched by the polygon is included
+
+# print raster details 
+origin(ccs_rast)
+ccs_rast
+plot(ccs_rast)
+
+# Make categorical
+#ccs_rast <- as.factor(ccs_rast)
+#plot(ccs_rast)
+
+# Save the raster as 8-bit unsigned integer
+ccs_out_path <- file.path(ccs_root, "ccs_aligned_class_sa_rast.tif")
+writeRaster(ccs_rast, ccs_out_path, datatype = "INT2U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 65535,
             overwrite = TRUE)
