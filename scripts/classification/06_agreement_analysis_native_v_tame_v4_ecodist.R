@@ -62,12 +62,17 @@ system("proj")
 tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 #dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
 
+#remove.packages("terra")
+#install.packages("terra")
+
 # Load packages
 library(terra)
 #library(future.apply)  # running sequentially to avoid disk contention
 library(readr)
 library(dplyr)
-library(aws.s3)
+#library(aws.s3)
+library(paws)
+library(paws.storage)
 
 # Set terra options
 terraOptions(
@@ -161,7 +166,7 @@ log_msg("Platform: ", R.version$platform)
 log_msg("Working directory: ", getwd())
 log_msg("terra version: ", as.character(packageVersion("terra")))
 #log_msg("tidyverse version: ", as.character(packageVersion("tidyverse")))
-log_msg("aws.s3 version: ", packageVersion("aws.s3"))
+#log_msg("aws.s3 version: ", packageVersion("aws.s3"))
 log_msg("readr version: ", packageVersion("readr"))
 log_msg("Temp root: ", tmp_root)
 log_msg("GDAL_CACHEMAX: ", Sys.getenv("GDAL_CACHEMAX"))
@@ -179,11 +184,52 @@ log_msg("---- END SESSION INFO ----")
 log_msg("Starting spatial agreement analysis")
 #log_msg("Parallel workers detected: ", n_cores)
 
+## ---- Reusable helper function for reading rasters ---- ##
+read_s3_raster <- function(s3_path) {
+  
+  s3_uri <- sub("^s3://", "", s3_path)
+  
+  bucket <- sub("/.*", "", s3_uri)
+  key <- sub("^[^/]*/", "", s3_uri)
+  
+  tmp_file <- tempfile(fileext = tools::file_ext(key))
+  
+  s3 <- paws.storage::s3()
+  
+  obj <- s3$get_object(
+    Bucket = bucket,
+    Key = key
+  )
+  
+  writeBin(obj$Body, tmp_file)
+  
+  terra::rast(tmp_file)
+}
+
 ## ---- Load metadata ---- ##
 log_msg("Reading metadata from: ", meta_file)
 
-meta <- aws.s3::s3read_using(read_csv, object = meta_file, show_col_types = FALSE) %>%
+# meta <- aws.s3::s3read_using(read_csv, object = meta_file, show_col_types = FALSE) %>%
+#   rename(file = file_s3)
+# 
+# rfiles_s3 <- setNames(meta$file, meta$raster)
+# 
+# stopifnot(!anyDuplicated(meta$raster))
+
+s3_uri <- sub("^s3://", "", meta_file)
+
+bucket <- sub("/.*", "", s3_uri)
+key <- sub("^[^/]*/", "", s3_uri)
+
+s3 <- paws.storage::s3()
+
+obj <- s3$get_object(Bucket = bucket, Key = key)
+
+meta <- readr::read_csv(rawConnection(obj$Body), show_col_types = FALSE) %>%
   rename(file = file_s3)
+
+#meta <- aws.s3::s3read_using(read_csv, object = meta_file, show_col_types = FALSE) %>%
+#  rename(file = file_s3)
 
 rfiles_s3 <- setNames(meta$file, meta$raster)
 
@@ -194,28 +240,34 @@ log_msg("Metadata rows loaded: ", nrow(meta))
 ## ---- Load pilot area ---- ##
 log_msg("Loading pilot area")
 
-pilot_local <- file.path(local_dir, "pilot_area.tif")
+# pilot_local <- file.path(local_dir, "pilot_area.tif")
+# 
+# aws.s3::save_object(
+#   object = pilot_file,
+#   file = pilot_local
+# )
+# 
+# pilot <- rast(pilot_local)
 
-aws.s3::save_object(
-  object = pilot_file,
-  file = pilot_local
-)
-
-pilot <- rast(pilot_local)
+# Read raster
+pilot <- read_s3_raster(pilot_file)
 
 log_msg("Pilot area loaded")
 
 ## ---- Load study area ---- ##
 log_msg("Loading study area")
 
-sa_local <- file.path(local_dir, "study_area.tif")
+# sa_local <- file.path(local_dir, "study_area.tif")
+# 
+# aws.s3::save_object(
+#   object = sa_file,
+#   file = sa_local
+# )
+# 
+# sa <- rast(sa_local)
 
-aws.s3::save_object(
-  object = sa_file,
-  file = sa_local
-)
-
-sa <- rast(sa_local)
+# Read raster
+sa <- read_s3_raster(sa_file)
 
 log_msg("Study area loaded")
 
@@ -250,6 +302,52 @@ log_msg("Downloading rasters locally")
 # 
 # log_msg("All rasters downloaded locally")
 
+# download_files <- function(files_named) {
+#   
+#   if (length(files_named) == 0)
+#     return(setNames(character(0), character(0)))
+#   
+#   sapply(names(files_named), function(nm) {
+#     
+#     raw_file <- file.path(local_dir, paste0(nm, "_raw.tif"))
+#     crop_file <- file.path(local_dir, paste0(nm, ".tif"))
+#     
+#     if (!file.exists(crop_file) || FORCE_REBUILD) {
+#       
+#       # download original
+#       aws.s3::save_object(files_named[[nm]], file = raw_file)
+#       
+#       # crop + mask to pilot
+#       r <- rast(raw_file)
+#       
+#       r <- crop(r, pilot)
+#       r <- mask(r, pilot)
+#       
+#       writeRaster(
+#         r,
+#         crop_file,
+#         overwrite = TRUE,
+#         wopt = list(
+#           gdal = c(
+#             "COMPRESS=ZSTD",
+#             "TILED=YES",
+#             "BIGTIFF=YES"
+#           )
+#         )
+#       )
+#       
+#       rm(r)
+#       gc()
+#     }
+#     
+#     crop_file
+#     
+#   }, USE.NAMES = TRUE)
+#   
+# }
+# 
+# rfiles_local <- download_files(rfiles_s3)
+
 download_files <- function(files_named) {
   
   if (length(files_named) == 0)
@@ -257,17 +355,17 @@ download_files <- function(files_named) {
   
   sapply(names(files_named), function(nm) {
     
-    raw_file <- file.path(local_dir, paste0(nm, "_raw.tif"))
+    log_msg("Processing raster: ", nm)
+    log_msg("S3 path: ", files_named[[nm]])
+    
     crop_file <- file.path(local_dir, paste0(nm, ".tif"))
     
     if (!file.exists(crop_file) || FORCE_REBUILD) {
       
-      # download original
-      aws.s3::save_object(files_named[[nm]], file = raw_file)
+      # download and read raster from S3
+      r <- read_s3_raster(files_named[[nm]])
       
       # crop + mask to pilot
-      r <- rast(raw_file)
-      
       r <- crop(r, pilot)
       r <- mask(r, pilot)
       
@@ -350,7 +448,7 @@ log_msg("Rasters confirmed aligned — skipping resampling")
 ## ---- Load ecodistrict raster ---- ##
 log_msg("Loading pilot-clipped ecodistrict raster")
 
-ecodist_r <- rast(ecodist_file)
+ecodist_r <- read_s3_raster(ecodist_file)
 
 if (!compareGeom(template, pilot, stopOnError = FALSE)) {
   stop("Pilot raster is not aligned with template raster")
@@ -371,7 +469,7 @@ log_msg("Loaded ecodistrict raster")
 ## ---- Load census consolidated subdivision raster ---- ##
 log_msg("Loading pilot-clipped census consolidated subdivision raster")
 
-ccs_r <- rast(ccs_file)
+ccs_r <- read_s3_raster(ccs_file)
 
 if (!compareGeom(template, pilot, stopOnError = FALSE)) {
   stop("Pilot raster is not aligned with template raster")
@@ -1732,18 +1830,43 @@ validate_spatial_agreement_multiclass(
 out_csv_local <- file.path(tmp_root, "pairwise_results.csv")
 write_csv(pairwise_long, out_csv_local)
 
-aws.s3::put_object(
-  file = out_csv_local,
-  object = file.path(out_dir, "pairwise_nattam_spatial_agreement_ecodist_CCS_14Oct2026.csv")
-)
+# aws.s3::put_object(
+#   file = out_csv_local,
+#   object = file.path(out_dir, "pairwise_nattam_spatial_agreement_ecodist_CCS_14Oct2026.csv")
+# )
+
+# reusable function to upload files
+upload_file_s3 <- function(local_file, s3_path) {
+  
+  s3_uri <- sub("^s3://", "", s3_path)
+  
+  bucket <- sub("/.*", "", s3_uri)
+  key    <- sub("^[^/]*/", "", s3_uri)
+  
+  raw_data <- readBin(
+    local_file,
+    what = "raw",
+    n = file.info(local_file)$size
+  )
+  
+  s3$put_object(
+    Bucket = bucket,
+    Key = key,
+    Body = raw_data
+  )
+}
+
+upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_nattam_spatial_agreement_ecodist_CCS_14Oct2026.csv"))
 
 message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
 
 # Upload log to S3
-aws.s3::put_object(
-  file = log_file_local,
-  object = log_file
-)
+# aws.s3::put_object(
+#   file = log_file_local,
+#   object = log_file
+# )
+
+upload_file_s3(log_file_local, file.path(out_dir, basename(log_file_local)))
 
 message("Log written to: ", log_file)
