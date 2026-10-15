@@ -1,3 +1,4 @@
+# =============================================================================
 # Purpose:
 #   Sensitivity of the five responses to the tame definition. Each variant is
 #   a (2010 rule, 2020 rule) pair thresholding the ACI count rasters from 3b.
@@ -13,6 +14,13 @@
 #   Only responses a variant changes are written: a 2010 change affects the
 #   tame-origin responses; a 2020 change affects all but native -> settlement
 #   (native persistence and settlement are LUTS-defined at both dates).
+#
+#   Reference: 2010 tame = ACI 110+122 >= 2 years (2009-2012) within LUTS Cropland;
+#   2020 tame = LUTS perennial. Variants: aci122 (the previous reference, so the
+#   code-set switch is itself reported), min3 (threshold), aci_both (ACI 110+122
+#   at 2020 too: the 2020 source). Decision and evidence: "Tame grassland
+#   definition: decision record". aci_out, aci_out_drift and aci_out_min3 were
+#   dropped: they mix code sets between dates.
 # =============================================================================
 
 source(file.path("scripts/landcover", "0a-setup.R"))
@@ -24,14 +32,11 @@ f_prop_annual <- "SET_TO_4D_ANNUAL_PROPORTION.tif"
 # ---- Variants ----
 # codes: ACI count layers summed as tame evidence. codes_2020 = NA: LUTS split.
 variants <- tibble::tribble(
-  ~variant,        ~codes_2010, ~min_2010, ~codes_2020, ~min_2020,
-  "reference",     aci_tame_code,       tame_min_years,         NA,          NA,
-#  "min3",          "122",       3,         NA,          NA,
-  "aci110",        "110+122",   2,         NA,          NA,
-#  "aci_out",       "122",       2,         "122",       2,
-  "aci_out_drift", "122",       2,         "110+122",   2,
-#  "aci_out_min3",  "122",       3,         "122",       3,
-  "aci110_both",   "110+122",   2,         "110+122",   2
+  ~variant,    ~codes_2010,   ~min_2010,          ~codes_2020,   ~min_2020,
+  "reference", aci_tame_code, tame_min_years,     NA,            NA,
+  "aci122",    "122",         tame_min_years,     NA,            NA,
+  "min3",      aci_tame_code, tame_min_years + 1, NA,            NA,
+  "aci_both",  aci_tame_code, tame_min_years,     aci_tame_code, tame_min_years
 ) |>
   mutate(chg_2010 = codes_2010 != codes_2010[1] | min_2010 != min_2010[1],
          chg_2020 = !is.na(codes_2020))
@@ -83,7 +88,10 @@ luts_ag_2020_sa <- sa_2020$annual2020 == 1 | sa_2020$tame2020 == 1
 # fails even the summed rule is ACI/LUTS disagreement no code choice fixes,
 # which is why LUTS is the 2020 reference.
 min_ref <- variants$min_2010[1]
-persist <- lulc_2010_sa == cls_tame & lulc_2020_sa == cls_tame
+# Population fixed to the 122 rule: the check asks whether 122 forage is
+# relabelled 110, independent of the reference code set.
+persist <- mask(crop(luts_ag_2010_me & tame_ev(count_2010_me, "122", min_ref), sa_r), sa_r) &
+  lulc_2020_sa == cls_tame
 relabel <- freq(ifel(persist, (count_2020_sa$aci110 >= min_ref) * 10 +
                        (count_2020_sa$aci122 >= min_ref), NA))
 relabel$share <- relabel$count / sum(relabel$count)
@@ -209,44 +217,29 @@ by_response <- by_response |>
               select(response, n_pos_ref = n_pos, rate_ref = rate), by = "response") |>
   mutate(d_pos = n_pos - n_pos_ref, d_rate = rate - rate_ref)
 print(by_response, n = Inf)
-# A tibble: 35 × 12
-#   variant       response             n_pos    n_neg n_competing   pos_ha     rate competing_per_pos n_pos_ref rate_ref    d_pos    d_rate
-#   <chr>         <chr>                <dbl>    <dbl>       <dbl>    <dbl>    <dbl>             <dbl>     <dbl>    <dbl>    <dbl>     <dbl>
-# 1 aci110        native_annual       200946 88005588      718096   18085. 0.00228            3.57       200946  0.00228        0  0       
-# 2 aci110        native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 3 aci110        native_tame         410030 88005588      509012   36903. 0.00464            1.24       410030  0.00464        0  0       
-# 4 aci110        tame_annual       14225857 60059823      403211 1280327. 0.192              0.0283   11022980  0.176    3202877  0.0160  
-# 5 aci110        tame_settlement     400162 60059823    14228906   36015. 0.00662           35.6        316133  0.00607    84029  0.000549
-# 6 aci110_both   native_annual       325105 88005588      593937   29259. 0.00368            1.83       200946  0.00228   124159  0.00140 
-# 7 aci110_both   native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 8 aci110_both   native_tame         285871 88005588      633171   25728. 0.00324            2.21       410030  0.00464  -124159 -0.00140 
-# 9 aci110_both   tame_annual       25133347 49152333      403211 2262001. 0.338              0.0160   11022980  0.176   14110367  0.163   
-# 10 aci110_both   tame_settlement     400162 49152333    25136396   36015. 0.00808           62.8        316133  0.00607    84029  0.00201 
-# 11 aci_out       native_annual       513833 88005588      405209   46245. 0.00580            0.789      200946  0.00228   312887  0.00353 
-# 12 aci_out       native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 13 aci_out       native_tame          97143 88005588      821899    8743. 0.00110            8.46       410030  0.00464  -312887 -0.00353 
-# 14 aci_out       tame_annual       33478581 29315371      318806 3013072. 0.533              0.00952  11022980  0.176   22455601  0.358   
-# 15 aci_out       tame_settlement     316133 29315371    33481254   28452. 0.0107           106.         316133  0.00607        0  0.00460 
-# 16 aci_out_drift native_annual       325105 88005588      593937   29259. 0.00368            1.83       200946  0.00228   124159  0.00140 
-# 17 aci_out_drift native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 18 aci_out_drift native_tame         285871 88005588      633171   25728. 0.00324            2.21       410030  0.00464  -124159 -0.00140 
-# 19 aci_out_drift tame_annual       20342531 42451421      318806 1830828. 0.324              0.0157   11022980  0.176    9319551  0.148   
-# 20 aci_out_drift tame_settlement     316133 42451421    20345204   28452. 0.00739           64.4        316133  0.00607        0  0.00132 
-# 21 aci_out_min3  native_annual       561133 88005588      357909   50502. 0.00634            0.638      200946  0.00228   360187  0.00406 
-# 22 aci_out_min3  native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 23 aci_out_min3  native_tame          49843 88005588      869199    4486. 0.000566          17.4        410030  0.00464  -360187 -0.00407 
-# 24 aci_out_min3  tame_annual       25748817 16261639      157256 2317394. 0.613              0.00611  11022980  0.176   14725837  0.437   
-# 25 aci_out_min3  tame_settlement     155737 16261639    25750336   14016. 0.00949          165.         316133  0.00607  -160396  0.00342 
-# 26 min3          native_annual       200946 88005588      718096   18085. 0.00228            3.57       200946  0.00228        0  0       
-# 27 min3          native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 28 min3          native_tame         410030 88005588      509012   36903. 0.00464            1.24       410030  0.00464        0  0       
-# 29 min3          tame_annual        4901862 37108594      157256  441168. 0.117              0.0321   11022980  0.176   -6121118 -0.0589  
-# 30 min3          tame_settlement     155737 37108594     4903381   14016. 0.00418           31.5        316133  0.00607  -160396 -0.00189 
-# 31 reference     native_annual       200946 88005588      718096   18085. 0.00228            3.57       200946  0.00228        0  0       
-# 32 reference     native_settlement   308066 88005588      610976   27726. 0.00349            1.98       308066  0.00349        0  0       
-# 33 reference     native_tame         410030 88005588      509012   36903. 0.00464            1.24       410030  0.00464        0  0       
-# 34 reference     tame_annual       11022980 51770972      318806  992068. 0.176              0.0289   11022980  0.176          0  0       
-# 35 reference     tame_settlement     316133 51770972    11025653   28452. 0.00607           34.9        316133  0.00607        0  0  
+# A tibble: 20 × 12
+# variant   response             n_pos    n_neg n_competing   pos_ha    rate competing_per_pos n_pos_ref rate_ref    d_pos    d_rate
+# <chr>     <chr>                <dbl>    <dbl>       <dbl>    <dbl>   <dbl>             <dbl>     <dbl>    <dbl>    <dbl>     <dbl>
+# 1 aci122    native_annual       200946 88005588      718096   18085. 0.00228            3.57      200946  0.00228        0  0       
+# 2 aci122    native_settlement   308066 88005588      610976   27726. 0.00349            1.98      308066  0.00349        0  0       
+# 3 aci122    native_tame         410030 88005588      509012   36903. 0.00464            1.24      410030  0.00464        0  0       
+# 4 aci122    tame_annual       11022980 51770972      318806  992068. 0.176              0.0289  14225857  0.192   -3202877 -0.0160  
+# 5 aci122    tame_settlement     316133 51770972    11025653   28452. 0.00607           34.9       400162  0.00662   -84029 -0.000549
+# 6 aci_both  native_annual       325105 88005588      593937   29259. 0.00368            1.83      200946  0.00228   124159  0.00140 
+# 7 aci_both  native_settlement   308066 88005588      610976   27726. 0.00349            1.98      308066  0.00349        0  0       
+# 8 aci_both  native_tame         285871 88005588      633171   25728. 0.00324            2.21      410030  0.00464  -124159 -0.00140 
+# 9 aci_both  tame_annual       25133347 49152333      403211 2262001. 0.338              0.0160  14225857  0.192   10907490  0.147   
+# 10 aci_both  tame_settlement     400162 49152333    25136396   36015. 0.00808           62.8       400162  0.00662        0  0.00146 
+# 11 min3      native_annual       200946 88005588      718096   18085. 0.00228            3.57      200946  0.00228        0  0       
+# 12 min3      native_settlement   308066 88005588      610976   27726. 0.00349            1.98      308066  0.00349        0  0       
+# 13 min3      native_tame         410030 88005588      509012   36903. 0.00464            1.24      410030  0.00464        0  0       
+# 14 min3      tame_annual        6634370 47750646      228502  597093. 0.122              0.0344  14225857  0.192   -7591487 -0.0695  
+# 15 min3      tame_settlement     226598 47750646     6636274   20394. 0.00472           29.3       400162  0.00662  -173564 -0.00190 
+# 16 reference native_annual       200946 88005588      718096   18085. 0.00228            3.57      200946  0.00228        0  0       
+# 17 reference native_settlement   308066 88005588      610976   27726. 0.00349            1.98      308066  0.00349        0  0       
+# 18 reference native_tame         410030 88005588      509012   36903. 0.00464            1.24      410030  0.00464        0  0       
+# 19 reference tame_annual       14225857 60059823      403211 1280327. 0.192              0.0283  14225857  0.192          0  0       
+# 20 reference tame_settlement     400162 60059823    14228906   36015. 0.00662           35.6       400162  0.00662        0  0   
 write.csv(by_response, file.path(response_summary_filepath, "sensitivity", "conversion_by_response_by_variant.csv"), row.names = FALSE)
 
 # Reference must reproduce response created in 7-response.R
