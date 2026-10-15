@@ -21,6 +21,7 @@
 tmp_root <- file.path(Sys.getenv("HOME"), "r_tmp")
 #dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
 
+remove.packages("terra")
 install.packages("terra")
 
 # Load packages
@@ -132,7 +133,6 @@ log_msg("Starting spatial agreement analysis")
 #log_msg("Parallel workers detected: ", n_cores)
 
 ## ---- Reusable helper function for reading rasters ---- ##
-
 read_s3_raster <- function(s3_path) {
   
   s3_uri <- sub("^s3://", "", s3_path)
@@ -1168,18 +1168,43 @@ validate_spatial_agreement(
 out_csv_local <- file.path(tmp_root, "pairwise_results.csv")
 write_csv(pairwise_long, out_csv_local)
 
-aws.s3::put_object(
-  file = out_csv_local,
-  object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv")
-)
+# aws.s3::put_object(
+#   file = out_csv_local,
+#   object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv")
+# )
+
+# reusable function to upload files
+upload_file_s3 <- function(local_file, s3_path) {
+  
+  s3_uri <- sub("^s3://", "", s3_path)
+  
+  bucket <- sub("/.*", "", s3_uri)
+  key    <- sub("^[^/]*/", "", s3_uri)
+  
+  raw_data <- readBin(
+    local_file,
+    what = "raw",
+    n = file.info(local_file)$size
+  )
+  
+  s3$put_object(
+    Bucket = bucket,
+    Key = key,
+    Body = raw_data
+  )
+}
+
+upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv"))
 
 message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
 
 # Upload log to S3
-aws.s3::put_object(
-  file = log_file_local,
-  object = file.path(log_dir, basename(log_file_local))
-)
+# aws.s3::put_object(
+#   file = log_file_local,
+#   object = file.path(log_dir, basename(log_file_local))
+# )
+
+upload_file_s3(log_file_local, file.path(out_dir, basename(log_file_local)))
 
 message("Log written to: ", log_file)
