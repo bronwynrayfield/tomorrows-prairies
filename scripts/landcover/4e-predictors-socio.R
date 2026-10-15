@@ -42,6 +42,10 @@ fig_dir <- "./output/landcover/figures"
 # Ecodistricts
 ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
                                     ecodistricts_filename, "modelling-extent"))
+# Water
+water2010 <- rast(file.path("./processeddatasets", aafc_filepath, "binary", "AAFC2010_water.tif"))
+water2020 <- rast(file.path("./processeddatasets", aafc_filepath, "binary", "AAFC2020_water.tif"))
+
 # Canfax results
 canfax2009 <- st_read(tagged_path("./processeddatasets", canfax_filepath, 
                                   canfax2009_filename, "modelling-extent"))
@@ -381,33 +385,58 @@ n_q <- 2 * ceiling((side_m / (q * res(me_r)[1]) - 1) / 2) + 1
 w <- n_q * q / fact   # 9 cells at fact = 9
 cell_km2 <- prod(res(me_r)) / 1e6
 
-pop_dens <- function(db) {
-  d    <- rasterize(vect(db), me_r, field = "dens")
+pop_dens <- function(db, water) {
+  d    <- mask(rasterize(vect(db), me_r, field = "dens"), water, maskvalues = 1)   # GAF density is per land km2; drop water cells
   pop  <- aggregate(d * cell_km2, fact, sum, na.rm = TRUE)    # persons per 270 m cell
   land <- aggregate(!is.na(d), fact, sum) * cell_km2          # land km2 per 270 m cell
   dens <- focal(pop, w, sum, na.rm = TRUE) / focal(land, w, sum, na.rm = TRUE)
-  mask(resample(dens, me_r, "bilinear"), me_r)
+  mask(mask(resample(dens, me_r, "bilinear"), me_r), water, maskvalues = 1)
 }
-pd_2011 <- pop_dens(db2011)
-pd_2021 <- pop_dens(db2021)
+pd_2011 <- pop_dens(db2011, water2010)
+pd_2021 <- pop_dens(db2021, water2020)
+
+# Study area
+pd_2011_sa <- mask(crop(pd_2011, sa_r), sa_r)
+pd_2021_sa <- mask(crop(pd_2021, sa_r), sa_r)
+
+# Check extrapolation
+# How many cells in 2021 are outside the range of values in 2011?
+mx <- global(pd_2011_sa, "max", na.rm = TRUE)[[1]]
+global(pd_2021_sa > mx, "sum", na.rm = TRUE) 
+#           sum                            
+# focal_sum 2663
+# only 2663 cells in 2021 exceed the max in 2011 (none overlapped with grass when I checked)
+
+# Plot (raw)
+lim <- quantile(spatSample(pd_2011_sa, 2e4, method = "regular", na.rm = TRUE)[, 1], c(.02, .98))
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "pop_density_2011.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(pd_2011_sa, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Population density 2011 (persons/km2)", axes = FALSE, box = FALSE)
+dev.off()
+
+lim <- quantile(spatSample(pd_2021_sa, 2e4, method = "regular", na.rm = TRUE)[, 1], c(.02, .98))
+rng <- lim + c(-1, 1) * diff(lim) * 1e-3
+png(file.path(fig_dir, "pop_density_2021.png"), width = 2400, height = round(2400 * r), res = 300)
+plot(clamp(pd_2021_sa, lim[1], lim[2], values = TRUE),
+     range = rng, col = hcl.colors(100, "viridis"),
+     main = "Population density 2021 (persons/km2)", axes = FALSE, box = FALSE)
+dev.off()
 
 
 # Plot (log10 scale for display only; RF uses raw density)
-pd_2011_sa <- mask(crop(pd_2011, sa_r), sa_r)
-lim <- quantile(spatSample(log10(pd_2011_sa + 1), 2e4, method = "regular",
-                           na.rm = TRUE)[, 1], c(.02, .98))
+lim <- quantile(spatSample(log10(pd_2011_sa + 1), 2e4, method = "regular", na.rm = TRUE)[, 1], c(.02, .98))
 rng <- lim + c(-1, 1) * diff(lim) * 1e-3
-png(file.path(fig_dir, "pop_density_2011.png"), width = 2400, height = round(2400 * r), res = 300)
+png(file.path(fig_dir, "pop_density_2011_log10.png"), width = 2400, height = round(2400 * r), res = 300)
 plot(clamp(log10(pd_2011_sa + 1), lim[1], lim[2], values = TRUE),
      range = rng, col = hcl.colors(100, "viridis"),
      main = "Population density 2011 (log10 persons/km2 + 1)", axes = FALSE, box = FALSE)
 dev.off()
 
-pd_2021_sa <- mask(crop(pd_2021, sa_r), sa_r)
-lim <- quantile(spatSample(log10(pd_2021_sa + 1), 2e4, method = "regular",
-                           na.rm = TRUE)[, 1], c(.02, .98))
+lim <- quantile(spatSample(log10(pd_2021_sa + 1), 2e4, method = "regular", na.rm = TRUE)[, 1], c(.02, .98))
 rng <- lim + c(-1, 1) * diff(lim) * 1e-3
-png(file.path(fig_dir, "pop_density_2021.png"), width = 2400, height = round(2400 * r), res = 300)
+png(file.path(fig_dir, "pop_density_2021_log10.png"), width = 2400, height = round(2400 * r), res = 300)
 plot(clamp(log10(pd_2021_sa + 1), lim[1], lim[2], values = TRUE),
      range = rng, col = hcl.colors(100, "viridis"),
      main = "Population density 2021 (log10 persons/km2 + 1)", axes = FALSE, box = FALSE)
@@ -434,25 +463,42 @@ write_rast_tagged(pd_2011, "./processeddatasets", popdens_filepath, "pop_density
 write_rast_tagged(pd_2021, "./processeddatasets", popdens_filepath, "pop_density2021.tif", "modelling-extent")
 
 # ---- Correlation ----
-# Read files back in and check for correlation and ranges across study area extent
-read_sa <- function(...) {
-  r <- rast(tagged_path(...))
-  mask(crop(r, sa_r), sa_r)
-}
 
-canfax2009_r <- read_sa("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009.tif", "modelling-extent")
-canfax2024_r <- read_sa("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024.tif", "modelling-extent")
-elev_d <- read_sa("./processeddatasets", elevator_filepath, "dist_to_elevator.tif", "modelling-extent")
-elev_large_d <- read_sa("./processeddatasets", elevator_filepath, "dist_to_elevator_large.tif", "modelling-extent")
-elev_cap <- read_sa("./processeddatasets", elevator_filepath, "cap_nearest_elevator.tif", "modelling-extent")
-dist_to_road <- read_sa("./processeddatasets", road_filepath, "dist_to_road.tif", "modelling-extent")
-dist_to_rail <- read_sa("./processeddatasets", rail_filepath, "dist_to_rail.tif", "modelling-extent")
-pc_d_all_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2011.tif", "modelling-extent")
-pc_d_all_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2021.tif", "modelling-extent")
-pc_d_core_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
-pc_d_core_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
-pd_2011 <- read_sa("./processeddatasets", popdens_filepath, "pop_density2011.tif", "modelling-extent")
-pd_2021 <- read_sa("./processeddatasets", popdens_filepath, "pop_density2021.tif", "modelling-extent")
+# Read files back in and check for correlation and ranges across study area extent
+# If reading modelling-extent, need to mask and crop
+# read_sa <- function(...) {
+#   r <- rast(tagged_path(...))
+#   mask(crop(r, sa_r), sa_r)
+# }
+# 
+# canfax2009_r <- read_sa("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009.tif", "modelling-extent")
+# elev_d <- read_sa("./processeddatasets", elevator_filepath, "dist_to_elevator.tif", "modelling-extent")
+# dist_to_road <- read_sa("./processeddatasets", road_filepath, "dist_to_road.tif", "modelling-extent")
+# dist_to_rail <- read_sa("./processeddatasets", rail_filepath, "dist_to_rail.tif", "modelling-extent")
+# pc_d_all_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2011.tif", "modelling-extent")
+# pc_d_core_2011 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2011.tif", "modelling-extent")
+# pd_2011 <- read_sa("./processeddatasets", popdens_filepath, "pop_density2011.tif", "modelling-extent")
+# canfax2024_r <- read_sa("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2020-2024.tif", "modelling-extent")
+# pc_d_all_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_popctr2021.tif", "modelling-extent")
+# pc_d_core_2021 <- read_sa("./processeddatasets", popctr_filepath, "dist_to_regctr2021.tif", "modelling-extent")
+# pd_2021 <- read_sa("./processeddatasets", popdens_filepath, "pop_density2021.tif", "modelling-extent")
+# elev_large_d <- read_sa("./processeddatasets", elevator_filepath, "dist_to_elevator_large.tif", "modelling-extent")
+# elev_cap <- read_sa("./processeddatasets", elevator_filepath, "cap_nearest_elevator.tif", "modelling-extent")
+
+# Read study area files directly
+canfax2009_r <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "net_return.tif", "study-area"))
+elev_d <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_elevator.tif", "study-area"))
+dist_to_road <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_road.tif", "study-area"))
+dist_to_rail <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_rail.tif", "study-area"))
+pc_d_all_2011 <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_popctr2011.tif", "study-area"))
+pc_d_core_2011 <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_regctr2011.tif", "study-area"))
+pd_2011 <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "pop_density2011.tif", "study-area"))
+# canfax2024_r <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "canfax_nt_b_25_2020-2024.tif", "study-area"))
+# pc_d_all_2021 <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_popctr2021.tif", "study-area"))
+# pc_d_core_2021 <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "dist_to_regctr2021.tif", "study-area"))
+# pd_2021 <- rast(tagged_path("./processeddatasets", file.path(predictors_filepath, "30m"), "pop_density2021.tif", "study-area"))
+# elev_large_d <- rast(tagged_path("./processeddatasets", elevator_filepath, "dist_to_elevator_large.tif", "study-area"))
+# elev_cap <- rast(tagged_path("./processeddatasets", elevator_filepath, "cap_nearest_elevator.tif", "study-area"))
 
 # Correlation between main s-e predictors
 socio <- c(canfax2009_r, elev_d,
@@ -464,13 +510,18 @@ names(socio) <- c("canfax2009", "d_elev",
 
 s <- spatSample(socio, 1e4, method = "regular", na.rm = TRUE, as.df = TRUE)
 m <- round(cor(s, method = "spearman"), 3)
-
-
-o <- hclust(as.dist(1 - m))$order
-m <- m[o, o]
 m[lower.tri(m)] <- NA
+m
+#             canfax2009 d_elev d_road d_rail popctr2011 regctr2011 popdens2011
+# canfax2009           1 -0.056 -0.061  0.041     -0.126     -0.248       0.104
+# d_elev              NA  1.000  0.140  0.334      0.526      0.534      -0.488
+# d_road              NA     NA  1.000  0.137      0.156      0.130      -0.193
+# d_rail              NA     NA     NA  1.000      0.418      0.239      -0.314
+# popctr2011          NA     NA     NA     NA      1.000      0.516      -0.501
+# regctr2011          NA     NA     NA     NA         NA      1.000      -0.391
+# popdens2011         NA     NA     NA     NA         NA         NA       1.000
 
-png(file.path(fig_dir, "socio_cor.png"), width = 1800, height = 1800, res = 300)
+png(file.path(fig_dir, "socio_correlation.png"), width = 1800, height = 1800, res = 300)
 par(mar = c(8, 8, 1, 3))
 image(seq_len(ncol(m)), seq_len(nrow(m)), t(m)[, nrow(m):1],
       col = rev(hcl.colors(200, "RdBu")), zlim = c(-1, 1),
