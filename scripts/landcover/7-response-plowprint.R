@@ -91,9 +91,6 @@
 #   - Study area differs too: O&R worked the US Great Plains, this is the
 #     Canadian Prairies Ecozone. The question is "does my pipeline reproduce
 #     their kind of result", not "do I get their numbers".
-#
-# Dependencies:
-#   - 0-setup.R (parameters, file paths, functions)
 # =============================================================================
 
 source(file.path("scripts/landcover", "0-setup.R"))
