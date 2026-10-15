@@ -16,16 +16,16 @@ predictor_files <- c(
 #  silt         = tagged_path("./processeddatasets", soil_filepath, silt_filename, "modelling-extent"),
   ph           = tagged_path("./processeddatasets", soil_filepath, ph_filename, "modelling-extent"),
   drainage     = tagged_path("./processeddatasets", dss_filepath, dss_drainage_filename, "modelling-extent"),
-  watertbl     = tagged_path("./processeddatasets", dss_filepath, dss_watertbl_filename, "modelling-extent"),
+#  watertbl     = tagged_path("./processeddatasets", dss_filepath, dss_watertbl_filename, "modelling-extent"), # removed because invariant in Saskatchewan
   kp0          = tagged_path("./processeddatasets", dss_filepath, dss_kp0_filename, "modelling-extent"),
   kp33         = tagged_path("./processeddatasets", dss_filepath, dss_kp33_filename, "modelling-extent"),
   kp1500       = tagged_path("./processeddatasets", dss_filepath, dss_kp1500_filename, "modelling-extent"),
   ldepth       = tagged_path("./processeddatasets", dss_filepath, dss_ldepth_filename, "modelling-extent"),
-  ldepth_max   = tagged_path("./processeddatasets", dss_filepath, dss_ldepth_max_filename, "modelling-extent"),
+#  ldepth_max   = tagged_path("./processeddatasets", dss_filepath, dss_ldepth_max_filename, "modelling-extent"), # removed because zero everywhere
   psssm_mean   = tagged_path("./processeddatasets", psssm_filepath, psssm_mean_filename, "modelling-extent"),
   psssm_sd     = tagged_path("./processeddatasets", psssm_filepath, psssm_sd_filename, "modelling-extent"),
-  tsm_planting = tagged_path("./processeddatasets", tsm_filepath, tsm_planting_filename, "modelling-extent"),
-  tsm_growing  = tagged_path("./processeddatasets", tsm_filepath, tsm_growing_filename, "modelling-extent"),
+#  tsm_planting = tagged_path("./processeddatasets", tsm_filepath, tsm_planting_filename, "modelling-extent"), # removed because of spatial and temporal misalignment with fitting and prediction
+#  tsm_growing  = tagged_path("./processeddatasets", tsm_filepath, tsm_growing_filename, "modelling-extent"),
   
   # topography
   elev      = tagged_path("./processeddatasets", dem_filepath, dem_filename, "modelling-extent"),
@@ -38,26 +38,26 @@ predictor_files <- c(
   
   # landscape context
   unprot_grs = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "unprot_grass_prop_3210m_2010", "modelling-extent"),
-  native     = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "native_prop_3210m_2010", "modelling-extent"),
   tame       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "tame_prop_3210m_2010", "modelling-extent"),
   crop       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "crop_prop_3210m_2010", "modelling-extent"),
-  dev        = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "dev_prop_3210m_2010", "modelling-extent"),
+  settl      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "dev_prop_3210m_2010", "modelling-extent"),
   fors       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "fors_prop_3210m", "modelling-extent"),
+#  native     = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "native_prop_3210m_2010", "modelling-extent"), # removed because they all sum to 1
 #  other      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "other_prop_3210m", "modelling-extent"),
 
   # socio-economic
-  net_return = tagged_path("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009", "modelling-extent"),
+  net_return       = tagged_path("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009", "modelling-extent"),
   dist_to_elevator = tagged_path("./processeddatasets", elevator_filepath, "dist_to_elevator", "modelling-extent"),
   dist_to_road     = tagged_path("./processeddatasets", road_filepath, "dist_to_road", "modelling-extent"),
   dist_to_rail     = tagged_path("./processeddatasets", rail_filepath, "dist_to_rail", "modelling-extent"),
   # d_irig     = tagged_path("./processeddatasets", ..., "modelling-extent"),
   dist_to_popctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_popctr2011", "modelling-extent"),
   dist_to_regctr   = tagged_path("./processeddatasets", popctr_filepath, "dist_to_regctr2011", "modelling-extent"),
-  # popdens    = tagged_path("./processeddatasets", ..., "modelling-extent")
+  pop_density      = tagged_path("./processeddatasets", popdens_filepath, "pop_density2011", "modelling-extent")
 
   # extra predictors
-  grs_origin = tagged_path("./processeddatasets", aafc_filepath, "grassland_origin_2010", "modelling-extent"),
-  ecoregion = tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "modelling-extent")
+#  grs_origin = tagged_path("./processeddatasets", aafc_filepath, "grassland_origin_2010", "modelling-extent"),  # removed because running separate models for native and tame
+#  ecoregion = tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "modelling-extent") # removed because captured by climate variables and using ecodistricts for cross validation
 )
 
 # display names + units for figure panels - verify units before submission
@@ -67,23 +67,23 @@ predictor_labels <- c(
   tx_mean      = "Mean daily max. temperature (\u00B0C)",
   gddgrow_5    = "Growing degree days > 5\u00B0C",
   nrcdd        = "Consecutive dry days (days)",
-  oc           = "Soil organic carbon (%)",
-  bd           = "Bulk density (g/cm\u00B3)",
+  oc           = "Soil organic carbon (g/kg)",
+  bd           = "Bulk density (kg/dm\u00B3)",
   clay         = "Clay (%)",
-  sand         = "Sand (%)",
-  silt         = "Silt (%)",
+#  sand         = "Sand (%)",
+#  silt         = "Silt (%)",
   ph           = "Soil pH",
   drainage     = "Drainage class",
-  watertbl     = "Water table depth (cm)",
+#  watertbl     = "Water table depth (cm)",
   kp0          = "Water retention, 0 kPa (%)",
   kp33         = "Water retention, 33 kPa (%)",
   kp1500       = "Water retention, 1500 kPa (%)",
   ldepth       = "A horizon thickness (cm)",
-  ldepth_max   = "Total soil depth (cm)",
+#  ldepth_max   = "Total soil depth (cm)",
   psssm_mean   = "Sat. surface soil moisture, mean (%)",
   psssm_sd     = "Sat. surface soil moisture, SD (%)",
-  tsm_planting = "Total soil moisture, planting (mm)",
-  tsm_growing  = "Total soil moisture, growing (mm)",
+#  tsm_planting = "Total soil moisture, planting (mm)",
+#  tsm_growing  = "Total soil moisture, growing (mm)",
   elev         = "Elevation (m)",
   tri          = "Terrain ruggedness index (m)",
   tpi          = "Topographic position index (m)",
@@ -94,12 +94,12 @@ predictor_labels <- c(
   
   # landscape context - fractions of a 3210 m window
   unprot_grs   = "Unprotected grassland (proportion)",
-  native       = "Native grassland (proportion)",
+#  native       = "Native grassland (proportion)",
   tame         = "Tame grassland (proportion)",
   crop         = "Annual cropland (proportion)",
-  dev          = "Settlement (proportion)",
+  settl        = "Settlement (proportion)",
   fors         = "Forest (proportion)",
-  other        = "Other land cover (proportion)",
+#  other        = "Other land cover (proportion)",
   
   # socio-economic
   net_return   = "Net returns of cropping (CAD)",
@@ -108,8 +108,9 @@ predictor_labels <- c(
   dist_to_rail       = "Distance to railway (km)",
   dist_to_popctr     = "Distance to population centre (km)",
   dist_to_regctr     = "Distance to regional centre (km)",
-  
+  pop_density        = "Population density (persons/km\u00B2)",
+
   # extra
-  grs_origin   = "Grassland origin",
-  ecoregion    = "Ecoregion"
+#  grs_origin   = "Grassland origin",
+#  ecoregion    = "Ecoregion"
 )
