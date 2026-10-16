@@ -312,6 +312,11 @@ ccs <- rast(ccs_file)
 ccs
 plot(ccs)
 levels(ccs)
+file.info(ccs_file)$size
+
+ccs_lookup <- levels(ccs)[[1]]
+
+write_csv(ccs_lookup, file.path(ccs_dir, "ccs_aligned_class_sa_rast_lookup.csv"))
 
 ccs <- crop(ccs, pilot)
 ccs <- mask(ccs, pilot)
