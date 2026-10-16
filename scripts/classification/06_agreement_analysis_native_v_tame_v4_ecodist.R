@@ -520,7 +520,7 @@ log_msg("Raster stack built")
 log_msg("Creating faceted raster figure")
 
 # aggregate for plotting (adjust factor as needed)
-plot_stack <- aggregate(r_stack, fact = 20, fun = "max", na.rm = TRUE)
+plot_stack <- aggregate(r_stack, fact = 20, fun = "modal", na.rm = TRUE)
 
 # convert to data frame
 plot_df <- as.data.frame(plot_stack, xy = TRUE, na.rm = FALSE)
