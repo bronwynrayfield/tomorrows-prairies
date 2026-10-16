@@ -32,6 +32,7 @@ library(dplyr)
 #library(aws.s3)
 library(paws)
 library(paws.storage)
+library(ggplot2)
 
 # Set terra options
 terraOptions(
@@ -52,6 +53,7 @@ meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies
 #ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 ccs_file     <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/census-consolidated-subdivisions/ccs_aligned_class_sa_rast.tif"
+lookup_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/census-consolidated-subdivisions/ccs_aligned_class_sa_rast_lookup.csv"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 #sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/temperate_scope_aligned_cnvc_Apr2026.tif"
@@ -369,6 +371,9 @@ log_msg("Loaded ecodistrict raster")
 log_msg("Loading pilot-clipped census consolidated subdivision raster")
 
 ccs_r <- read_s3_raster(ccs_file)
+ccs_r
+#plot(ccs_r)
+str(levels(ccs_r))
 
 if (!compareGeom(template, pilot, stopOnError = FALSE)) {
   stop("Pilot raster is not aligned with template raster")
@@ -378,11 +383,27 @@ ccs_r <- crop(ccs_r, pilot)
 ccs_r <- mask(ccs_r, pilot)
 
 ccs_rast <- as.int(ccs_r)
+# ccs_rast <- (ccs_r)
+# ccs_rast
 
 # create lookup table for CCSUIDs
-ccs_lookup <- levels(ccs_rast)[[1]]
+#ccs_lookup <- levels(ccs_rast)[[1]]
 
-head(ccs_lookup)
+# load lookup file
+s3_uri <- sub("^s3://", "", lookup_file)
+
+bucket <- sub("/.*", "", s3_uri)
+key <- sub("^[^/]*/", "", s3_uri)
+
+obj <- s3$get_object(
+  Bucket = bucket,
+  Key = key
+)
+
+ccs_lookup <- readr::read_csv(
+  rawConnection(obj$Body),
+  show_col_types = FALSE
+)
 
 # Ensure alignment
 if (!compareGeom(ccs_rast, template, stopOnError = FALSE)) {
@@ -478,14 +499,6 @@ ggsave(
   height = ceiling(n_rasters / 4) * 3,
   dpi = 300,
   bg = "white"
-)
-
-upload_file_s3(
-  facet_png,
-  file.path(
-    out_dir,
-    "input_rasters_faceted.png"
-  )
 )
 
 log_msg("Faceted raster figure saved")
@@ -1278,7 +1291,7 @@ write_csv(pairwise_long, out_csv_local)
 
 # aws.s3::put_object(
 #   file = out_csv_local,
-#   object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv")
+#   object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_16Oct2026.csv")
 # )
 
 # reusable function to upload files
@@ -1302,7 +1315,10 @@ upload_file_s3 <- function(local_file, s3_path) {
   )
 }
 
-upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv"))
+upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_16Oct2026.csv"))
+
+# upload plot
+upload_file_s3(facet_png, file.path(out_dir, "input_rasters_faceted_16Oct2026.png"))
 
 message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
