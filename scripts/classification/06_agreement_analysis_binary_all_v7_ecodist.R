@@ -10,6 +10,8 @@
 #         grassland data products regardless of extent and calculates metrics at
 #         the ecodistrict level.
 
+# CROP TO A STUDY OR PILOT AREA - update script depending on desired extent!
+
 #### SAME AS V4 BUT ADD F1 and MCC AS METRICS ####
 
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
@@ -386,6 +388,11 @@ ccs_rast <- as.int(ccs_r)
 # ccs_rast <- (ccs_r)
 # ccs_rast
 
+# Ensure alignment
+if (!compareGeom(ccs_rast, template, stopOnError = FALSE)) {
+  stop("Census consolidated subdivision raster is not aligned with input rasters")
+}
+
 # create lookup table for CCSUIDs
 #ccs_lookup <- levels(ccs_rast)[[1]]
 
@@ -395,20 +402,11 @@ s3_uri <- sub("^s3://", "", lookup_file)
 bucket <- sub("/.*", "", s3_uri)
 key <- sub("^[^/]*/", "", s3_uri)
 
-obj <- s3$get_object(
-  Bucket = bucket,
-  Key = key
-)
+obj <- s3$get_object(Bucket = bucket, Key = key)
 
-ccs_lookup <- readr::read_csv(
-  rawConnection(obj$Body),
-  show_col_types = FALSE
-)
+ccs_lookup <- readr::read_csv(rawConnection(obj$Body), show_col_types = FALSE)
 
-# Ensure alignment
-if (!compareGeom(ccs_rast, template, stopOnError = FALSE)) {
-  stop("Census consolidated subdivision raster is not aligned with input rasters")
-}
+stopifnot(all(c("ID", "CCSUID") %in% names(ccs_lookup)))
 
 log_msg("Loaded census consolidated subdivision raster")
 
@@ -426,80 +424,29 @@ log_msg("Raster stack built")
 log_msg("Creating faceted raster figure")
 
 # aggregate for plotting (adjust factor as needed)
-plot_stack <- aggregate(
-  r_stack,
-  fact = 20,
-  fun = "max",
-  na.rm = TRUE
-)
+plot_stack <- aggregate(r_stack, fact = 20, fun = "max", na.rm = TRUE)
 
 # convert to data frame
-plot_df <- as.data.frame(
-  plot_stack,
-  xy = TRUE,
-  na.rm = FALSE
-)
-
-plot_df <- tidyr::pivot_longer(
-  plot_df,
-  cols = all_of(ras_names),
-  names_to = "raster",
-  values_to = "value"
-)
+plot_df <- as.data.frame(plot_stack, xy = TRUE, na.rm = FALSE)
+plot_df <- tidyr::pivot_longer(plot_df, cols = all_of(ras_names), 
+                               names_to = "raster", values_to = "value")
 
 # convert binary values to factor for cleaner legend
-plot_df$value <- factor(
-  plot_df$value,
-  levels = c(0, 1),
-  labels = c("Absence", "Presence")
-)
+plot_df$value <- factor(plot_df$value, levels = c(0, 1), labels = c("Non-grass", "Grassland"))
 
-facet_png <- file.path(
-  tmp_root,
-  "input_rasters_faceted.png"
-)
+# create plot
+facet_png <- file.path(tmp_root, "input_rasters_faceted.png")
 
 p <- ggplot(plot_df) +
-  geom_raster(
-    aes(
-      x = x,
-      y = y,
-      fill = value
-    )
-  ) +
-  facet_wrap(
-    ~ raster,
-    ncol = 4
-  ) +
-  scale_fill_manual(
-    values = c(
-      "Absence" = "grey90",
-      "Presence" = "darkgreen"
-    ),
-    na.value = "white"
-  ) +
+  geom_raster(aes(x = x, y = y, fill = value)) +
+  facet_wrap(~ raster, ncol = 4) +
+  scale_fill_manual(values = c("Non-grass" = "grey90", "Grassland" = "darkgreen"), na.value = "white") +
   coord_equal() +
   theme_void() +
-  theme(
-    strip.text = element_text(
-      size = 8,
-      face = "bold"
-    ),
-    legend.position = "bottom"
-  ) +
-  labs(
-    fill = NULL,
-    title = "Input Raster Layers"
-  )
+  theme(strip.text = element_text(size = 8, face = "bold"), legend.position = "bottom") + 
+  labs(fill = NULL, title = "Input binary raster layers")
 
-ggsave(
-  facet_png,
-  p,
-  width = 16,
-  height = ceiling(n_rasters / 4) * 3,
-  dpi = 300,
-  bg = "white"
-)
+ggsave(facet_png, p, width = 16, height = ceiling(n_rasters / 4) * 3, dpi = 300, bg = "white")
 
 log_msg("Faceted raster figure saved")
 
@@ -508,8 +455,8 @@ log_msg("Initializing ecodistrict count arrays")
 
 # Get unique district IDs (could also delay until first block)
 #district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
-freq_table <- freq(ecodist_rast)
-district_vals <- as.integer(freq_table$value)
+freq_table_eco <- freq(ecodist_rast)
+district_vals <- as.integer(freq_table_eco$value)
 
 if (anyDuplicated(district_vals)) {
   stop("Duplicate district IDs found")
@@ -541,9 +488,8 @@ log_msg("Ecodistrict count arrays intialized")
 log_msg("Initializing CCS count arrays")
 
 # Get unique IDs (could also delay until first block)
-#district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
-freq_table <- freq(ccs_rast)
-ccs_vals <- as.integer(freq_table$value)
+freq_table_ccs <- freq(ccs_rast)
+ccs_vals <- as.integer(freq_table_ccs$value)
 
 if (anyDuplicated(ccs_vals)) {
   stop("Duplicate CCS IDs found")
@@ -953,6 +899,9 @@ for (c in seq_len(n_ccs)) {
   
   ccsuid <- ccs_lookup$CCSUID[match(c_name, ccs_lookup$ID)]
   
+  if (is.na(ccsuid)) {
+    stop(paste("Missing CCSUID for raster ID", c_name))}
+  
   for (i in 1:(n_rasters - 1)) {
     for (j in (i + 1):n_rasters) {
       
@@ -1271,6 +1220,23 @@ validate_spatial_agreement <- function(
   
   message("✓ Metric bounds checks passed")
   
+  ## ---- 9. Lookup integrity ---- ##
+  missing_ids <- setdiff(
+    ccs_vals,
+    ccs_lookup$ID
+  )
+  
+  if (length(missing_ids) > 0) {
+    stop(
+      paste(
+        "CCS IDs missing from lookup:",
+        paste(missing_ids, collapse = ", ")
+      )
+    )
+  }
+  
+  message("✓ Lookup integrity checks passed")
+  
   message("---- All validation checks completed ----")
 }
 
@@ -1318,7 +1284,7 @@ upload_file_s3 <- function(local_file, s3_path) {
 upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_16Oct2026.csv"))
 
 # upload plot
-upload_file_s3(facet_png, file.path(out_dir, "input_rasters_faceted_16Oct2026.png"))
+upload_file_s3(facet_png, file.path(out_dir, "input_binary_rasters_faceted_16Oct2026.png"))
 
 message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
