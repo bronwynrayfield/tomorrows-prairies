@@ -17,6 +17,9 @@ pa_dir <- "R:/CanadianGrasslands/processeddatasets/pilotarea"
 # ecodistricts
 ecodist_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/national-ecological-framework-for-canada/Ecodistricts"
 
+# ccs
+ccs_dir <- "R:/CanadianGrasslands/processeddatasets/boundaries/census-consolidated-subdivisions"
+
 # processed data directory
 proc_data_dir <- "R:/CanadianGrasslands/WG_Classification/processed"
 
@@ -52,6 +55,9 @@ pa_file <- file.path(pa_dir, "pilot_area_aligned_cnvc_Jan2026.tif")
 
 # ecodistricts
 ecodist_file <- file.path(ecodist_dir, "ecodistricts_clean_rast_Oct2026.tif")
+
+# ccs
+ccs_file <- file.path(ccs_dir, "ccs_aligned_class_sa_rast.tif")
 
 # Study area
 #sa_file <- file.path(sa_dir, "class_study_area_aligned_cnvc_Dec2025.tif")
@@ -207,10 +213,10 @@ ecodist
 ecodist <- crop(ecodist, pilot)
 ecodist <- mask(ecodist, pilot)
 
-eco832 <- ecodist == 832
+ccs1 <- ecodist == 832
 
-r1_832 <- mask(r1, eco832, maskvalues = 0)
-r2_832 <- mask(r2, eco832, maskvalues = 0)
+r1_832 <- mask(r1, ccs1, maskvalues = 0)
+r2_832 <- mask(r2, ccs1, maskvalues = 0)
 
 plot(r1_832)
 plot(r2_832)
@@ -282,6 +288,105 @@ mcc <- (n11 * n00 - n10 * n01) /
       (n00 + n01)
   )
 mcc # = 0.7132822
+
+################## BINARY CHECK - ONE CCS ##################
+
+####--- LOAD RASTERS ---####
+
+pilot <- rast(pa_file)
+
+r1 <- rast(aci2024_bin_file)
+r2 <- rast(aci2025_bin_file)
+
+####--- CROP RASTERS TO PILOT ---####
+
+r1 <- mask(crop(r1, pilot), pilot)
+r2 <- mask(crop(r2, pilot), pilot)
+
+plot(r1)
+plot(r2)
+
+####--- CROP RASTERS TO ONE CCS ---####
+
+ccs <- rast(ccs_file)
+ccs
+plot(ccs)
+levels(ccs)
+
+ccs <- crop(ccs, pilot)
+ccs <- mask(ccs, pilot)
+
+ccs1 <- ccs == 832
+
+r1_832 <- mask(r1, ccs1, maskvalues = 0)
+r2_832 <- mask(r2, ccs1, maskvalues = 0)
+
+plot(r1_832)
+plot(r2_832)
+
+####--- CALCULATE CONFUSION COUNTS ---####
+
+# extract values
+v1 <- values(r1_832, mat = FALSE)
+v2 <- values(r2_832, mat = FALSE)
+
+valid <- !is.na(v1) & !is.na(v2)
+
+v1 <- v1[valid]
+v2 <- v2[valid]
+
+# convert to binary presence
+b1 <- v1 > 0
+b2 <- v2 > 0
+
+# calculate confusion counts
+n11 <- sum(b1 & b2)
+n10 <- sum(b1 & !b2)
+n01 <- sum(!b1 & b2)
+n00 <- sum(!b1 & !b2)
+
+c(
+  n11 = n11,
+  n10 = n10,
+  n01 = n01,
+  n00 = n00
+)
+
+# verify global counts
+table(
+  r1 = as.integer(b1),
+  r2 = as.integer(b2)
+)
+
+
+####--- CALCULATE METRICS ---####
+
+n11 <- as.numeric(n11)
+n10 <- as.numeric(n10)
+n01 <- as.numeric(n01)
+n00 <- as.numeric(n00)
+
+# Jaccard distance
+d_jaccard <- 1 - n11 / (n11 + n10 + n01)
+d_jaccard # = 
+
+# F1
+precision <- n11 / (n11 + n10)
+recall    <- n11 / (n11 + n01)
+
+f1 <- 2 * precision * recall /
+  (precision + recall)
+f1 # = 
+
+# MCC
+mcc <- (n11 * n00 - n10 * n01) /
+  sqrt(
+    (n11 + n10) *
+      (n11 + n01) *
+      (n00 + n10) *
+      (n00 + n01)
+  )
+mcc # = 
 
 ################## TRI-CLASS CHECK - ALL ECODISTRICTS ###################
 
@@ -424,10 +529,10 @@ ecodist
 ecodist <- crop(ecodist, pilot)
 ecodist <- mask(ecodist, pilot)
 
-eco832 <- ecodist == 832
+ccs1 <- ecodist == 832
 
-r1_832 <- mask(r1, eco832, maskvalues = 0)
-r2_832 <- mask(r2, eco832, maskvalues = 0)
+r1_832 <- mask(r1, ccs1, maskvalues = 0)
+r2_832 <- mask(r2, ccs1, maskvalues = 0)
 
 plot(r1_832)
 plot(r2_832)

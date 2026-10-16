@@ -379,6 +379,11 @@ ccs_r <- mask(ccs_r, pilot)
 
 ccs_rast <- as.int(ccs_r)
 
+# create lookup table for CCSUIDs
+ccs_lookup <- levels(ccs_rast)[[1]]
+
+head(ccs_lookup)
+
 # Ensure alignment
 if (!compareGeom(ccs_rast, template, stopOnError = FALSE)) {
   stop("Census consolidated subdivision raster is not aligned with input rasters")
@@ -388,12 +393,105 @@ log_msg("Loaded census consolidated subdivision raster")
 
 ## ---- Build raster stack ---- ##
 log_msg("Building raster stack")
+
 r_stack <- rast(rfiles_local)
 n_rasters <- nlyr(r_stack)
 names(r_stack) <- names(rfiles_local)
 ras_names <- names(r_stack)
 
+log_msg("Raster stack built")
+
+## ---- Create faceted raster figure ---- ##
+log_msg("Creating faceted raster figure")
+
+# aggregate for plotting (adjust factor as needed)
+plot_stack <- aggregate(
+  r_stack,
+  fact = 20,
+  fun = "max",
+  na.rm = TRUE
+)
+
+# convert to data frame
+plot_df <- as.data.frame(
+  plot_stack,
+  xy = TRUE,
+  na.rm = FALSE
+)
+
+plot_df <- tidyr::pivot_longer(
+  plot_df,
+  cols = all_of(ras_names),
+  names_to = "raster",
+  values_to = "value"
+)
+
+# convert binary values to factor for cleaner legend
+plot_df$value <- factor(
+  plot_df$value,
+  levels = c(0, 1),
+  labels = c("Absence", "Presence")
+)
+
+facet_png <- file.path(
+  tmp_root,
+  "input_rasters_faceted.png"
+)
+
+p <- ggplot(plot_df) +
+  geom_raster(
+    aes(
+      x = x,
+      y = y,
+      fill = value
+    )
+  ) +
+  facet_wrap(
+    ~ raster,
+    ncol = 4
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Absence" = "grey90",
+      "Presence" = "darkgreen"
+    ),
+    na.value = "white"
+  ) +
+  coord_equal() +
+  theme_void() +
+  theme(
+    strip.text = element_text(
+      size = 8,
+      face = "bold"
+    ),
+    legend.position = "bottom"
+  ) +
+  labs(
+    fill = NULL,
+    title = "Input Raster Layers"
+  )
+
+ggsave(
+  facet_png,
+  p,
+  width = 16,
+  height = ceiling(n_rasters / 4) * 3,
+  dpi = 300,
+  bg = "white"
+)
+
+upload_file_s3(
+  facet_png,
+  file.path(
+    out_dir,
+    "input_rasters_faceted.png"
+  )
+)
+
+log_msg("Faceted raster figure saved")
+
 ## ---- Initialize district-level count arrays ---- ##
+log_msg("Initializing ecodistrict count arrays")
 
 # Get unique district IDs (could also delay until first block)
 #district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
@@ -424,7 +522,10 @@ n00_eco <- array(0, dim = c(n_rasters, n_rasters, n_districts))
 # Count pixels where ecodistrict = NA
 na_district_pixels <- 0
 
+log_msg("Ecodistrict count arrays intialized")
+
 ## ---- Initialize CCS ---- ##
+log_msg("Initializing CCS count arrays")
 
 # Get unique IDs (could also delay until first block)
 #district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
@@ -452,13 +553,18 @@ n00_ccs <- array(0, dim = c(n_rasters, n_rasters, n_ccs))
 # Count pixels where ecodistrict = NA
 na_ccs_pixels <- 0
 
+log_msg("CCS count arrays intialized")
+
 ## ---- Initialize global counts ---- ##
+log_msg("Initializing global count arrays")
 
 # Global counts 
 n11_global <- matrix(0, n_rasters, n_rasters)
 n10_global <- matrix(0, n_rasters, n_rasters)
 n01_global <- matrix(0, n_rasters, n_rasters)
 n00_global <- matrix(0, n_rasters, n_rasters)
+
+log_msg("Global count arrays intialized")
 
 ## ---- Block processing ---- ##
 message("Starting blockwise processing...")
@@ -832,6 +938,8 @@ for (c in seq_len(n_ccs)) {
   
   c_name <- ccs_vals[c]
   
+  ccsuid <- ccs_lookup$CCSUID[match(c_name, ccs_lookup$ID)]
+  
   for (i in 1:(n_rasters - 1)) {
     for (j in (i + 1):n_rasters) {
       
@@ -875,7 +983,7 @@ for (c in seq_len(n_ccs)) {
       
       ccs_results[[length(ccs_results) + 1]] <- tibble(
         region_type = "ccs",
-        region_id = as.character(c_name),
+        region_id = as.character(ccsuid),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
         n11 = tp,
