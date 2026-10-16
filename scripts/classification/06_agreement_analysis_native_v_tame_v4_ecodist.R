@@ -3,7 +3,7 @@
 ##          ANALYSIS: SPATIAL AGREEMENT (NATIVE VS TAME VS NON-GRASS)            ##
 ###################################################################################
 
-##----------------------- Alison Long - May 2026 -------------------------
+##----------------------- Alison Long - October 2026 -------------------------
 
 # step 6: calculate pairwise spatial agreement metrics to assess similarities and 
 #         differences among existing grassland datasets. This version handles all 
@@ -396,6 +396,8 @@ download_files <- function(files_named) {
 
 rfiles_local <- download_files(rfiles_s3)
 
+log_msg("All rasters downloaded locally")
+
 # Check file size to ensure correct download
 bad_files <- names(rfiles_local)[file.size(rfiles_local) < 10000]
 if (length(bad_files) > 0) {
@@ -506,10 +508,13 @@ log_msg("Loaded census consolidated subdivision raster")
 
 ## ---- Build raster stack ---- ##
 log_msg("Building raster stack")
+
 r_stack <- rast(rfiles_local)
 n_rasters <- nlyr(r_stack)
 names(r_stack) <- names(rfiles_local)
 ras_names <- names(r_stack)
+
+log_msg("Raster stack built")
 
 ## ---- Create faceted raster figure ---- ##
 log_msg("Creating faceted raster figure")
@@ -544,6 +549,7 @@ ggsave(facet_png, p, width = 16, height = ceiling(n_rasters / 4) * 3, dpi = 300,
 log_msg("Faceted raster figure saved")
 
 ## ---- Initialize ecodistricts ---- ##
+log_msg("Initializing ecodistricts")
 
 # Get unique district IDs (could also delay until first block)
 #district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
@@ -562,7 +568,10 @@ n_districts <- length(district_vals)
 # Map district IDs → index
 district_index <- setNames(seq_along(district_vals), district_vals)
 
+log_msg("Ecodistricts ready")
+
 ## ---- Initialize CCS ---- ##
+log_msg("Initializing CCS")
 
 # Get unique IDs (could also delay until first block)
 #district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
@@ -587,7 +596,11 @@ n_ccs <- length(ccs_vals)
 # Map CCS IDs → index
 ccs_index <- setNames(seq_along(ccs_vals), ccs_vals)
 
+log_msg("CCS ready")
+
 ## ---- Initialize count arrays ---- ##
+log_msg("Initializing count arrays")
+
 classes <- c(0,1,2)
 #stopifnot(all(values(r_stack) %in% classes | is.na(values(r_stack))))
 
@@ -612,6 +625,8 @@ counts_ccs <- array(
 # Count pixels where ecodistrict or ccs = NA
 na_district_pixels <- 0
 na_ccs_pixels <- 0
+
+log_msg("Count arrays ready")
 
 ## ---- Block processing ---- ##
 message("Starting blockwise processing...")
@@ -858,6 +873,7 @@ message("Total pixels where CCS = NA: ", na_ccs_pixels)
 log_msg("Total pixels where CCS raster is NA: ", na_ccs_pixels)
 
 ## ---- Check that all classes occur ---- ##
+log_msg("Checking class occurrence")
 
 for (k in seq_along(classes)) {
   
@@ -878,6 +894,8 @@ for (k in seq_along(classes)) {
         classes[k]))
   }
 }
+
+log_msg("All classes present in all rasters")
 
 ## ---- Compute metrics ---- ##
 message("Computing metrics...")
