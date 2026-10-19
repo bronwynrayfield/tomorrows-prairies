@@ -10,6 +10,8 @@
 #         grassland data products regardless of extent and calculates metrics at
 #         the ecodistrict level.
 
+# CROP TO A STUDY OR PILOT AREA - update script depending on desired extent!
+
 #### SAME AS V4 BUT ADD F1 and MCC AS METRICS ####
 
 # For instance type, best option is r6i.4xlarge (budget option r6i.2xlarge) 
@@ -32,6 +34,7 @@ library(dplyr)
 #library(aws.s3)
 library(paws)
 library(paws.storage)
+library(ggplot2)
 
 # Set terra options
 terraOptions(
@@ -52,6 +55,7 @@ meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies
 #ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/ecodistricts_clean_rast.tif"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 ccs_file     <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/census-consolidated-subdivisions/ccs_aligned_class_sa_rast.tif"
+lookup_file  <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/census-consolidated-subdivisions/ccs_aligned_class_sa_rast_lookup.csv"
 pilot_file   <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/pilot-area/pilot_area_aligned_cnvc_Jan2026.tif"
 #sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/modelling_extent_aligned_cnvc_Jan2026.tif"
 sa_file      <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/study-area/temperate_scope_aligned_cnvc_Apr2026.tif"
@@ -369,6 +373,9 @@ log_msg("Loaded ecodistrict raster")
 log_msg("Loading pilot-clipped census consolidated subdivision raster")
 
 ccs_r <- read_s3_raster(ccs_file)
+ccs_r
+#plot(ccs_r)
+str(levels(ccs_r))
 
 if (!compareGeom(template, pilot, stopOnError = FALSE)) {
   stop("Pilot raster is not aligned with template raster")
@@ -378,27 +385,78 @@ ccs_r <- crop(ccs_r, pilot)
 ccs_r <- mask(ccs_r, pilot)
 
 ccs_rast <- as.int(ccs_r)
+# ccs_rast <- (ccs_r)
+# ccs_rast
 
 # Ensure alignment
 if (!compareGeom(ccs_rast, template, stopOnError = FALSE)) {
   stop("Census consolidated subdivision raster is not aligned with input rasters")
 }
 
+# create lookup table for CCSUIDs
+#ccs_lookup <- levels(ccs_rast)[[1]]
+
+# load lookup file
+s3_uri <- sub("^s3://", "", lookup_file)
+
+bucket <- sub("/.*", "", s3_uri)
+key <- sub("^[^/]*/", "", s3_uri)
+
+obj <- s3$get_object(Bucket = bucket, Key = key)
+
+ccs_lookup <- readr::read_csv(rawConnection(obj$Body), show_col_types = FALSE)
+
+stopifnot(all(c("ID", "CCSUID") %in% names(ccs_lookup)))
+
 log_msg("Loaded census consolidated subdivision raster")
 
 ## ---- Build raster stack ---- ##
 log_msg("Building raster stack")
+
 r_stack <- rast(rfiles_local)
 n_rasters <- nlyr(r_stack)
 names(r_stack) <- names(rfiles_local)
 ras_names <- names(r_stack)
 
+log_msg("Raster stack built")
+
+## ---- Create faceted raster figure ---- ##
+log_msg("Creating faceted raster figure")
+
+# aggregate for plotting (adjust factor as needed)
+plot_stack <- aggregate(r_stack, fact = 20, fun = "modal", na.rm = TRUE)
+
+# convert to data frame
+plot_df <- as.data.frame(plot_stack, xy = TRUE, na.rm = FALSE)
+plot_df <- tidyr::pivot_longer(plot_df, cols = all_of(ras_names), 
+                               names_to = "raster", values_to = "value")
+
+# convert binary values to factor for cleaner legend
+plot_df$value <- factor(plot_df$value, levels = c(0, 1), labels = c("Non-grass", "Grassland"))
+
+# create plot
+facet_png <- file.path(tmp_root, "input_rasters_faceted.png")
+
+p <- ggplot(plot_df) +
+  geom_raster(aes(x = x, y = y, fill = value)) +
+  facet_wrap(~ raster, ncol = 4) +
+  scale_fill_manual(values = c("Non-grass" = "grey90", "Grassland" = "darkgreen"), na.value = "white") +
+  coord_equal() +
+  theme_void() +
+  theme(strip.text = element_text(size = 8, face = "bold"), legend.position = "bottom") + 
+  labs(fill = NULL, title = "Input binary raster layers")
+
+ggsave(facet_png, p, width = 16, height = ceiling(n_rasters / 4) * 3, dpi = 300, bg = "white")
+
+log_msg("Faceted raster figure saved")
+
 ## ---- Initialize district-level count arrays ---- ##
+log_msg("Initializing ecodistrict count arrays")
 
 # Get unique district IDs (could also delay until first block)
 #district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
-freq_table <- freq(ecodist_rast)
-district_vals <- as.integer(freq_table$value)
+freq_table_eco <- freq(ecodist_rast)
+district_vals <- as.integer(freq_table_eco$value)
 
 if (anyDuplicated(district_vals)) {
   stop("Duplicate district IDs found")
@@ -424,12 +482,14 @@ n00_eco <- array(0, dim = c(n_rasters, n_rasters, n_districts))
 # Count pixels where ecodistrict = NA
 na_district_pixels <- 0
 
+log_msg("Ecodistrict count arrays intialized")
+
 ## ---- Initialize CCS ---- ##
+log_msg("Initializing CCS count arrays")
 
 # Get unique IDs (could also delay until first block)
-#district_vals <- as.integer(sort(unique(na.omit(values(ecodist_rast, mat = FALSE)))))
-freq_table <- freq(ccs_rast)
-ccs_vals <- as.integer(freq_table$value)
+freq_table_ccs <- freq(ccs_rast)
+ccs_vals <- as.integer(freq_table_ccs$value)
 
 if (anyDuplicated(ccs_vals)) {
   stop("Duplicate CCS IDs found")
@@ -452,13 +512,18 @@ n00_ccs <- array(0, dim = c(n_rasters, n_rasters, n_ccs))
 # Count pixels where ecodistrict = NA
 na_ccs_pixels <- 0
 
+log_msg("CCS count arrays intialized")
+
 ## ---- Initialize global counts ---- ##
+log_msg("Initializing global count arrays")
 
 # Global counts 
 n11_global <- matrix(0, n_rasters, n_rasters)
 n10_global <- matrix(0, n_rasters, n_rasters)
 n01_global <- matrix(0, n_rasters, n_rasters)
 n00_global <- matrix(0, n_rasters, n_rasters)
+
+log_msg("Global count arrays intialized")
 
 ## ---- Block processing ---- ##
 message("Starting blockwise processing...")
@@ -832,6 +897,11 @@ for (c in seq_len(n_ccs)) {
   
   c_name <- ccs_vals[c]
   
+  ccsuid <- ccs_lookup$CCSUID[match(c_name, ccs_lookup$ID)]
+  
+  if (is.na(ccsuid)) {
+    stop(paste("Missing CCSUID for raster ID", c_name))}
+  
   for (i in 1:(n_rasters - 1)) {
     for (j in (i + 1):n_rasters) {
       
@@ -875,7 +945,7 @@ for (c in seq_len(n_ccs)) {
       
       ccs_results[[length(ccs_results) + 1]] <- tibble(
         region_type = "ccs",
-        region_id = as.character(c_name),
+        region_id = as.character(ccsuid),
         raster_i = ras_names[i],
         raster_j = ras_names[j],
         n11 = tp,
@@ -1150,6 +1220,23 @@ validate_spatial_agreement <- function(
   
   message("✓ Metric bounds checks passed")
   
+  ## ---- 9. Lookup integrity ---- ##
+  missing_ids <- setdiff(
+    ccs_vals,
+    ccs_lookup$ID
+  )
+  
+  if (length(missing_ids) > 0) {
+    stop(
+      paste(
+        "CCS IDs missing from lookup:",
+        paste(missing_ids, collapse = ", ")
+      )
+    )
+  }
+  
+  message("✓ Lookup integrity checks passed")
+  
   message("---- All validation checks completed ----")
 }
 
@@ -1170,7 +1257,7 @@ write_csv(pairwise_long, out_csv_local)
 
 # aws.s3::put_object(
 #   file = out_csv_local,
-#   object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv")
+#   object = file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_16Oct2026.csv")
 # )
 
 # reusable function to upload files
@@ -1194,7 +1281,10 @@ upload_file_s3 <- function(local_file, s3_path) {
   )
 }
 
-upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_14Oct2026.csv"))
+upload_file_s3(out_csv_local, file.path(out_dir, "pairwise_binary_spatial_agreement_ecodist_CCS_16Oct2026.csv"))
+
+# upload plot
+upload_file_s3(facet_png, file.path(out_dir, "input_binary_rasters_faceted_16Oct2026.png"))
 
 message("Finished pairwise spatial agreement analysis")
 log_msg("Spatial agreement analysis completed successfully")
