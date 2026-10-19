@@ -1,5 +1,6 @@
 # =============================================================================
 # Purpose: Prep climate data and compare SSPs
+# Climate data downloaded using PAVICS: https://pavics.ouranos.ca/
 # =============================================================================
 
 library(terra)

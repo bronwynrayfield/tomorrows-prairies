@@ -194,6 +194,18 @@ ncc_all <- Map(\(x, nm) x |> mutate(src_layer = nm) |> st_transform(crs(me_r)),
   st_make_valid()
 
 
+# ---- Make sure climate is not missing data in the study area ----
+# CanDCS-M6 bottom row (48.92–49.00°N) is NaN at the source (Canada-only grid; checked on PAVICS 2026-10-19),
+# leaving 364,733 x 30-m px (~328 km2) of the extent without climate data.
+# Fut layers only (used for projection, not training): fill NA cells that touch data with the mean of
+# their valid 3x3 neighbours at native 1/12° (one-cell, ~9 km extension). Raw layers are kept unfilled.
+fut_names <- paste0(c("gddgrow_5", "hddheat_18", "prtot", "tn_mean", "tx_mean", "nr_cdd"), "_fut")
+for (nm in fut_names) {
+  r <- focal(get(paste0(nm, "_raw")), w = 3, fun = "mean", na.policy = "only", na.rm = TRUE)
+  assign(paste0(nm, "_imputed"), r)
+  write_rast_tagged(r, "./processeddatasets", climate_filepath, get(paste0(nm, "_filename")), "imputed", overwrite = TRUE)
+}
+
 #--- Reproject to match study area shapefile CRS ----
 crop_suit_reproj <- project(crop_suit_raw, me_r, method = "bilinear")
 plowprint_reproj <- project(plowprint_raw, me_r, method = "near")
@@ -250,6 +262,15 @@ popctr2011_reproj <- st_transform(popctr2011_raw, st_crs(sa))
 popctr2021_reproj <- st_transform(popctr2021_raw, st_crs(sa))
 db2011_reproj <- st_transform(db2011_raw, st_crs(sa))
 db2021_reproj <- st_transform(db2021_raw, st_crs(sa))
+# Reproject imputed fut layers (projection use only)
+# terraOptions(memfrac = 0.8)            # depending on the instance, let terra use most of the RAM
+gddgrow_5_fut_imputed_reproj  <- project(gddgrow_5_fut_imputed,  me_r, method = "bilinear", threads = TRUE)
+hddheat_18_fut_imputed_reproj <- project(hddheat_18_fut_imputed, me_r, method = "bilinear", threads = TRUE)
+prtot_fut_imputed_reproj      <- project(prtot_fut_imputed,      me_r, method = "bilinear", threads = TRUE)
+tn_mean_fut_imputed_reproj    <- project(tn_mean_fut_imputed,    me_r, method = "bilinear", threads = TRUE)
+tx_mean_fut_imputed_reproj    <- project(tx_mean_fut_imputed,    me_r, method = "bilinear", threads = TRUE)
+nr_cdd_fut_imputed_reproj     <- project(nr_cdd_fut_imputed,     me_r, method = "bilinear", threads = TRUE)
+
 
 roads_reproj <- st_transform(roads_raw, st_crs(sa))
 roads_r <- rasterize(
@@ -310,6 +331,12 @@ write_rast_tagged(tx_mean_hist_reproj, "./processeddatasets", climate_filepath, 
 write_rast_tagged(tx_mean_fut_reproj, "./processeddatasets", climate_filepath, tx_mean_fut_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_hist_reproj, "./processeddatasets", climate_filepath, nr_cdd_hist_filename, "proj-naaea")
 write_rast_tagged(nr_cdd_fut_reproj, "./processeddatasets", climate_filepath, nr_cdd_fut_filename, "proj-naaea")
+write_rast_tagged(gddgrow_5_fut_imputed_reproj,  "./processeddatasets", climate_filepath, gddgrow_5_fut_filename,  "imputed_proj-naaea")
+write_rast_tagged(hddheat_18_fut_imputed_reproj, "./processeddatasets", climate_filepath, hddheat_18_fut_filename, "imputed_proj-naaea")
+write_rast_tagged(prtot_fut_imputed_reproj,      "./processeddatasets", climate_filepath, prtot_fut_filename,      "imputed_proj-naaea")
+write_rast_tagged(tn_mean_fut_imputed_reproj,    "./processeddatasets", climate_filepath, tn_mean_fut_filename,    "imputed_proj-naaea")
+write_rast_tagged(tx_mean_fut_imputed_reproj,    "./processeddatasets", climate_filepath, tx_mean_fut_filename,    "imputed_proj-naaea")
+write_rast_tagged(nr_cdd_fut_imputed_reproj,     "./processeddatasets", climate_filepath, nr_cdd_fut_filename,     "imputed_proj-naaea")
 write_sf_tagged(canfax2009_reproj, "./processeddatasets", canfax_filepath, canfax2009_filename, "proj-naaea")
 write_sf_tagged(canfax2024_reproj, "./processeddatasets", canfax_filepath, canfax2024_filename, "proj-naaea")
 write_sf_tagged(elevator_reproj, "./processeddatasets", elevator_filepath, elevator_filename, "proj-naaea")
