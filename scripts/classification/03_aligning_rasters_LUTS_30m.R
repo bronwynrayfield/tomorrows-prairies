@@ -205,7 +205,14 @@ writeRaster(luts_merged_algn_trim, luts_trim_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
-# reclassify to binary (values 2, 3, 5 become 1)
+#------------------
+# load the aligned merged raster
+luts_merged_algn_file <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn.tif")
+luts_merged_algn <- rast(luts_merged_algn_file)
+plot(luts_merged_algn)
+luts_merged_algn
+
+# reclassify to binary 
 luts_algn_binary <- classify(luts_merged_algn, 
                             rcl = matrix(c(21, 0, # Settlement
                                            22, 0, # High Reflectance Settlement
@@ -255,6 +262,168 @@ plot(luts_algn_binary)
 # Save the raster as 8-bit unsigned integer
 luts_binary_out_path <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_binary.tif")
 writeRaster(luts_algn_binary, luts_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to binary - CROPLAND CLASS AS TAME
+luts_algn_binary <- classify(luts_merged_algn, 
+                             rcl = matrix(c(21, 0, # Settlement
+                                            22, 0, # High Reflectance Settlement
+                                            24, 0, # Settlement Forest
+                                            25, 0, # Roads
+                                            28, 0, # Vegetated Settlement
+                                            29, 0, # Very High Reflectance Settlement
+                                            31, 0, # Water
+                                            41, 0, # Forest
+                                            42, 0, # Forest Wetland
+                                            43, 0, # Forest Regenerating after Harvest (<20 years)
+                                            44, 0, # Forest Wetland Regenerating after Harvest (<20 years)
+                                            47, 0, # Forest Regenerating after Harvest (20-29 years)
+                                            48, 0, # Forest Wetland Regenerating after Harvest (20-29 years)
+                                            49, 0, # Forest Regenerating after Fire (<20 years)
+                                            51, 1, # Cropland
+                                            52, 0, # Annual Cropland
+                                            55, 1, # Land Converted to Cropland
+                                            56, 0, # Land Converted to Annual Cropland
+                                            63, 1, # Prairie Grassland
+                                            64, 1, # Temperate Grassland
+                                            65, 1, # Temperate Rainforest Grassland
+                                            66, 1, # Boreal Grassland
+                                            67, 1, # Montane Grassland
+                                            68, 1, # Alpine Tundra Grassland
+                                            69, 1, # Arctic Tundra Grassland
+                                            73, 0, # Prairie Wetland
+                                            74, 0, # Temperate Wetland
+                                            75, 0, # Temperate Rainforest Wetland
+                                            76, 0, # Boreal Wetland
+                                            78, 0, # Alpine Tundra Wetland
+                                            79, 0, # Arctic Tundra Wetland
+                                            81, 0, # Newly-Detected Settlement (<10 years)
+                                            82, 0, # Newly-Detected High Reflectance Settlement (<10 years)
+                                            84, 0, # Newly-Detected Settlement Forest (<10 years)
+                                            85, 0, # Newly-detected roads (<10 years)
+                                            88, 0, # Newly-Detected Vegetated Settlement (<10 years)
+                                            89, 0, # Newly-Detected Very High Reflectance Settlement (<10 years)
+                                            91, 0, # Other Land
+                                            92, 0), # Snow and Ice
+                                          ncol = 2, byrow = TRUE))
+
+# print raster details and plot
+luts_algn_binary
+plot(luts_algn_binary)
+
+# Save the raster as 8-bit unsigned integer
+luts_binary_out_path <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_binary_croplandastame.tif")
+writeRaster(luts_algn_binary, luts_binary_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# reclassify to triclass - CROPLAND CLASS AS TAME
+luts_algn_natvtam <- classify(luts_merged_algn, 
+                             rcl = matrix(c(21, 0, # Settlement
+                                            22, 0, # High Reflectance Settlement
+                                            24, 0, # Settlement Forest
+                                            25, 0, # Roads
+                                            28, 0, # Vegetated Settlement
+                                            29, 0, # Very High Reflectance Settlement
+                                            31, 0, # Water
+                                            41, 0, # Forest
+                                            42, 0, # Forest Wetland
+                                            43, 0, # Forest Regenerating after Harvest (<20 years)
+                                            44, 0, # Forest Wetland Regenerating after Harvest (<20 years)
+                                            47, 0, # Forest Regenerating after Harvest (20-29 years)
+                                            48, 0, # Forest Wetland Regenerating after Harvest (20-29 years)
+                                            49, 0, # Forest Regenerating after Fire (<20 years)
+                                            51, 1, # Cropland
+                                            52, 0, # Annual Cropland
+                                            55, 1, # Land Converted to Cropland
+                                            56, 0, # Land Converted to Annual Cropland
+                                            63, 2, # Prairie Grassland
+                                            64, 2, # Temperate Grassland
+                                            65, 2, # Temperate Rainforest Grassland
+                                            66, 2, # Boreal Grassland
+                                            67, 2, # Montane Grassland
+                                            68, 2, # Alpine Tundra Grassland
+                                            69, 2, # Arctic Tundra Grassland
+                                            73, 0, # Prairie Wetland
+                                            74, 0, # Temperate Wetland
+                                            75, 0, # Temperate Rainforest Wetland
+                                            76, 0, # Boreal Wetland
+                                            78, 0, # Alpine Tundra Wetland
+                                            79, 0, # Arctic Tundra Wetland
+                                            81, 0, # Newly-Detected Settlement (<10 years)
+                                            82, 0, # Newly-Detected High Reflectance Settlement (<10 years)
+                                            84, 0, # Newly-Detected Settlement Forest (<10 years)
+                                            85, 0, # Newly-detected roads (<10 years)
+                                            88, 0, # Newly-Detected Vegetated Settlement (<10 years)
+                                            89, 0, # Newly-Detected Very High Reflectance Settlement (<10 years)
+                                            91, 0, # Other Land
+                                            92, 0), # Snow and Ice
+                                          ncol = 2, byrow = TRUE))
+
+# print raster details and plot
+luts_algn_natvtam
+plot(luts_algn_natvtam)
+
+# reclassify to triclass - CROPLAND CLASS AS NON-GRASS
+luts_algn_nat <- classify(luts_merged_algn, 
+                              rcl = matrix(c(21, 0, # Settlement
+                                             22, 0, # High Reflectance Settlement
+                                             24, 0, # Settlement Forest
+                                             25, 0, # Roads
+                                             28, 0, # Vegetated Settlement
+                                             29, 0, # Very High Reflectance Settlement
+                                             31, 0, # Water
+                                             41, 0, # Forest
+                                             42, 0, # Forest Wetland
+                                             43, 0, # Forest Regenerating after Harvest (<20 years)
+                                             44, 0, # Forest Wetland Regenerating after Harvest (<20 years)
+                                             47, 0, # Forest Regenerating after Harvest (20-29 years)
+                                             48, 0, # Forest Wetland Regenerating after Harvest (20-29 years)
+                                             49, 0, # Forest Regenerating after Fire (<20 years)
+                                             51, 0, # Cropland
+                                             52, 0, # Annual Cropland
+                                             55, 0, # Land Converted to Cropland
+                                             56, 0, # Land Converted to Annual Cropland
+                                             63, 2, # Prairie Grassland
+                                             64, 2, # Temperate Grassland
+                                             65, 2, # Temperate Rainforest Grassland
+                                             66, 2, # Boreal Grassland
+                                             67, 2, # Montane Grassland
+                                             68, 2, # Alpine Tundra Grassland
+                                             69, 2, # Arctic Tundra Grassland
+                                             73, 0, # Prairie Wetland
+                                             74, 0, # Temperate Wetland
+                                             75, 0, # Temperate Rainforest Wetland
+                                             76, 0, # Boreal Wetland
+                                             78, 0, # Alpine Tundra Wetland
+                                             79, 0, # Arctic Tundra Wetland
+                                             81, 0, # Newly-Detected Settlement (<10 years)
+                                             82, 0, # Newly-Detected High Reflectance Settlement (<10 years)
+                                             84, 0, # Newly-Detected Settlement Forest (<10 years)
+                                             85, 0, # Newly-detected roads (<10 years)
+                                             88, 0, # Newly-Detected Vegetated Settlement (<10 years)
+                                             89, 0, # Newly-Detected Very High Reflectance Settlement (<10 years)
+                                             91, 0, # Other Land
+                                             92, 0), # Snow and Ice
+                                           ncol = 2, byrow = TRUE))
+
+# print raster details and plot
+luts_algn_nat
+plot(luts_algn_nat)
+
+# Save the raster as 8-bit unsigned integer
+luts_nat_out_path <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_nat_only.tif")
+writeRaster(luts_algn_nat, luts_nat_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# Save the raster as 8-bit unsigned integer
+luts_nt_out_path <- file.path(luts_aligned_dir, "aafc_luts_merged_reproj_algn_natvtam_croplandastame.tif")
+writeRaster(luts_algn_natvtam, luts_nt_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
