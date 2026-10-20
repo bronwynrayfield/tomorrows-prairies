@@ -87,14 +87,14 @@ stopCluster(cl)
 
 for (nm in c("tpi", "tri", "srr")) {
   mosaic(sprc(lapply(tmp(nm, seq_along(tiles)), rast)), fun = "first",
-         filename = out(paste0("terr_", nm, "-27x27")),
+         filename = out(paste0(nm, "-27x27")),
          overwrite = TRUE, gdal = gopt, datatype = "FLT4S")
   cat("done", nm, format(Sys.time()), "\n")
 }
 
 
 # ---- QA/QC ----
-r    <- c(rast(out("terr_tpi-27x27")), rast(out("terr_tri-27x27")), rast(out("terr_srr-27x27")))
+r    <- c(rast(out("tpi-27x27")), rast(out("tri-27x27")), rast(out("srr-27x27")))
 names(r) <- c("tpi", "tri", "srr")
 r_sa <- mask(crop(r, sa_r), sa_r)
 

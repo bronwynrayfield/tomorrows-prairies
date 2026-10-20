@@ -80,14 +80,14 @@ stopCluster(cl)
 # ncells is the empirical window count TRI needs - reuse it there instead of n_r
 for (nm in c("ncells", "dzdx", "dzdy")) {
   mosaic(sprc(lapply(tmp(nm, seq_along(tiles)), rast)), fun = "first",
-         filename = out(paste0("terr_", nm, "-27x27")),
+         filename = out(paste0(nm, "-27x27")),
          overwrite = TRUE, gdal = gopt)
   cat("done", nm, format(Sys.time()), "\n")
 }
 
 # masked to the DEM so cells with NA elevation get no value
-dzdx <- mask(rast(out("terr_dzdx-27x27")), dem)
-dzdy <- mask(rast(out("terr_dzdy-27x27")), dem)
+dzdx <- mask(rast(out("dzdx-27x27")), dem)
+dzdy <- mask(rast(out("dzdy-27x27")), dem)
 
 
 # ---- Stage (1976) transformations ----
@@ -96,20 +96,20 @@ dzdy <- mask(rast(out("terr_dzdy-27x27")), dem)
 # the correct answer for flat ground and avoids masking out most of the extent.
 lapp(c(dzdx, dzdy), function(gx, gy) {
   atan(sqrt(gx^2 + gy^2)) * cos(atan2(-gx, -gy))
-}, filename = out("terr_northness-27x27"), overwrite = TRUE, wopt = list(gdal = gopt))
+}, filename = out("northness-27x27"), overwrite = TRUE, wopt = list(gdal = gopt))
 
 lapp(c(dzdx, dzdy), function(gx, gy) {
   atan(sqrt(gx^2 + gy^2)) * sin(atan2(-gx, -gy))
-}, filename = out("terr_eastness-27x27"), overwrite = TRUE, wopt = list(gdal = gopt))
+}, filename = out("eastness-27x27"), overwrite = TRUE, wopt = list(gdal = gopt))
 
 # not used: slope from the same fit, radians
 # lapp(c(dzdx, dzdy), function(gx, gy) atan(sqrt(gx^2 + gy^2)),
-#      filename = out("terr_slope-27x27"), overwrite = TRUE, wopt = list(gdal = gopt))
+#      filename = out("slope-27x27"), overwrite = TRUE, wopt = list(gdal = gopt))
 
 
 # ---- QA/QC ----
-n <- rast(out("terr_northness-27x27"))
-e <- rast(out("terr_eastness-27x27"))
+n <- rast(out("northness-27x27"))
+e <- rast(out("eastness-27x27"))
 n_sa <- mask(crop(n, sa_r), sa_r)
 e_sa <- mask(crop(e, sa_r), sa_r)
 
@@ -126,7 +126,7 @@ global(is.na(n_sa), "sum")[[1]]
 # [1] 437104948 
 
 # 2. window count: 729 interior, down to 14 * 27 = 378 on the border row
-minmax(rast(out("terr_ncells-27x27")))
+minmax(rast(out("ncells-27x27")))
 # focal_sum
 # min         0
 # max       729
