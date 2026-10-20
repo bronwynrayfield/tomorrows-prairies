@@ -12,7 +12,7 @@ predictor_files <- c(
   oc           = tagged_path("./processeddatasets", soil_filepath, oc_filename, "modelling-extent"),
   bd           = tagged_path("./processeddatasets", soil_filepath, bd_filename, "modelling-extent"),
   clay         = tagged_path("./processeddatasets", soil_filepath, clay_filename, "modelling-extent"),
-#  sand         = tagged_path("./processeddatasets", soil_filepath, sand_filename, "modelling-extent"),
+#  sand         = tagged_path("./processeddatasets", soil_filepath, sand_filename, "modelling-extent"), # removed because sand, silt, clay sum to 1
 #  silt         = tagged_path("./processeddatasets", soil_filepath, silt_filename, "modelling-extent"),
   ph           = tagged_path("./processeddatasets", soil_filepath, ph_filename, "modelling-extent"),
   drainage     = tagged_path("./processeddatasets", dss_filepath, dss_drainage_filename, "modelling-extent"),
@@ -42,8 +42,8 @@ predictor_files <- c(
   crop       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "crop_prop_3210m_2010", "modelling-extent"),
   settl      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "dev_prop_3210m_2010", "modelling-extent"),
   fors       = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "fors_prop_3210m", "modelling-extent"),
-#  native     = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "native_prop_3210m_2010", "modelling-extent"), # removed because they all sum to 1
-#  other      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "other_prop_3210m", "modelling-extent"),
+  native     = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "native_prop_3210m_2010", "modelling-extent"), 
+#  other      = tagged_path("./processeddatasets", paste(aafc_filepath,"proportion_3210m", sep="/"), "other_prop_3210m", "modelling-extent"), # removed because 6 of the 7 proportions sum to 1
 
   # socio-economic
   net_return       = tagged_path("./processeddatasets", canfax_filepath, "canfax_nt_b_25_2005-2009", "modelling-extent"),
@@ -94,7 +94,7 @@ predictor_labels <- c(
   
   # landscape context - fractions of a 3210 m window
   unprot_grs   = "Unprotected grassland (proportion)",
-#  native       = "Native grassland (proportion)",
+  native       = "Native grassland (proportion)",
   tame         = "Tame grassland (proportion)",
   crop         = "Annual cropland (proportion)",
   settl        = "Settlement (proportion)",
@@ -108,7 +108,7 @@ predictor_labels <- c(
   dist_to_rail       = "Distance to railway (km)",
   dist_to_popctr     = "Distance to population centre (km)",
   dist_to_regctr     = "Distance to regional centre (km)",
-  pop_density        = "Population density (persons/km\u00B2)",
+  pop_density        = "Population density (persons/km\u00B2)"
 
   # extra
 #  grs_origin   = "Grassland origin",
