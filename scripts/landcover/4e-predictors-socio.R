@@ -12,9 +12,6 @@
 #     all clipped to extent by 4-prepare-spatial-inputs.R
 #
 # Outputs:
-#   - Canfax rasters (raw and _z) to predictors dir, tagged {res_m}m
-#   - dist_to_* and elevator capacity rasters to their source dirs,
-#     tagged "modelling-extent"
 #   - Predictor maps and correlation matrix to fig_dir
 #
 # Notes:
@@ -27,6 +24,7 @@
 #   - Canfax z-scored within period: 62% of raw 2024 cells above the 2009 max
 #     where RF cannot extrapolate, 2.4% after. Assumes conversion responds to
 #     relative, not absolute, profitability
+#   - Population density extrapolation not an issue
 #   - Distances in metres
 # =============================================================================
 source(file.path("scripts/landcover", "0a-setup.R"))
