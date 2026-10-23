@@ -1,6 +1,9 @@
 # =============================================================================
+# Purpose:
+# Create protected areas layer
+#
 # Protected areas: CPCAD 2024 + SK Crown Conservation Easements
-# =============================================================================
+#
 # Output: 2010 and 2024 rasters on me_r. 0 = unprotected, 1 = CPCAD,
 # 2 = SK CCE not in CPCAD, NA outside me_r.
 #
