@@ -3,6 +3,8 @@
 # Neighbourhood class proportions from lulc_2010 (3b) and the forest binary
 # Baseline predictors: lulc_2020 is never used here.
 #
+# AWS instance - r6i.2xlarge (8 vCPU, 64 GB)
+#
 # Window: 3210 m (107 cells, halo 53), nearest odd-cell match to 2 miles,
 #   the section-scale counterpart of the 810 m (quarter-section) terrain window.
 #

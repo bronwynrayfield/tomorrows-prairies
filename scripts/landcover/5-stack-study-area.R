@@ -1,10 +1,12 @@
-# Assembles the predictor stack from the per-block outputs of
-# 4b-4e, masks each layer to the study area, and writes it to a single
-# directory with a _study-area suffix. Also computes the union of NA cells
-# across the stack (excluding water) -- ranger drops any row with an NA in
-# any predictor, so the union, not any single layer, sets the predictor
-# eligibility envelope. The training population is this envelope intersected
-# with baseline (2010) grassland, since only grassland cells can convert.
+# =============================================================================
+# Purpose:
+# Assemble the predictor stack, mask each layer to the study area, and write
+# to disk with a _study-area suffix. 
+#
+# Also computes the union of NA cells across the stack (excluding water) 
+# -ranger drops any row with an NA in any predictor, so the union, not any 
+# single layer, sets the predictor eligibility envelope
+# =============================================================================
 
 source(file.path("scripts/landcover", "0a-setup.R"))
 source(file.path("scripts/landcover", "0b-predictor-files.R"))
@@ -21,7 +23,7 @@ out_sa <- file.path("./processeddatasets", "predictors", paste0(res_m, "m"))
 sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
 water <- rast(file.path("./processeddatasets", aafc_filepath, "binary", "AAFC2010_water.tif"))
 
-# ---- source layers -------------------------------------------------------
+# ---- source layers ----
 files <- predictor_files
 
 missing <- files[!file.exists(files)]
@@ -31,7 +33,7 @@ if (length(missing)) {
 
 sa_file <- function(nm) file.path(out_sa, paste0(nm, "_study-area.tif"))
 
-# ---- mask to study area --------------------------------------------------
+# ---- mask to study area ----
 # skip only if the cached copy exists AND is newer than its source, so
 # regenerated upstream layers invalidate their _study-area copies
 for (nm in names(files)) {
@@ -46,7 +48,7 @@ for (nm in names(files)) {
        wopt = list(gdal = gopt_for(datatype(r))))
 }
 
-# ---- assemble and check --------------------------------------------------
+# ---- assemble and check ----
 stk <- rast(sapply(names(files), sa_file))
 names(stk) <- names(files)
 

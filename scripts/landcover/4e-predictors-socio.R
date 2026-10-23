@@ -1,7 +1,7 @@
 # =============================================================================
 # Purpose:
-#   Distance, capacity and net-return predictors for the RF conversion risk
-#   model: Canfax net returns (2005-2009, 2020-2024, standardised within
+#   Socio-economic predictors for the RF conversion risk model: 
+#   Canfax net returns (2005-2009, 2020-2024, standardised within
 #   period), distance to elevators, large elevators, roads, rails, population
 #   and regional centres (2011, 2021), population density (2011, 2021), capacity of nearest elevator.
 #   Ends with a collinearity/range check and figures.
