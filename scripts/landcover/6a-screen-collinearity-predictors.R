@@ -1,6 +1,9 @@
+# =============================================================================
+# Purpose:
 # Pairwise correlation + VIF screen to flag collinear predictors before the RF.
 # RF tolerates collinearity for prediction, but it distorts variable importance
 # and effect plots, so redundant predictors are screened out.
+# =============================================================================
 source(file.path("scripts/landcover", "0a-setup.R"))
 source(file.path("scripts/landcover", "0b-predictor-files.R"))
 
@@ -13,12 +16,13 @@ cor_th     <- 0.7        # |r| at/above this flags a pair as collinear
 vif_th     <- 5          # VIF at/above this flags multicollinearity (5 = stricter)
 
 sa_r <- rast(file.path(sa_filepath, sa_raster_filename))
-ecoregions <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "modelling-extent"))
-ecoregion_r <- rast(file.path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), "_modelling-extent.tif")))
+ecoregions_sa  <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "studyarea"))
+ecoregions_r   <- rast(tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "studyarea"))
+ecodistricts_r <- rast(tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea"))
 msk <- rast(file.path(out_sa, "predictor-valid-mask_study-area.tif"))
 
 # baseline (2010) grassland: native + tame. Screening samples the training
-# population, not the whole study area -- remaining grassland skews toward
+# population, not the whole study area - remaining grassland skews toward
 # marginal land, so covariate relationships within it can differ from those
 # across all land cover. 
 grass <- rast(file.path("./processeddatasets", aafc_filepath, "binary",
@@ -127,7 +131,7 @@ hm <- as.data.frame(as.table(cmat)) |>
   ggplot(aes(Var1, Var2, fill = Freq)) +
   geom_tile() +
 #  geom_text(aes(label = round(Freq, 2)), size = 3) +
-  geom_text(aes(label = ifelse(abs(Freq) >= cor_th, round(Freq, 2), "")), size = 2.5) +
+  geom_text(aes(label = ifelse(abs(Freq) >= 0.65, round(Freq, 2), "")), size = 2.5) +
   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
                        midpoint = 0, limits = c(-1, 1), name = cor_method) +
   labs(x = NULL, y = NULL, title = "Predictor correlation") +
@@ -142,162 +146,148 @@ cat("Correlation method:", cor_method, "\n\n")
 cat("Pairs with |r| >=", cor_th, ":\n"); print(pairs, row.names = FALSE)
 # Pairs with |r| >= 0.7 :
 #   pair      r
-# kp1500 - kp33  0.934
-# tn_mean - tx_mean  0.828
-# crop - native -0.796
-# nrcdd - prtot -0.765
-# ph - tx_mean  0.736
-# prtot - tsm_growing  0.730
-# bd - nrcdd  0.715
-# bd - ph  0.709
+# kp1500 - kp33  0.933
+# tn_mean - tx_mean  0.822
+# crop - native -0.793
+# nrcdd - prtot -0.768
+# ph - tx_mean  0.732
+# bd - nrcdd  0.718
+# bd - ph  0.703
 cat("\nVIF (all variables):\n"); print(transform(vif_all, VIF = round(VIF, 2)))
 # VIF (all variables):
 #   Variables   VIF
-# 1         prtot 11.61
-# 2       tn_mean 12.02
-# 3       tx_mean 29.79
-# 4     gddgrow_5 35.62
-# 5         nrcdd  8.29
-# 6            oc  2.24
-# 7            bd  4.52
-# 8          clay  2.08
-# 9            ph  3.62
-# 10     drainage  3.13
-# 11     watertbl  2.59
-# 12          kp0  2.58
-# 13         kp33 19.46
-# 14       kp1500 17.86
-# 15       ldepth  1.73
-# 16   ldepth_max  1.42
-# 17   psssm_mean  2.57
-# 18     psssm_sd  2.73
-# 19 tsm_planting  9.01
-# 20  tsm_growing  6.79
-# 21         elev 28.98
-# 22          tri  1.89
-# 23          tpi  1.20
-# 24          srr  1.17
-# 25    northness  1.02
-# 26     eastness  1.02
-# 27        slope  1.69
-# 28   unprot_grs  2.56
-# 29       native 25.88
-# 30         tame  8.67
-# 31         crop 11.03
-# 32          dev  1.37
-# 33         fors  3.58
-# 34   net_return  2.88
-# 35   d_elevator  3.01
-# 36       d_road  1.25
-# 37       d_rail  2.05
-# 38     d_popctr  2.69
-# 39     d_regctr  2.12
+# 1             prtot  8.88
+# 2           tn_mean 11.97
+# 3           tx_mean 26.99
+# 4         gddgrow_5 26.56
+# 5             nrcdd  8.14
+# 6                oc  2.29
+# 7                bd  4.63
+# 8              clay  2.06
+# 9                ph  3.41
+# 10         drainage  2.07
+# 11              kp0  2.73
+# 12             kp33 19.66
+# 13           kp1500 17.08
+# 14           ldepth  1.69
+# 15       psssm_mean  2.38
+# 16         psssm_sd  2.40
+# 17             elev 22.43
+# 18              tri  1.75
+# 19              tpi  1.18
+# 20              srr  1.17
+# 21        northness  1.02
+# 22         eastness  1.02
+# 23            slope  1.73
+# 24       unprot_grs  2.56
+# 25             tame  8.97
+# 26             crop 11.42
+# 27            settl  1.91
+# 28             fors  3.90
+# 29           native 27.03
+# 30       net_return  2.84
+# 31 dist_to_elevator  3.02
+# 32     dist_to_road  1.27
+# 33     dist_to_rail  2.00
+# 34   dist_to_popctr  2.69
+# 35   dist_to_regctr  2.02
+# 36      pop_density  1.52
+
 
 cat("\nvifstep (th =", vif_th, ") -- variables flagged for exclusion:\n")
 print(vif_step@excluded)
-# [1] "elev"         "native"       "kp33"         "tn_mean"      "nrcdd"        "tsm_planting"
+# [1] "native"  "elev"    "kp33"    "tn_mean" "nrcdd"  
 cat("\nRetained set:\n"); print(vif_step@results$Variables)
 # Retained set:
-#   [1] "prtot"       "tx_mean"     "gddgrow_5"   "oc"          "bd"          "clay"        "ph"          "drainage"   
-# [9] "watertbl"    "kp0"         "kp1500"      "ldepth"      "ldepth_max"  "psssm_mean"  "psssm_sd"    "tsm_growing"
-# [17] "tri"         "tpi"         "srr"         "northness"   "eastness"    "slope"       "unprot_grs"  "tame"       
-# [25] "crop"        "dev"         "fors"        "net_return"  "d_elevator"  "d_road"      "d_rail"      "d_popctr"   
-# [33] "d_regctr"       
+# [1] "prtot"            "tx_mean"          "gddgrow_5"        "oc"               "bd"               "clay"             "ph"               "drainage"         "kp0"              "kp1500"          
+# [11] "ldepth"           "psssm_mean"       "psssm_sd"         "tri"              "tpi"              "srr"              "northness"        "eastness"         "slope"            "unprot_grs"      
+# [21] "tame"             "crop"             "settl"            "fors"             "net_return"       "dist_to_elevator" "dist_to_road"     "dist_to_rail"     "dist_to_popctr"   "dist_to_regctr"  
+# [31] "pop_density"
 
 # vifstep output; manual drops are applied after the diagnostics below, which
 # supply the evidence for them
 vif_set <- vif_step@results$Variables
 vif(vals_cov[, vif_set])
 # Variables      VIF
-# 1        prtot 6.060397
-# 2      tx_mean 6.232994
-# 3    gddgrow_5 5.365917
-# 4           oc 2.124140
-# 5           bd 4.109704
-# 6         clay 1.901151
-# 7           ph 3.289288
-# 8     drainage 2.947956
-# 9     watertbl 2.506332
-# 10         kp0 1.716421
-# 11      kp1500 2.134001
-# 12      ldepth 1.585835
-# 13  ldepth_max 1.366774
-# 14  psssm_mean 2.156723
-# 15    psssm_sd 2.289552
-# 16 tsm_growing 2.675862
-# 17         tri 1.791996
-# 18         tpi 1.140516
-# 19         srr 1.122572
-# 20   northness 1.024043
-# 21    eastness 1.018543
-# 22       slope 1.688722
-# 23  unprot_grs 2.354606
-# 24        tame 1.523713
-# 25        crop 2.353267
-# 26         dev 1.166490
-# 27        fors 2.176893
-# 28  net_return 2.509276
-# 29  d_elevator 2.950418
-# 30      d_road 1.228350
-# 31      d_rail 1.996731
-# 32    d_popctr 2.646275
-# 33    d_regctr 2.026562
+# 1             prtot 5.582993
+# 2           tx_mean 5.358291
+# 3         gddgrow_5 4.601819
+# 4                oc 2.136866
+# 5                bd 4.394834
+# 6              clay 1.896324
+# 7                ph 3.146322
+# 8          drainage 1.840846
+# 9               kp0 1.706614
+# 10           kp1500 1.912383
+# 11           ldepth 1.561171
+# 12       psssm_mean 2.138445
+# 13         psssm_sd 2.279272
+# 14              tri 1.719838
+# 15              tpi 1.215276
+# 16              srr 1.161556
+# 17        northness 1.030112
+# 18         eastness 1.020572
+# 19            slope 1.664370
+# 20       unprot_grs 2.298788
+# 21             tame 1.543340
+# 22             crop 2.252188
+# 23            settl 1.563928
+# 24             fors 2.079137
+# 25       net_return 2.392814
+# 26 dist_to_elevator 2.924034
+# 27     dist_to_road 1.262195
+# 28     dist_to_rail 1.980270
+# 29   dist_to_popctr 2.548878
+# 30   dist_to_regctr 1.995321
+# 31      pop_density 1.369435
 length(vif_set)
-# [1] 33
+# [1] 31
+
+final_set <- vif_set
+saveRDS(final_set, file.path(out_sa, "retained-covariates.rds"))
 
 # ---- variance explained by ecoregion --------------------------------------
-# Not a redundancy check -- ecoregion is included as a regional catch-all, not
-# for independent information. But a covariate that is close to constant within
-# ecoregions will split its importance with the ecoregion factor, the same way
-# two correlated continuous predictors do. Worth knowing before reading
-# variable importance.
-
-ecoregion_r <- mask(crop(ecoregion_r, sa_r), sa_r)
-names(ecoregion_r) <- "ecoregion"
+# Caluculate between-ecoregion share of variance for each predictor
+names(ecoregions_r) <- "ecoregion"
 
 d <- vals[, c("x", "y", vif_set)]
 
-d$ecoregion <- factor(terra::extract(ecoregion_r, d[, c("x", "y")])[, 2])
+d$ecoregion <- factor(terra::extract(ecoregions_r, d[, c("x", "y")])[, 2])
 d <- d[!is.na(d$ecoregion), ]
 cat("n =", nrow(d), "across", nlevels(droplevels(d$ecoregion)), "ecoregions\n")
-# n = 20000 across 9 ecoregions
+# n = 19997 across 7 ecoregions
 d$ecoregion <- droplevels(d$ecoregion)
 
 r2_eco <- sapply(setdiff(names(d), c("x", "y", "ecoregion")), function(v) {
   summary(lm(d[[v]] ~ d$ecoregion))$r.squared
 })
 print(round(sort(r2_eco, decreasing = TRUE), 3))
-# prtot     tx_mean          ph  d_elevator          bd  psssm_mean   gddgrow_5 tsm_growing        fors    watertbl 
-# 0.708       0.580       0.563       0.537       0.519       0.383       0.382       0.354       0.325       0.300 
-# d_popctr    psssm_sd          oc  net_return    drainage  unprot_grs      d_rail        crop         tri        tame 
-# 0.289       0.222       0.208       0.189       0.184       0.158       0.125       0.124       0.122       0.110 
-# kp0        clay    d_regctr      kp1500       slope      d_road  ldepth_max      ldepth         dev         srr 
-# 0.096       0.085       0.068       0.061       0.055       0.051       0.035       0.029       0.028       0.009 
-# eastness         tpi   northness 
-# 0.004       0.001       0.001 
+# prtot          tx_mean               ph dist_to_elevator               bd       psssm_mean        gddgrow_5             fors   dist_to_popctr         psssm_sd               oc         drainage 
+# 0.713            0.580            0.546            0.542            0.525            0.393            0.375            0.323            0.294            0.222            0.205            0.189 
+# net_return       unprot_grs     dist_to_rail             crop              tri             tame              kp0             clay   dist_to_regctr           kp1500            slope     dist_to_road 
+# 0.186            0.151            0.127            0.121            0.119            0.112            0.095            0.091            0.074            0.062            0.055            0.054 
+# settl           ldepth      pop_density              srr         eastness        northness              tpi 
+# 0.033            0.029            0.008            0.006            0.005            0.001            0.001 
 
-ecodistricts <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath,
-                                    ecodistricts_filename, "modelling-extent"))
-ecodistricts <- st_transform(ecodistricts, crs(sa_r))
-ecodistrict_r <- rasterize(vect(ecodistricts), sa_r, field = "ECODISTRIC")
-ecodistrict_r <- mask(ecodistrict_r, sa_r)
 
-d$ecodistrict <- factor(terra::extract(ecodistrict_r, d[, c("x", "y")])[, 2])
+# Caluculate between-ecodistrict share of variance for each predictor
+names(ecodistricts_r) <- "ecodistrict"
+d$ecodistrict <- factor(terra::extract(ecodistricts_r, d[, c("x", "y")])[, 2])
 d <- d[!is.na(d$ecodistrict), ]
-d$ecodistrict <- droplevels(d$ecodistrict)
+cat("n =", nrow(d), "across", nlevels(droplevels(d$ecodistrict)), "ecodistricts\n")
+# n = 19997 across 127 ecodistricts
+#d$ecodistrict <- droplevels(d$ecodistrict)
 
 r2_dist <- sapply(setdiff(names(d), c("x", "y", "ecoregion", "ecodistrict")), function(v) {
   summary(lm(d[[v]] ~ d$ecodistrict))$r.squared
 })
 print(round(sort(r2_dist, decreasing = TRUE), 3))
-# prtot     tx_mean   gddgrow_5  d_elevator    psssm_sd  psssm_mean          ph          bd  net_return tsm_growing 
-# 0.933       0.927       0.884       0.873       0.872       0.828       0.783       0.761       0.756       0.752 
-# d_regctr        clay          oc    d_popctr        fors      d_rail      kp1500    watertbl  unprot_grs    drainage 
-# 0.710       0.690       0.650       0.647       0.493       0.474       0.452       0.448       0.418       0.414 
-# crop         kp0  ldepth_max         tri        tame       slope         dev      d_road      ldepth         srr 
-# 0.377       0.372       0.356       0.329       0.314       0.202       0.158       0.137       0.124       0.035 
-# northness    eastness         tpi 
-# 0.026       0.017       0.012 
+# prtot          tx_mean        gddgrow_5 dist_to_elevator         psssm_sd       psssm_mean               ph               bd       net_return   dist_to_regctr             clay               oc 
+# 0.935            0.928            0.889            0.875            0.875            0.827            0.787            0.769            0.760            0.717            0.702            0.662 
+# dist_to_popctr    fors     dist_to_rail           kp1500         drainage       unprot_grs             crop              kp0              tri             tame            slope            settl 
+# 0.652            0.507            0.476            0.461            0.436            0.409            0.369            0.366            0.326            0.324            0.205            0.182 
+# dist_to_road    ldepth      pop_density              srr        northness         eastness              tpi 
+# 0.143            0.119            0.044            0.033            0.029            0.020            0.008 
 
 # ---- variance explained by province ----------------------------------------
 # DSS attributes come from independently-conducted provincial surveys with
@@ -317,203 +307,120 @@ r2_prov <- sapply(setdiff(names(d), c("x", "y", "ecoregion", "ecodistrict", "pro
   summary(lm(d[[v]] ~ d$province))$r.squared
 })
 print(round(sort(r2_prov, decreasing = TRUE), 3))
-# net_return    watertbl    psssm_sd       prtot    drainage  ldepth_max        clay   gddgrow_5  unprot_grs     tx_mean 
-# 0.541       0.354       0.312       0.306       0.255       0.239       0.201       0.195       0.195       0.133 
-# fors      d_rail         kp0  psssm_mean  d_elevator      ldepth tsm_growing        tame        crop         tri 
-# 0.129       0.123       0.114       0.113       0.082       0.063       0.061       0.044       0.042       0.042 
-# kp1500      d_road         dev    d_popctr       slope          ph          oc    d_regctr          bd         srr 
-# 0.041       0.034       0.034       0.033       0.024       0.023       0.022       0.020       0.013       0.002 
-# tpi    eastness   northness 
-# 0.002       0.000       0.000 
-# per-province mean and SD for the soil variables: a province with SD near 0
-# (e.g. a depth convention capping at 100 cm) is acting as a province code
-soil_vars <- intersect(c("oc", "bd", "clay", "sand", "ph", "drainage", "watertbl",
-                         "kp0", "kp33", "kp1500", "ldepth", "ldepth_max", "slope"),
-                       names(d))
-prov_stats <- do.call(rbind, lapply(soil_vars, function(v) {
-  data.frame(var  = v,
-             prov = levels(d$province),
-             mean = round(tapply(d[[v]], d$province, mean), 2),
-             sd   = round(tapply(d[[v]], d$province, sd), 2),
-             row.names = NULL)
-}))
-print(prov_stats)
-# var         prov   mean    sd
-# 1          oc      Alberta  17.86  3.49
-# 2          oc     Manitoba  19.96  2.57
-# 3          oc Saskatchewan  18.15  2.54
-# 4          bd      Alberta   1.32  0.07
-# 5          bd     Manitoba   1.32  0.05
-# 6          bd Saskatchewan   1.33  0.05
-# 7        clay      Alberta  19.88  3.91
-# 8        clay     Manitoba  25.14  5.36
-# 9        clay Saskatchewan  23.04  2.68
-# 10         ph      Alberta   7.09  0.38
-# 11         ph     Manitoba   6.87  0.38
-# 12         ph Saskatchewan   7.08  0.39
-# 13   drainage      Alberta   3.18  0.59
-# 14   drainage     Manitoba   4.05  1.11
-# 15   drainage Saskatchewan   2.74  0.74
-# 16   watertbl      Alberta   0.05  0.27
-# 17   watertbl     Manitoba   1.10  1.20
-# 18   watertbl Saskatchewan   0.05  0.26
-# 19        kp0      Alberta  52.27  3.31
-# 20        kp0     Manitoba  50.15  9.24
-# 21        kp0 Saskatchewan  49.35  2.54
-# 22     kp1500      Alberta  16.97  4.62
-# 23     kp1500     Manitoba  12.95  4.73
-# 24     kp1500 Saskatchewan  16.89  5.49
-# 25     ldepth      Alberta  19.97 20.69
-# 26     ldepth     Manitoba  16.66 13.23
-# 27     ldepth Saskatchewan  12.17  2.25
-# 28 ldepth_max      Alberta 112.05 14.96
-# 29 ldepth_max     Manitoba 101.53  5.30
-# 30 ldepth_max Saskatchewan 100.02  0.39
-# 31      slope      Alberta   5.46  5.72
-# 32      slope     Manitoba   4.35  9.33
-# 33      slope Saskatchewan   6.43  4.97
-write.csv(prov_stats, file.path(out_dir, "province_stats_soil.csv"), row.names = FALSE)
+# net_return         psssm_sd            prtot         drainage        gddgrow_5             clay       unprot_grs             fors          tx_mean     dist_to_rail              kp0       psssm_mean 
+# 0.540            0.314            0.304            0.254            0.205            0.205            0.188            0.135            0.129            0.122            0.114            0.103 
+# dist_to_elevator ldepth            tame              tri           kp1500             crop     dist_to_road            settl   dist_to_popctr            slope               ph               oc 
+# 0.086            0.063            0.047            0.042            0.041            0.040            0.040            0.034            0.032            0.025            0.024            0.022 
+# dist_to_regctr      bd      pop_density              tpi              srr         eastness        northness 
+# 0.022            0.016            0.003            0.001            0.001            0.000            0.000 
 
-# ---- where are the DSS NAs? ------------------------------------------------
-# The DSS layers are the binding NA constraint (~35.5M cells on kp0/kp1500).
-# Dropping a layer only recovers study area if its NAs are attribute gaps in
-# surveyed polygons; NAs where DSS has no polygon coverage at all are lost
-# either way. Separate draw from d: that sample is all-valid by construction,
-# so it contains no NA rows to count. Sampled over the whole study area
-# (not the valid mask), NAs retained.
-na_n <- 500000   # ~0.1% precision on a proportion; cheap relative to a full pass
+# This is legacy. Only kept to justify why I eliminated ldepth_max and watertbl
+# # per-province mean and SD for the soil variables: a province with SD near 0
+# # (e.g. a depth convention capping at 100 cm) is acting as a province code
+# soil_vars <- intersect(c("oc", "bd", "clay", "sand", "ph", "drainage", "watertbl",
+#                          "kp0", "kp33", "kp1500", "ldepth", "ldepth_max", "slope"),
+#                        names(d))
+# prov_stats <- do.call(rbind, lapply(soil_vars, function(v) {
+#   data.frame(var  = v,
+#              prov = levels(d$province),
+#              mean = round(tapply(d[[v]], d$province, mean), 2),
+#              sd   = round(tapply(d[[v]], d$province, sd), 2),
+#              row.names = NULL)
+# }))
+# print(prov_stats)
+# # var         prov   mean    sd
+# # 1          oc      Alberta  17.86  3.49
+# # 2          oc     Manitoba  19.96  2.57
+# # 3          oc Saskatchewan  18.15  2.54
+# # 4          bd      Alberta   1.32  0.07
+# # 5          bd     Manitoba   1.32  0.05
+# # 6          bd Saskatchewan   1.33  0.05
+# # 7        clay      Alberta  19.88  3.91
+# # 8        clay     Manitoba  25.14  5.36
+# # 9        clay Saskatchewan  23.04  2.68
+# # 10         ph      Alberta   7.09  0.38
+# # 11         ph     Manitoba   6.87  0.38
+# # 12         ph Saskatchewan   7.08  0.39
+# # 13   drainage      Alberta   3.18  0.59
+# # 14   drainage     Manitoba   4.05  1.11
+# # 15   drainage Saskatchewan   2.74  0.74
+# # 16   watertbl      Alberta   0.05  0.27
+# # 17   watertbl     Manitoba   1.10  1.20
+# # 18   watertbl Saskatchewan   0.05  0.26
+# # 19        kp0      Alberta  52.27  3.31
+# # 20        kp0     Manitoba  50.15  9.24
+# # 21        kp0 Saskatchewan  49.35  2.54
+# # 22     kp1500      Alberta  16.97  4.62
+# # 23     kp1500     Manitoba  12.95  4.73
+# # 24     kp1500 Saskatchewan  16.89  5.49
+# # 25     ldepth      Alberta  19.97 20.69
+# # 26     ldepth     Manitoba  16.66 13.23
+# # 27     ldepth Saskatchewan  12.17  2.25
+# # 28 ldepth_max      Alberta 112.05 14.96
+# # 29 ldepth_max     Manitoba 101.53  5.30
+# # 30 ldepth_max Saskatchewan 100.02  0.39
+# # 31      slope      Alberta   5.46  5.72
+# # 32      slope     Manitoba   4.35  9.33
+# # 33      slope Saskatchewan   6.43  4.97
+# write.csv(prov_stats, file.path(out_dir, "province_stats_soil.csv"), row.names = FALSE)
 
-set.seed(43)
-na_pts <- spatSample(sa_r, na_n * 3, method = "random",
-                     xy = TRUE, values = TRUE, na.rm = FALSE)
-na_pts <- as.matrix(na_pts[!is.na(na_pts[[3]]), c("x", "y")])
-na_pts <- na_pts[sample(nrow(na_pts), min(na_n, nrow(na_pts))), ]
-
-na_d <- terra::extract(r, na_pts)
-na_d$ID <- NULL
-na_d$province <- factor(terra::extract(prov, na_pts)$NAME_1)
-na_d <- na_d[!is.na(na_d$province), ]
-
-dss_vars <- intersect(c("drainage", "watertbl", "kp0", "kp33", "kp1500",
-                        "ldepth", "ldepth_max", "slope"), names(na_d))
-
-# % NA per DSS layer within each province
-na_by_prov <- sapply(dss_vars, function(v) {
-  round(100 * tapply(is.na(na_d[[v]]), na_d$province, mean), 1)
-})
-cat("\n% NA by province:\n"); print(na_by_prov)
-# % NA by province:
-#   drainage watertbl kp0 kp33 kp1500 ldepth ldepth_max slope
-# Alberta           2.2      1.1 2.2  2.3    2.2    0.1        0.1   0.1
-# Manitoba          6.2      6.2 6.8  6.8    6.8    6.8        6.8   6.2
-# Saskatchewan      1.7      0.0 9.8  9.8    9.8    9.8        9.8   1.7
-
-# is a layer's NA set exclusive, or shared with the other DSS layers?
-# exclusive NAs are what dropping that layer would actually recover
-dss_na <- sapply(dss_vars, function(v) is.na(na_d[[v]]))
-excl <- sapply(dss_vars, function(v) {
-  others <- rowSums(dss_na[, setdiff(dss_vars, v), drop = FALSE]) > 0
-  sum(dss_na[, v] & !others)
-})
-cat("\nDSS NA overlap (n =", nrow(na_d), "sampled):\n")
-# DSS NA overlap (n = 499428 sampled):
-print(data.frame(var        = dss_vars,
-                 pct_na     = round(100 * colMeans(dss_na), 1),
-                 pct_na_excl = round(100 * excl / nrow(na_d), 2),
-                 row.names  = NULL))
-# var pct_na pct_na_excl
-# 1   drainage    2.5        0.00
-# 2   watertbl    1.3        0.00
-# 3        kp0    6.8        0.00
-# 4       kp33    6.8        0.05
-# 5     kp1500    6.8        0.00
-# 6     ldepth    6.1        0.00
-# 7 ldepth_max    6.1        0.00
-# 8      slope    1.8        0.00
-cat("\nany DSS layer NA:", round(100 * mean(rowSums(dss_na) > 0), 1), "%\n")
-# any DSS layer NA: 6.8 %
-write.csv(as.data.frame(na_by_prov), file.path(out_dir, "province_na_dss.csv"))
-
-# ---- manual drops: jurisdictional artifacts --------------------------------
-# Applied here, after the diagnostics above, because those tables are the
-# evidence. DSS attributes come from independently-conducted provincial surveys
-# with different depth conventions and mapping intensity, and the maps show
-# steps at the AB/SK and SK/MB borders. Province R2 vs ecodistrict R2 separates
-# real ecology from survey convention -- province boundaries have no ecological
-# meaning, so a high ratio means the variable is partly encoding jurisdiction
-# (values from the run of 2026-08; re-check against the printout above if the
-# sample or source layers change):
-#
-#              province   ecodistrict   ratio
-#   watertbl      0.289       0.371      0.78   <- dropped
-#   ldepth_max    0.245       0.383      0.64   <- dropped
-#   ldepth        0.062       0.121      0.51      kept, but see SD note below
-#   drainage      0.185       0.377      0.49      kept (mechanistically relevant)
-#   kp0           0.132       0.357      0.37      kept
-#   kp1500        0.033       0.463      0.07      kept (tracks ecology, not province)
-#   ph            0.017       0.790      0.02      kept (interpolated, province-blind)
-#
-# The interpolated national products (ph, bd, oc; all < 0.03) are essentially
-# province-blind, which is what shows the DSS pattern is survey-derived rather
-# than pedological -- real provincial soil differences would appear in both.
-#
-# ldepth_max: per-province SDs make the mechanism explicit --
-#   AB 112.05 (SD 14.96) | MB 101.53 (SD 5.30) | SK 100.02 (SD 0.39)
-# An SD of 0.39 cm province-wide is not a soil property. The Saskatchewan Soil
-# Resource Database manual (SKSIDv4, AAFC Sask. Land Resource Unit, 2009,
-# https://soilsofsask.ca/documents/sksid_usermanual.pdf) documents that SK
-# profiles were typically examined to a 1 m "control section" -- the depth
-# values are pinned at that protocol limit, not measured. Not in Olimb &
-# Robinson's covariate set either, so dropping costs nothing relative to
-# precedent.
-#
-# watertbl: AB 0.05 (SD 0.27) | SK 0.05 (SD 0.26) | MB 1.10 (SD 1.20).
-# Near-constant outside MB, and collapsed to a single legend class in 6b, so
-# it is dropped primarily on information grounds. (SK reports 0.0% NA here but
-# 9.8% on the KP layers, suggesting zeros are being used in place of NA.)
-#
-# NB: NA sets across the DSS layers are fully nested (pct_na_excl = 0.00 for
-# every layer), so these drops recover no additional study area.
-manual_drop <- c("watertbl", "ldepth_max")
-final_set <- setdiff(vif_set, manual_drop)
-
-cat("\nvifstep retained :", length(vif_set), "\n")
-# vifstep retained : 33 
-cat("manual drops     :", paste(manual_drop, collapse = ", "), "\n")
-# manual drops     : watertbl, ldepth_max
-cat("final set        :", length(final_set), "\n")
-# final set        : 31 
-print(vif(vals_cov[, final_set]))
-# Variables      VIF
-# 1        prtot 6.015263
-# 2      tx_mean 6.104209
-# 3    gddgrow_5 5.542645
-# 4           oc 2.174727
-# 5           bd 4.385874
-# 6         clay 1.944330
-# 7           ph 3.343898
-# 8     drainage 1.722802
-# 9          kp0 1.635314
-# 10      kp1500 1.837376
-# 11      ldepth 1.532775
-# 12  psssm_mean 2.184189
-# 13    psssm_sd 2.270419
-# 14 tsm_growing 2.741213
-# 15         tri 1.809182
-# 16         tpi 1.197176
-# 17         srr 1.153202
-# 18   northness 1.024074
-# 19    eastness 1.033287
-# 20       slope 1.665545
-# 21  unprot_grs 2.347722
-# 22        tame 1.550770
-# 23        crop 2.329628
-# 24         dev 1.207536
-# 25        fors 2.047951
-# 26  net_return 2.555316
-# 27  d_elevator 2.979618
-# 28      d_road 1.242466
-# 29      d_rail 1.960998
-# 30    d_popctr 2.530897
-# 31    d_regctr 1.938696
-saveRDS(final_set, file.path(out_sa, "retained-covariates.rds"))
+# ---- where are the DSS NAs? ----
+# Haven't rerun this since updating predictors, come back to it when trying to do imputation
+# # The DSS layers are the binding NA constraint (~35.5M cells on kp0/kp1500).
+# # Dropping a layer only recovers study area if its NAs are attribute gaps in
+# # surveyed polygons; NAs where DSS has no polygon coverage at all are lost
+# # either way. Separate draw from d: that sample is all-valid by construction,
+# # so it contains no NA rows to count. Sampled over the whole study area
+# # (not the valid mask), NAs retained.
+# na_n <- 500000   # ~0.1% precision on a proportion; cheap relative to a full pass
+# 
+# set.seed(43)
+# na_pts <- spatSample(sa_r, na_n * 3, method = "random",
+#                      xy = TRUE, values = TRUE, na.rm = FALSE)
+# na_pts <- as.matrix(na_pts[!is.na(na_pts[[3]]), c("x", "y")])
+# na_pts <- na_pts[sample(nrow(na_pts), min(na_n, nrow(na_pts))), ]
+# 
+# na_d <- terra::extract(r, na_pts)
+# na_d$ID <- NULL
+# na_d$province <- factor(terra::extract(prov, na_pts)$NAME_1)
+# na_d <- na_d[!is.na(na_d$province), ]
+# 
+# dss_vars <- intersect(c("drainage", "ph", "kp0", "kp33", "kp1500",
+#                         "ldepth", "slope"), names(na_d))
+# 
+# # % NA per DSS layer within each province
+# na_by_prov <- sapply(dss_vars, function(v) {
+#   round(100 * tapply(is.na(na_d[[v]]), na_d$province, mean), 1)
+# })
+# cat("\n% NA by province:\n"); print(na_by_prov)
+# # % NA by province:
+# #   drainage watertbl kp0 kp33 kp1500 ldepth ldepth_max slope
+# # Alberta           2.2      1.1 2.2  2.3    2.2    0.1        0.1   0.1
+# # Manitoba          6.2      6.2 6.8  6.8    6.8    6.8        6.8   6.2
+# # Saskatchewan      1.7      0.0 9.8  9.8    9.8    9.8        9.8   1.7
+# 
+# # is a layer's NA set exclusive, or shared with the other DSS layers?
+# # exclusive NAs are what dropping that layer would actually recover
+# dss_na <- sapply(dss_vars, function(v) is.na(na_d[[v]]))
+# excl <- sapply(dss_vars, function(v) {
+#   others <- rowSums(dss_na[, setdiff(dss_vars, v), drop = FALSE]) > 0
+#   sum(dss_na[, v] & !others)
+# })
+# cat("\nDSS NA overlap (n =", nrow(na_d), "sampled):\n")
+# # DSS NA overlap (n = 499428 sampled):
+# print(data.frame(var        = dss_vars,
+#                  pct_na     = round(100 * colMeans(dss_na), 1),
+#                  pct_na_excl = round(100 * excl / nrow(na_d), 2),
+#                  row.names  = NULL))
+# # var pct_na pct_na_excl
+# # 1   drainage    2.5        0.00
+# # 2   watertbl    1.3        0.00
+# # 3        kp0    6.8        0.00
+# # 4       kp33    6.8        0.05
+# # 5     kp1500    6.8        0.00
+# # 6     ldepth    6.1        0.00
+# # 7 ldepth_max    6.1        0.00
+# # 8      slope    1.8        0.00
+# cat("\nany DSS layer NA:", round(100 * mean(rowSums(dss_na) > 0), 1), "%\n")
+# # any DSS layer NA: 6.8 %
+# write.csv(as.data.frame(na_by_prov), file.path(out_dir, "province_na_dss.csv"))

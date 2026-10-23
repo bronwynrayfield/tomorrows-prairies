@@ -17,7 +17,7 @@
 #     for speed; NA handling deferred to rasterization step
 # =============================================================================
 
-source(file.path("scripts/landcover", "0-setup.R"))
+source(file.path("scripts/landcover", "0a-setup.R"))
 
 #--- Load files ----
 # Study area
@@ -34,9 +34,9 @@ plowprint_reproj<- rast(tagged_path("./processeddatasets", plowprint_filepath, p
 census_reproj <- st_read(tagged_path("./processeddatasets", census_subdivision_filepath, census_subdivision_filename, "proj-naaea"))
 
 # National ecological framework
-ecozones_reproj <- st_read(tagged_path("./processeddatasets", ecozones_filepath, ecozones_filename, "proj-naaea"))
-ecoregions_reproj <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "proj-naaea"))
-ecodistricts_reproj <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "proj-naaea"))
+#ecozones_reproj <- st_read(file.path("./processeddatasets", ecozones_filepath, ecozones_filename))
+ecoregions_reproj <- st_read(file.path("./processeddatasets", ecoregions_filepath, ecoregions_filename))
+ecodistricts_reproj <- st_read(file.path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename))
 
 # Protected Areas
 pa_reproj <- st_read(
@@ -135,7 +135,7 @@ census <- st_intersection(census_reproj, me)
 # plot(census["CSDNAME"])
 
 # National ecological framework
-ecozones <- st_intersection(ecozones_reproj, me)
+# ecozones <- st_intersection(ecozones_reproj, me)
 ecoregions <- st_intersection(ecoregions_reproj, me)
 ecoregions_r <- terra::rasterize(terra::vect(ecoregions), me_r, field = "ECOREGION_") # also create a raster version of ecoregions
 ecodistricts <- st_intersection(ecodistricts_reproj, me)
@@ -378,12 +378,11 @@ mask(crop(lulc2025, sa_r), sa_r, filename = tagged_path("./processeddatasets", g
 # Boundaries
 ecoregions_sa <- ecoregions[ecoregions$ECOZONE_ID == 10,]   # Prairies Ecozone
 write_sf_tagged(ecoregions_sa, "./processeddatasets", ecoregions_filepath, ecoregions_filename, "studyarea")
-mask(crop(ecoregions_r, sa_r), sa_r, filename = tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "studyarea"))
+terra::rasterize(terra::vect(ecoregions_sa), me_r, field = "ECOREGION_", filename = tagged_path("./processeddatasets", ecoregions_filepath, paste0(tools::file_path_sans_ext(ecoregions_filename), ".tif"), "studyarea"), overwrite = TRUE)
 
-# FIX ERROR: ecodistrict 1018 coded ecozone 10 in the cleaned layer but its ecoregion (214, Northern Continental Divide) is ecozone 14; 515 ha sliver
-ecodistricts$ECOZONE_ID[ecodistricts$ECODISTRIC == 1018] <- 14
-# drop slivers of adjacent ecozones
 ecodistricts_sa <- ecodistricts[ecodistricts$ECOZONE_ID == 10,]   # Prairies Ecozone
 write_sf_tagged(ecodistricts_sa, "./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "studyarea")
-mask(crop(ecodistricts_r, sa_r), sa_r, filename = tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea"))
+terra::rasterize(terra::vect(ecodistricts_sa), me_r, field = "ECODISTRIC", filename = tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea"), overwrite = TRUE)
+
+
 

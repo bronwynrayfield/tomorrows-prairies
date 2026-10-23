@@ -15,6 +15,7 @@ library(foreign)
 library(ncf)
 library(rvest)
 library(parallel)
+library(flextable)
 
 # check available space on different mount points and memory
 system("df -h")
@@ -46,9 +47,9 @@ me_raster_filename <- "modelling_extent_aligned_cnvc_Jan2026.tif"
 # Boundaries
 pilot_filename <- "pilot_area_aligned_cnvc_Jan2026.shp"
 vegzones_filename <- "vegetation_zones_of_canada_2020_sa_nobuffer.shp"
-ecozones_filename <- "ecozones.shp"
-ecoregions_filename <- "ecoregions_clean.shp"
-ecodistricts_filename <- "ecodistricts_clean.shp"
+ecozones_filename <- "ecozone_clean_prairies.shp"
+ecoregions_filename <- "ecoregions_clean_aligned_classSA.shp"
+ecodistricts_filename <- "ecodistricts_modext_Oct2026.shp"
 census_subdivision_filename <- "lcsd000a25a_e.shp"
 
 # LULC
@@ -160,9 +161,9 @@ sa_filepath <- "./processeddatasets/studyarea"
 # Boundaries
 pilot_filepath <- "pilot_area"
 vegzones_filepath <- "boundaries/vegetation-zones-of-canada"
-ecozones_filepath <- "boundaries/national-ecological-framework-for-canada/Ecozones"
-ecoregions_filepath <- "boundaries/national-ecological-framework-for-canada/Ecoregions"
-ecodistricts_filepath <- "boundaries/national-ecological-framework-for-canada/Ecodistricts"
+ecozones_filepath <- "boundaries/National Ecological Framework for Canada/Ecozones"
+ecoregions_filepath <- "boundaries/National Ecological Framework for Canada/Ecoregions"
+ecodistricts_filepath <- "boundaries/National Ecological Framework for Canada/Ecodistricts/Modelling extent"
 census_subdivision_filepath <- "boundaries/census-subdivisions"
 
 # LULC

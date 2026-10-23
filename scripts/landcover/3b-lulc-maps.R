@@ -192,6 +192,8 @@ lut <- as.data.frame(ecodistricts_sa) %>%
   left_join(eco_names, by = "ecoregion")
 
 # apply transitions function
+# Crop to LUTS grid: extra extent all NA; 356,902 ecodistrict cells (~321 km², US border) have no LUTS data and drop out of tabulation
+ecodistricts_r <- crop(ecodistricts_r, luts2010)
 tr_luts <- tabulate_transitions(luts2010, luts2020, ecodistricts_r, codes = groups)
 # add ecoregion
 tr_luts <- left_join(tr_luts, lut, by = "stratum_id")
@@ -210,14 +212,15 @@ native_by_ecoregion <- tr_luts %>%
     .groups = "drop") %>%
   mutate(across(starts_with("to_"), ~ 100 * .x / native_2010_ha, .names = "{.col}_pct")) %>%
   arrange(desc(to_crop_ha))
+native_by_ecoregion
 # # A tibble: 7 × 10
-# ecoregion ecoregion_name             native_2010_ha native_2020_ha to_crop_ha to_settle_ha to_tame_ha to_crop_ha_pct to_settle_ha_pct to_tame_ha_pct
-# <int> <chr>                               <dbl>          <dbl>      <dbl>        <dbl>      <dbl>          <dbl>            <dbl>          <dbl>
-# 1       156 Aspen Parkland                    815121.        784053.    9781.         9453.     11835.          1.20             1.16            1.45 
-# 2       159 Mixed Grassland                  4820272.       4800505.    3936.         5356.     10476.          0.0816           0.111           0.217
-# 3       157 Moist Mixed Grassland            1435344.       1410543.    3159.        10844.     10799.          0.220            0.755           0.752
+#   ecoregion ecoregion_name             native_2010_ha native_2020_ha to_crop_ha to_settle_ha to_tame_ha to_crop_ha_pct to_settle_ha_pct to_tame_ha_pct
+#       <int> <chr>                               <dbl>          <dbl>      <dbl>        <dbl>      <dbl>          <dbl>            <dbl>          <dbl>
+# 1       156 Aspen Parkland                    815122.        784053.    9781.         9453.     11835.          1.20             1.16            1.45 
+# 2       159 Mixed Grassland                  4820271.       4800503.    3936.         5356.     10476.          0.0816           0.111           0.217
+# 3       157 Moist Mixed Grassland            1435346.       1410546.    3159.        10844.     10799.          0.220            0.755           0.752
 # 4       158 Fescue Grassland                  340608.        336180.     852.         1399.      2177.          0.250            0.411           0.639
-# 5       160 Cypress Upland                    550889.        548789.     219.          410.      1471.          0.0397           0.0744          0.267
+# 5       160 Cypress Upland                    550890.        548790.     219.          410.      1471.          0.0397           0.0744          0.267
 # 6       162 Lake Manitoba Plain                38387.         37921.     128.          250.        88.5         0.334            0.652           0.230
 # 7       163 Southwest Manitoba Uplands          2232           2158.       9.63         11.1       53.0         0.431            0.496           2.38 
 
