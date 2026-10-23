@@ -37,7 +37,6 @@ source(file.path("scripts/landcover", "0a-setup.R"))
 # ---- Load ----
 sa              <- st_read(file.path(sa_filepath, sa_filename))
 ecoregions_sa   <- st_read(tagged_path("./processeddatasets", ecoregions_filepath, ecoregions_filename, "studyarea"))
-ecodistricts_sa <- st_read(tagged_path("./processeddatasets", ecodistricts_filepath, ecodistricts_filename, "studyarea"))
 ecodistricts_r  <- rast(tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea"))
 
 lulc_2010_sa <- rast(tagged_path("./processeddatasets", "landcover", "lulc_2010.tif", "study-area"))

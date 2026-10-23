@@ -1,7 +1,5 @@
 # =============================================================================
-# 8-fit-rf-plowprint.R
-# =============================================================================
-#
+# *Kept as a legacy - only one run once early on - but not updated
 # Purpose:
 #   Random forest on the 20 retained climate/biophysical predictors against the
 #   Plowprint benchmark response from 7-response-plowprint.R. This is the
