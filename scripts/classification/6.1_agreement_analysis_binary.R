@@ -10,6 +10,8 @@
 #         grassland data products regardless of extent and calculates metrics at
 #         the ecodistrict level.
 
+# original file name: agreement_analysis_binary_all_v7_ecodist
+
 # CROP TO A STUDY OR PILOT AREA - update script depending on desired extent!
 
 #### SAME AS V4 BUT ADD F1 and MCC AS METRICS ####

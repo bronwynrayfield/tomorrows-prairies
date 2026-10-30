@@ -10,6 +10,8 @@
 #         grassland data products regardless of extent and calculates metrics at
 #         the ecodistrict level (in addition to global).
 
+# original file name: agreement_analysis_native_v_tame_v4_ecodist
+
 # NEED TO UPDATE TO PLI SEP SO METADATA IS CORRECT - done in metadata file
 
 # CROP TO A STUDY OR PILOT AREA - update script depending on desired extent!
