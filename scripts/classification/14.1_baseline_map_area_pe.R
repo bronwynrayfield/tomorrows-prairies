@@ -1,5 +1,12 @@
 
-# calculate grass area of baseline map in Prairies Ecozone for Bronwyn
+
+#################################################################################
+##                 RESULTS: CALCULATE AREA OF BASELINE MAP                     ##
+#################################################################################
+
+##----------------------- Alison Long - March 2026 -------------------------
+
+# STEP 14: Calculate grass area of baseline map in Prairies Ecozone 
 
 library(tidyverse)
 library(terra)

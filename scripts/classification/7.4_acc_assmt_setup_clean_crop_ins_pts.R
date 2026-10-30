@@ -1,6 +1,12 @@
 
-# v2 of crop insurance-derived groundtruth points built with bad ecodistricts
-# doing my best to clean them 
+#############################################################################
+##        PREPROCESSING: SPATIAL AGREEMENT (BINARY AND TRICLASS)           ##
+#############################################################################
+
+##----------------------- Alison Long - June 2026 -------------------------
+
+# STEP 7: Clean ecodistricts in v2 of crop insurance-derived groundtruth point
+#         datasets from AAFC.
 
 # ----------------------------
 # 1) Setup

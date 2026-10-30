@@ -1,3 +1,13 @@
+
+###################################################################################
+##        PREPROCESSING: SPATIAL AGREEMENT (BINARY GRASS VS NON-GRASS)           ##
+###################################################################################
+
+##----------------------- Alison Long - June 2026 -------------------------
+
+# STEP 7: Clean groundtruthed point datasets from AAFC and CFGA. Code modified 
+#         from Sam Yeo's.
+
 # Tomorrows Prairies table summaries - Groundtruth Data
 
 # add in bib

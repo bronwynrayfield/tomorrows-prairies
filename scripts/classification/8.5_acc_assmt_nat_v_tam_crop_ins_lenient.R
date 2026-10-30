@@ -1,14 +1,24 @@
 
-#######################################################################################
-##              PRELIMINARY ACCURACY ASSESSMENT: NATIVE AND TAME CLASSES             ##
-#######################################################################################
+####################################################################################
+##     ANALYSIS: ACCURACY ASSESSMENT (TRICLASS NATIVE VS TAME VS NON-GRASS)       ##
+####################################################################################
 
 ##----------------------- Alison Long - June 2026 -------------------------
 
-# step 8 (multiclass): assess accuracy of datasets mapping grasslands
-# against ground-truthed point data (2015 to present), with 3 classes:
-#   0 = not grass, 1 = tame grass, 2 = native grass
-#
+# STEP 8: Assess accuracy of datasets mapping grasslands by comparing them
+#         to ground-truthed point data for 2015 to present using dataset 
+#         generated in script 7.4. This script focuses on the point dataset
+#         derived from crop insurance data and results will be combined with 
+#         results from script 8.4 in script 8.6.
+
+## THIS VERSION USES CROP INSURANCE-DERIVED DATA FROM AAFC 
+## AND MORE LENIENT MATCHING RULES FOR YEAR:
+##   - All non-grass points are annual cropland: allowed year +/- 1 year
+##   - All tame points are forage pasture class from crop ins data and forages usually
+##     present for 3 years: allowed year +/- 1 year
+
+# 3 classes: 0 = not grass, 1 = tame grass, 2 = native grass
+
 # THIS VERSION USES CROP INSURANCE DERIVED DATA FROM EMILY LINDSAY
 ## AND MORE LENIENT MATCHING RULES FOR YEAR:
 ##   - All non-grass points are annual cropland: allowed year +/- 1 year

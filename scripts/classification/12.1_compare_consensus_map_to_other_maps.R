@@ -1,4 +1,13 @@
 
+###################################################################################
+##             VALIDATION: COMPARE CONSENSUS MAP TO OTHER PRODUCTS               ##
+###################################################################################
+
+##----------------------- Alison Long - July 2026 -------------------------
+
+# STEP 12: Assess accuracy of consensus map and modified versions by comparing 
+#          to existing grassland maps
+
 library(tidyverse)
 library(terra)
 library(sf)

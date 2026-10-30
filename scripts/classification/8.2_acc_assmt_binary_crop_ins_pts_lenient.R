@@ -1,14 +1,17 @@
 
 ####################################################################################
-##           PRELIMINARY ACCURACY ASSESSMENT: BINARY (GRASS VS NON-GRASS)         ##
+##            ANALYSIS: ACCURACY ASSESSMENT (BINARY GRASS VS NON-GRASS)           ##
 ####################################################################################
 
 ##----------------------- Alison Long - June 2026 -------------------------
 
-# step 8: assess accuracy of datasets mapping grasslands by comparing them
-#         to ground-truthed point data for 2015 to present
+# STEP 8: Assess accuracy of datasets mapping grasslands by comparing them
+#         to ground-truthed point data for 2015 to present using dataset 
+#         generated in script 7.4. This script focuses on the point dataset
+#         derived from crop insurance data and results will be combined with 
+#         results from script 8.1 in script 8.3.
 
-## THIS VERSION USES CROP INSURANCE DERIVED DATA FROM EMILY LINDSAY 
+## THIS VERSION USES CROP INSURANCE-DERIVED DATA FROM AAFC 
 ## AND MORE LENIENT MATCHING RULES FOR YEAR:
 ##   - All non-grass points are annual cropland: allowed year +/- 1 year
 ##   - All tame points are forage pasture class from crop ins data and forages usually

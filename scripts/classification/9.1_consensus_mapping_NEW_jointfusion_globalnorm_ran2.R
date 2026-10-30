@@ -1,11 +1,11 @@
 
 ###################################################################################
-##                     GRASSLAND CONSENSUS MAPPING ANALYSIS                      ##
+##                     ANALYSIS: GRASSLAND CONSENSUS MAPPING                     ##
 ###################################################################################
 
 ##----------------------- Alison Long - August 2026 -------------------------
 
-# step 9: use data fusion techniques to create a consensus grassland map 
+# STEP 9: Use data fusion techniques to create a consensus grassland map 
 #         to serve as baseline for modelling
 
 # THIS VERSION IS OPTIMIZED FOR SAGEMAKER

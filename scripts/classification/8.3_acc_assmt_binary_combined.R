@@ -1,16 +1,17 @@
 
-####################################################################################
-##            PRELIMINARY ACCURACY ASSESSMENT: BINARY GRASS VS NON-GRASS          ##
-####################################################################################
+################################################################################
+##         ANALYSIS: ACCURACY ASSESSMENT (BINARY GRASS VS NON-GRASS)          ##
+################################################################################
 
 ##----------------------- Alison Long - June 2026 -------------------------
 
-# step 8: assess accuracy of datasets mapping grasslands by comparing them
-#         to ground-truthed point data for 2015 to present
+# STEP 8: Assess accuracy of datasets mapping grasslands by comparing them
+#         to ground-truthed point data for 2015 to present. This script combines 
+#         the compiled results from script 8.1 and the crop insurance-derived
+#         results from script 8.2.
 
-## THIS VERSION COMBINES COMBINES COMPILED AND CROP-INSURANCE DERIVED POINT DATA
-## Ran separate scripts for the two types of point data - will merge here and
-## calculate metrics
+# Ran separate scripts for the two types of point data - will merge here and
+# calculate metrics
 
 ## Goal:
 ##   Assess the accuracy of multiple grassland rasters vs. ground-truth points

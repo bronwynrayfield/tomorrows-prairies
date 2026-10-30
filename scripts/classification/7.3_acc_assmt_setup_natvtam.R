@@ -1,12 +1,12 @@
 
 ###################################################################################
-##               PRELIMINARY ACCURACY ASSESSMENT  (NATIVE V TAME)                ##
+##              PREPROCESSING: ACCURACY ASSESSMENT (NATIVE V TAME)               ##
 ###################################################################################
 
 ##----------------------- Alison Long - February 2026 -------------------------
 
-# step 7: set up data to assess accuracy of datasets mapping grasslands by comparing 
-#         them to ground-truthed point data
+# STEP 7: Generate dataset of triclass raster values (native grass, tame grass, 
+#         or non-grass) at each groundtruthed point
 
 # load packages
 library(terra)

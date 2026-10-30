@@ -1,3 +1,12 @@
+###################################################################################
+##                      ANALYSIS: CONSENSUS MAP REFINEMENT                       ##
+###################################################################################
+
+##----------------------- Alison Long - July 2026 -------------------------
+
+# STEP 10: Use diagnostics results from consensus mapping analysis to refine
+#          the final product. Create and test modifications to the map.
+
 library(tidyverse)
 library(terra)
 library(sf)

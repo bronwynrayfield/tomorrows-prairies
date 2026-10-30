@@ -1,13 +1,13 @@
 
-
 ###################################################################################
 ##                    FINALIZE BASELINE MAP FOR MODELLING                        ##
 ###################################################################################
 
 ##----------------------- Alison Long - March 2026 -------------------------
 
-# step 11: Fill in non-grassland pixels of the consensus map with other land cover
-#         classes to generate baseline map for landscape modelling
+# STEP 13: Fill in non-grassland pixels of the consensus map with other land cover
+#          classes to generate baseline map for landscape modelling. Modification 5
+#          was chosen as the final consensus map.
 
 # load packages
 library(terra)

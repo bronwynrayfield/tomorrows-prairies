@@ -1,11 +1,14 @@
 
 ###################################################################################
-##                       CHECK ACCURACY OF CONSENSUS MAP                         ##
+##                VALIDATION: CHECK ACCURACY OF CONSENSUS MAP                    ##
 ###################################################################################
 
 ##----------------------- Alison Long - July 2026 -------------------------
 
-# Step 10: assess accuracy of consensus map by comparing to ground-truthed point data
+# STEP 11: Assess accuracy of consensus map by comparing to ground-truthed point 
+#          data derived from crop insurance data (not same points used to generate
+#          accuracy metrics for input rasters). Generates accuracy metrics for 
+#          consensus map and modified versions of the map to choose final version.
 
 # load packages
 library(terra)

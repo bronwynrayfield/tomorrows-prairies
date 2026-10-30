@@ -1,12 +1,12 @@
 
-###################################################################################
-##                   PRELIMINARY ACCURACY ASSESSMENT (BINARY)                    ##
-###################################################################################
+#################################################################################
+##                 PREPROCESSING: ACCURACY ASSESSMENT (BINARY)                 ##
+#################################################################################
 
 ##----------------------- Alison Long - February 2026 -------------------------
 
-# step 7: assess accuracy of datasets mapping grasslands by comparing them
-#         to ground-truthed point data
+# STEP 7: Generate dataset of binary raster values (grass or non-grass) at 
+#         each groundtruthed point
 
 # load packages
 library(terra)

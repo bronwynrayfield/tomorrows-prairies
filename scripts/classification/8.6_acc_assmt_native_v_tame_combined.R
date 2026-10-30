@@ -1,17 +1,19 @@
 
 ####################################################################################
-##                 PRELIMINARY ACCURACY ASSESSMENT: NATIVE VS TAME                ##
+##     ANALYSIS: ACCURACY ASSESSMENT (TRICLASS NATIVE VS TAME VS NON-GRASS)       ##
 ####################################################################################
 
 ##----------------------- Alison Long - June 2026 -------------------------
 
-# step 8 (multiclass): assess accuracy of datasets mapping grasslands
-# against ground-truthed point data (2015 to present), with 3 classes:
-#   0 = not grass, 1 = tame grass, 2 = native grass
+# STEP 8: Assess accuracy of datasets mapping grasslands by comparing them
+#         to ground-truthed point data for 2015 to present. This script combines 
+#         the compiled results from script 8.4 and the crop insurance-derived
+#         results from script 8.5.
 
-## THIS VERSION COMBINES COMBINES COMPILED AND CROP-INSURANCE DERIVED POINT DATA
-## Ran separate scripts for the two types of point data - will merge here and
-## calculate metrics
+# Ran separate scripts for the two types of point data - will merge here and
+# calculate metrics
+
+# 3 classes: 0 = not grass, 1 = tame grass, 2 = native grass
 
 ## Goal:
 ##   Assess the accuracy of multiple grassland rasters vs. ground-truth points

@@ -1,18 +1,18 @@
 
-#######################################################################################
-##              PRELIMINARY ACCURACY ASSESSMENT: NATIVE AND TAME CLASSES             ##
-#######################################################################################
+####################################################################################
+##     ANALYSIS: ACCURACY ASSESSMENT (TRICLASS NATIVE VS TAME VS NON-GRASS)       ##
+####################################################################################
 
 ##----------------------- Alison Long - June 2026 -------------------------
 
-# step 8 (multiclass): assess accuracy of datasets mapping grasslands
-# against ground-truthed point data (2015 to present), with 3 classes:
-#   0 = not grass, 1 = tame grass, 2 = native grass
-#
-# THIS VERSION COMPARES: native vs non-native (tame, crop, shrub, wetland) points to 
-#      native vs non-native (tame, not grass) raster values and tame vs non-tame (native, 
-#      crop, shrub, wetland) points to tame vs non-tame (native, not grass) raster values
-#
+# STEP 8: Assess accuracy of datasets mapping grasslands by comparing them
+#         to ground-truthed point data for 2015 to present using dataset 
+#         generated in script 7.3. This script focuses on the point dataset
+#         compiled from many sources and results will be combined with 
+#         results from script 8.5 in script 8.6.
+
+# 3 classes: 0 = non-grass, 1 = tame grass, 2 = native grass
+
 # Key changes from binary version:
 #   - Uses LC_class3 (0/1/2) instead of LC_class3 (0/1)
 #   - Rasters expected as 0/1/2
