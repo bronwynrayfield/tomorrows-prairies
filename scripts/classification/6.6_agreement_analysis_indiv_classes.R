@@ -1,14 +1,14 @@
 
 ###################################################################################
-##          ANALYSIS: SPATIAL AGREEMENT (INDIVIDUAL CLASSES)              ##
+##              ANALYSIS: SPATIAL AGREEMENT (INDIVIDUAL CLASSES)                 ##
 ###################################################################################
 
-##----------------------- Alison Long - June 2026 -------------------------
+##----------------------- Alison Long - October 2026 -------------------------
 
-# step 6: calculate pairwise spatial agreement metrics to assess similarities and 
-#         differences among orginal classes in existing grassland datasets. 
+# STEP 6: Calculate pairwise spatial agreement metrics to assess similarities and 
+#         differences among original classes in existing grassland datasets. 
 #         This version handles all grassland data products regardless of extent and 
-#         calculates metrics at the ecodistrict level.
+#         calculates metrics at the ecodistrict level, CCS level, and globally.
 
 # CROP TO A STUDY OR PILOT AREA - update script depending on desired extent!
 

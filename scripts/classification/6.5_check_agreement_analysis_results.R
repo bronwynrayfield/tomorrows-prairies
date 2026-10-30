@@ -1,5 +1,13 @@
 
-# validate the binary and triclass spatial agreement analysis results (pilot)
+###################################################################################
+##              VALIDATION: SPATIAL AGREEMENT RESULTS (PILOT AREA)               ##
+###################################################################################
+
+##----------------------- Alison Long - October 2026 -------------------------
+
+# STEP 6: Validate the binary and triclass spatial agreement analysis results for 
+#         pilot area by independently calculating agreement metrics globally, 
+#         for one ecodistrict, and for one CCS. 
 
 # load packages
 library(terra)

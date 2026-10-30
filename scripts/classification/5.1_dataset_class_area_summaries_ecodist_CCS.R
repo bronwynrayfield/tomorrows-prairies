@@ -5,10 +5,10 @@
 
 ##----------------------- Alison Long - October 2026 -------------------------
 
-# step 16: calculate pixel count and area in ha for each original class in each
-#          dataset. script crops/masks all input rasters to study area and for each
-#          reporting unit (ecodistrict or CCS), sums the number of pixels in the class, 
-#          and converts to ha. the script then aggregates area to coarser reporting units. 
+# STEP 5: Calculate pixel count and area in ha for each original class in each
+#         dataset. script crops/masks all input rasters to study area and for each
+#         reporting unit (ecodistrict or CCS), sums the number of pixels in the class, 
+#         and converts to ha. the script then aggregates area to coarser reporting units. 
 
 # metadata file has the following fields: dataset, class, file_s3
 
@@ -38,7 +38,7 @@ terraOptions(
 FORCE_REBUILD <- TRUE
 
 ## ---- Settings ---- ##
-meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/metadata_full_extent_nattam_with_path_plicombinedandseparated.csv"
+meta_file    <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/?.csv"
 ecodist_file <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/national-ecological-framework-for-canada/Ecodistricts/ecodistricts_clean_rast_Oct2026.tif"
 ecoprov_lookup_file <-
 ccs_file     <- "s3://sagemaker-gst-stage.sharing/alison-long/tomorrows-prairies/processed/boundaries/census-consolidated-subdivisions/ccs_aligned_class_sa_rast.tif"

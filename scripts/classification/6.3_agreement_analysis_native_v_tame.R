@@ -5,10 +5,10 @@
 
 ##----------------------- Alison Long - October 2026 -------------------------
 
-# step 6: calculate pairwise spatial agreement metrics to assess similarities and 
+# STEP 6: Calculate pairwise spatial agreement metrics to assess similarities and 
 #         differences among existing grassland datasets. This version handles all 
 #         grassland data products regardless of extent and calculates metrics at
-#         the ecodistrict level (in addition to global).
+#         the ecodistrict and CCS level as well as globally.
 
 # original file name: agreement_analysis_native_v_tame_v4_ecodist
 

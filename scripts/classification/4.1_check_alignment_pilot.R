@@ -1,6 +1,6 @@
 
 ###################################################################################
-##          PREPROCESSING: CHECK ALIGNMENT OF RASTERS IN PILOT AREA              ##
+##            VALIDATION: CHECK ALIGNMENT OF RASTERS IN PILOT AREA               ##
 ###################################################################################
 
 ##----------------------- Alison Long - February 2026 -------------------------

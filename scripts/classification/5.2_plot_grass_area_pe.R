@@ -1,9 +1,13 @@
 
-#######################################################################################
-##              PLOT TOTAL GRASSLAND AREA BY DATASET            ##
-#######################################################################################
+###############################################################################
+##                    PLOT TOTAL GRASSLAND AREA BY DATASET                   ##
+###############################################################################
 
 ##----------------------- Alison Long - April 2026 -------------------------
+
+# STEP 5: Plot total grassland area by dataset. Area totals for time series 
+#         datasets come from Sam Robinson (DUC).Area totals for other datasets
+#         come from script 5.1. Plotting code modified from Sam's.
 
 library(readxl)
 library(dplyr)
