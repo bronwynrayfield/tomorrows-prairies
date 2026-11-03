@@ -34,7 +34,7 @@ out_grass_dir <- "./outputs/grass"
 nalcms_root <- file.path(raw_grass_data_dir, "Landcover/CEC North American Land Change Monitoring System 2020/can_land_cover_2020v2_30m_tif/CAN_NALCMS_landcover_2020v2_30m/data")
 nalcms_aligned_dir <- file.path(proc_grass_data_dir, "cec_nalcms/aligned")
 nalcms_cropped_dir <- file.path(proc_grass_data_dir, "cec_nalcms/cropped")
-nalcms_mask_dir <- file.path(proc_grass_data_dir, "cec_nalcms/masked")
+nalcms_masked_dir <- file.path(proc_grass_data_dir, "cec_nalcms/masked")
 nalcms_pilot_dir <- file.path(proc_grass_data_dir, "cec_nalcms/pilot")
 
 ####--- Files ---####
@@ -198,6 +198,45 @@ writeRaster(nalcms_algn_binary, nalcms_binary_out_path, datatype = "INT1U",
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+#### ISOLATE CLASSES ####
+
+# load raster
+nalcms_file <- file.path(nalcms_masked_dir, "nalcms_reproj_algn_masked.tif")
+nalcms <- rast(nalcms_file)
+
+nalcms
+plot(nalcms)
+
+# isolate shrub
+nalcms_algn_shrub <- classify(nalcms, 
+                               rcl = matrix(c(1, 0, # Temperate or sub-polar needleleaf forest
+                                              2, 0, # Sub-polar taiga needleleaf forest
+                                              5, 0, # Temperate or sub-polar broadleaf deciduous forest
+                                              6, 0, # Temperate or sub-polar mixed forest
+                                              8, 1, # Temperate or sub-polar shrubland
+                                              10, 0, # Temperate or sub-polar grassland
+                                              11, 0, # Sub-polar or polar shrubland-lichen-moss
+                                              12, 0, # Sub-polar or polar grassland-lichen-moss
+                                              13, 0, # Sub-polar or polar barren-lichen-moss
+                                              14, 0, # Wetland
+                                              15, 0, # Cropland
+                                              16, 0, # Barren lands
+                                              17, 0, # Urban
+                                              18, 0, # Water
+                                              19, 0), # Snow and ice
+                                            ncol = 2, byrow = TRUE))
+plot(nalcms_algn_shrub)
+nalcms_algn_shrub
+
+# Save the raster as 8-bit unsigned integer
+nalcms_shrub_out_path <- file.path(nalcms_masked_dir, "nalcms_reproj_algn_shrub.tif")
+writeRaster(nalcms_algn_shrub, nalcms_shrub_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+#### PILOT AREA RASTERS ####
 
 # Load study area raster
 pa <- rast(pa_file)

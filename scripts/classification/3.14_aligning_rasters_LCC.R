@@ -243,6 +243,45 @@ writeRaster(lcc_algn_binary, lcc_binary_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+#### ISOLATE CLASSES ####
+
+# load raster
+lcc_file <- file.path(lcc_masked_dir, "lcc_reproj_algn_masked.tif")
+lcc <- rast(lcc_file)
+
+lcc
+plot(lcc)
+
+# isolate shrub
+lcc_algn_shrub <- classify(lcc, 
+                            rcl = matrix(c(1, 0, # Temperate or sub-polar needleleaf forest
+                                           2, 0, # Sub-polar taiga needleleaf forest
+                                           5, 0, # Temperate or sub-polar broadleaf deciduous forest
+                                           6, 0, # Temperate or sub-polar mixed forest
+                                           8, 1, # Temperate or sub-polar shrubland
+                                           10, 0, # Temperate or sub-polar grassland
+                                           11, 0, # Sub-polar or polar shrubland-lichen-moss
+                                           12, 0, # Sub-polar or polar grassland-lichen-moss
+                                           13, 0, # Sub-polar or polar barren-lichen-moss
+                                           14, 0, # Wetland
+                                           15, 0, # Cropland
+                                           16, 0, # Barren lands
+                                           17, 0, # Urban
+                                           18, 0, # Water
+                                           19, 0), # Snow and ice
+                                         ncol = 2, byrow = TRUE))
+plot(lcc_algn_shrub)
+lcc_algn_shrub
+
+# Save the raster as 8-bit unsigned integer
+lcc_shrub_out_path <- file.path(lcc_masked_dir, "lcc_reproj_algn_shrub.tif")
+writeRaster(lcc_algn_shrub, lcc_shrub_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+#### PILOT AREA RASTERS ####
+
 # Load study area raster
 pa <- rast(pa_file)
 

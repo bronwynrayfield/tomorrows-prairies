@@ -177,6 +177,61 @@ writeRaster(pudl_algn_nattam, pudl_nattam_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+##### ISOLATE CLASSES ######
+
+# isolate native grass 
+pudl_algn_nat <- classify(pudl_algn, 
+                             rcl = matrix(c(0, 0, # Potentially Disturbed/Other Cover
+                                            1, 1, # Potentially Undisturbed Grass (In PUDL)
+                                            2, 0, # Potentially Disturbed Grass (In PUDL)
+                                            3, 0), # Shrub (In PUDL)
+                                          ncol = 2, byrow = TRUE))
+plot(pudl_algn_nat)
+pudl_algn_nat
+
+# Save the raster as 8-bit unsigned integer
+pudl_nat_out_path <- file.path(pudl_aligned_dir, "pudl_reproj_algn_native.tif")
+writeRaster(pudl_algn_nat, pudl_nat_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# isolate tame grass 
+pudl_algn_tam <- classify(pudl_algn, 
+                          rcl = matrix(c(0, 0, # Potentially Disturbed/Other Cover
+                                         1, 0, # Potentially Undisturbed Grass (In PUDL)
+                                         2, 1, # Potentially Disturbed Grass (In PUDL)
+                                         3, 0), # Shrub (In PUDL)
+                                       ncol = 2, byrow = TRUE))
+plot(pudl_algn_tam)
+pudl_algn_tam
+
+# Save the raster as 8-bit unsigned integer
+pudl_tam_out_path <- file.path(pudl_aligned_dir, "pudl_reproj_algn_tame.tif")
+writeRaster(pudl_algn_tam, pudl_tam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# isolate shrub
+pudl_algn_shrub <- classify(pudl_algn, 
+                          rcl = matrix(c(0, 0, # Potentially Disturbed/Other Cover
+                                         1, 0, # Potentially Undisturbed Grass (In PUDL)
+                                         2, 0, # Potentially Disturbed Grass (In PUDL)
+                                         3, 1), # Shrub (In PUDL)
+                                       ncol = 2, byrow = TRUE))
+plot(pudl_algn_shrub)
+pudl_algn_shrub
+
+# Save the raster as 8-bit unsigned integer
+pudl_shrub_out_path <- file.path(pudl_aligned_dir, "pudl_reproj_algn_shrub.tif")
+writeRaster(pudl_algn_shrub, pudl_shrub_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+#### PILOT AREA RASTERS ####
+
 # Load study area raster
 pa <- rast(pa_file)
 

@@ -291,6 +291,132 @@ writeRaster(pli_algn_nattam, pli_nattam_out_path, datatype = "INT1U",
             NAflag = 255,
             overwrite = TRUE)
 
+#### ISOLATE CLASSES ####
+
+# load pli raster
+pli <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn.tif")
+pli_algn <- rast(pli)
+
+pli_algn
+plot(pli_algn)
+
+# isolate native
+pli_algn_nat <- classify(pli_algn, 
+                            rcl = matrix(c(
+                              1, 0, # Cropland
+                              2, 1, # Native grassland
+                              3, 0, # Mixed/altered grassland
+                              4, 0, # Tame grassland
+                              5, 0, # Water
+                              6, 0, # Shrubs
+                              7, 0, # Trees
+                              8, 0, # Woody plants
+                              9, 0), # Urban area
+                              ncol = 2, byrow = TRUE))
+plot(pli_algn_nat)
+pli_algn_nat
+
+# Save the raster as 8-bit unsigned integer
+pli_nat_out_path <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_native.tif")
+writeRaster(pli_algn_nat, pli_nat_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# isolate tame (includes mixed)
+pli_algn_tammix <- classify(pli_algn, 
+                         rcl = matrix(c(
+                           1, 0, # Cropland
+                           2, 0, # Native grassland
+                           3, 1, # Mixed/altered grassland
+                           4, 1, # Tame grassland
+                           5, 0, # Water
+                           6, 0, # Shrubs
+                           7, 0, # Trees
+                           8, 0, # Woody plants
+                           9, 0), # Urban area
+                           ncol = 2, byrow = TRUE))
+plot(pli_algn_tammix)
+pli_algn_tammix
+
+# Save the raster as 8-bit unsigned integer
+pli_tammix_out_path <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_tameANDmixed.tif")
+writeRaster(pli_algn_tammix, pli_tammix_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# isolate tame (no mixed)
+pli_algn_tam <- classify(pli_algn, 
+                         rcl = matrix(c(
+                           1, 0, # Cropland
+                           2, 0, # Native grassland
+                           3, 0, # Mixed/altered grassland
+                           4, 1, # Tame grassland
+                           5, 0, # Water
+                           6, 0, # Shrubs
+                           7, 0, # Trees
+                           8, 0, # Woody plants
+                           9, 0), # Urban area
+                           ncol = 2, byrow = TRUE))
+plot(pli_algn_tam)
+pli_algn_tam
+
+# Save the raster as 8-bit unsigned integer
+pli_tam_out_path <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_tame_nomixed.tif")
+writeRaster(pli_algn_tam, pli_tam_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# isolate mixed
+pli_algn_mix <- classify(pli_algn, 
+                         rcl = matrix(c(
+                           1, 0, # Cropland
+                           2, 0, # Native grassland
+                           3, 1, # Mixed/altered grassland
+                           4, 0, # Tame grassland
+                           5, 0, # Water
+                           6, 0, # Shrubs
+                           7, 0, # Trees
+                           8, 0, # Woody plants
+                           9, 0), # Urban area
+                           ncol = 2, byrow = TRUE))
+plot(pli_algn_mix)
+pli_algn_mix
+
+# Save the raster as 8-bit unsigned integer
+pli_mix_out_path <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_mixed.tif")
+writeRaster(pli_algn_mix, pli_mix_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+# isolate shrub
+pli_algn_shrub <- classify(pli_algn, 
+                         rcl = matrix(c(
+                           1, 0, # Cropland
+                           2, 0, # Native grassland
+                           3, 0, # Mixed/altered grassland
+                           4, 0, # Tame grassland
+                           5, 0, # Water
+                           6, 1, # Shrubs
+                           7, 0, # Trees
+                           8, 0, # Woody plants
+                           9, 0), # Urban area
+                           ncol = 2, byrow = TRUE))
+plot(pli_algn_shrub)
+pli_algn_shrub
+
+# Save the raster as 8-bit unsigned integer
+pli_shrub_out_path <- file.path(pli_aligned_dir, "sk_pli_merged_reproj_algn_shrub.tif")
+writeRaster(pli_algn_shrub, pli_shrub_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)
+
+#### PILOT AREA RASTERS ####
+
 # Load study area raster
 pa <- rast(pa_file)
 
