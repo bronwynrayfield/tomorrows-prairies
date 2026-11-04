@@ -5,7 +5,7 @@
 
 ##----------------------- Alison Long - January 2026 -------------------------
 
-# step 3: align all grassland layers to classification study area file from step 1
+# STEP 3: Align all grassland layers to classification study area file from step 1
 #         to prep for analysis
 
 # load packages
