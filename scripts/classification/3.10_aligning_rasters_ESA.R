@@ -608,3 +608,39 @@ writeRaster(esa_bin_masked, esa_bin_sa_out_path, datatype = "INT1U",
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
             overwrite = TRUE)
+
+########################################
+
+# reclassify masked raster
+
+# load raster
+esa_file <- file.path(esa_masked_dir, "esa_merged_reproj_algn_masked.tif")
+esa <- rast(esa_file)
+
+plot(esa)
+esa
+
+# isolate shrub class
+esa_algn_shrub <- classify(esa, 
+                           rcl = matrix(c(0, NA,
+                                          10, 0, # Tree cover
+                                          20, 1, # Shrubland
+                                          30, 0, # Grassland
+                                          40, 0, # Cropland
+                                          50, 0, # Built-up
+                                          60, 0, # Bare/sparse vegetation
+                                          70, 0, # Snow and ice
+                                          80, 0, # Permanent water bodies
+                                          90, 0, # Herbaceous wetland
+                                          95, 0, # Mangroves
+                                          100, 0), # Moss and lichen
+                                        ncol = 2, byrow = TRUE))
+plot(esa_algn_shrub)
+esa_algn_shrub
+
+# Save the raster as 8-bit unsigned integer
+esa_shrub_out_path <- file.path(esa_masked_dir, "esa_reproj_algn_masked_shrub.tif")
+writeRaster(esa_algn_shrub, esa_shrub_out_path, datatype = "INT1U", 
+            gdal = c("COMPRESS=LZW", "TILED=YES", "BIGTIFF=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
+            NAflag = 255,
+            overwrite = TRUE)

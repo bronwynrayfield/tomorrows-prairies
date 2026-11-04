@@ -5,7 +5,7 @@
 
 ##----------------------- Alison Long - January 2026 -------------------------
 
-# step 3: align all grassland layers to classification study area file from step 1
+# STEP 3: Align all grassland layers to classification study area file from step 1
 #         to prep for analysis
 
 # load packages
@@ -230,7 +230,7 @@ plot(nalcms_algn_shrub)
 nalcms_algn_shrub
 
 # Save the raster as 8-bit unsigned integer
-nalcms_shrub_out_path <- file.path(nalcms_masked_dir, "nalcms_reproj_algn_shrub.tif")
+nalcms_shrub_out_path <- file.path(nalcms_aligned_dir, "nalcms_reproj_algn_shrub.tif")
 writeRaster(nalcms_algn_shrub, nalcms_shrub_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
