@@ -351,7 +351,8 @@ writeRaster(plvi_algn_nattam, plvi_nattam_out_path, datatype = "INT1U",
 # isolate shrub classes
 
 # load raster
-plvi <- file.path(plvi_aligned_dir, "plvi_rast_reproj_algn.tif")
+#plvi <- file.path(plvi_aligned_dir, "plvi_rast_reproj_algn.tif")
+plvi <- file.path(plvi_aligned_dir, "plvi_rast_reproj_algn_gte2015.tif")
 plvi <- rast(plvi)
 
 ## reclassify to shrub (1 for grass)
@@ -370,7 +371,7 @@ plot(plvi_shrub)
 plvi_shrub
 
 # Save the raster as 8-bit unsigned integer
-plvi_shrub_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_shrub.tif")
+plvi_shrub_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_shrub_gte2015.tif")
 writeRaster(plvi_shrub, plvi_shrub_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -381,7 +382,8 @@ writeRaster(plvi_shrub, plvi_shrub_out_path, datatype = "INT1U",
 # isolate each class
 
 # load raster
-plvi <- file.path(plvi_aligned_dir, "plvi_rast_reproj_algn.tif")
+#plvi <- file.path(plvi_aligned_dir, "plvi_rast_reproj_algn.tif")
+plvi <- file.path(plvi_aligned_dir, "plvi_rast_reproj_algn_gte2015.tif")
 plvi <- rast(plvi)
 
 ## reclassify to individual class 
@@ -400,7 +402,7 @@ plot(plvi_hg)
 plvi_hg
 
 # Save the raster as 8-bit unsigned integer
-plvi_hg_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_herbgrass.tif")
+plvi_hg_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_herbgrass_gte2015.tif")
 writeRaster(plvi_hg, plvi_hg_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -422,7 +424,7 @@ plot(plvi_cp)
 plvi_cp
 
 # Save the raster as 8-bit unsigned integer
-plvi_cp_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_tamepasture.tif")
+plvi_cp_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_tamepasture_gte2015.tif")
 writeRaster(plvi_cp, plvi_cp_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -444,7 +446,7 @@ plot(plvi_cpr)
 plvi_cpr
 
 # Save the raster as 8-bit unsigned integer
-plvi_cpr_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_roughpasture.tif")
+plvi_cpr_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_roughpasture_gte2015.tif")
 writeRaster(plvi_cpr, plvi_cpr_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -466,7 +468,7 @@ plot(plvi_os)
 plvi_os
 
 # Save the raster as 8-bit unsigned integer
-plvi_os_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_openshrub.tif")
+plvi_os_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_openshrub_gte2015.tif")
 writeRaster(plvi_os, plvi_os_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -488,7 +490,7 @@ plot(plvi_ms)
 plvi_ms
 
 # Save the raster as 8-bit unsigned integer
-plvi_ms_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_medialshrub.tif")
+plvi_ms_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_medialshrub_gte2015.tif")
 writeRaster(plvi_ms, plvi_ms_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
@@ -510,7 +512,7 @@ plot(plvi_cs)
 plvi_cs
 
 # Save the raster as 8-bit unsigned integer
-plvi_cs_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_closedshrub.tif")
+plvi_cs_out_path <- file.path(plvi_aligned_dir, "plvi_reproj_algn_closedshrub_gte2015.tif")
 writeRaster(plvi_cs, plvi_cs_out_path, datatype = "INT1U", 
             gdal = c("COMPRESS=LZW", "TILED=YES", "BLOCKXSIZE=256", "BLOCKYSIZE=256"),
             NAflag = 255,
