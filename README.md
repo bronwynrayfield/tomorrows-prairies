@@ -10,23 +10,23 @@ tomorrows-prairies/
 │   ├── Cropland/                # Cropland extent and properties
 │   ├── Landcover/               # Land use land cover classification datasets
 │   ├── Management/              # Protected area and tenure data
-│   ├── Socio-economic/          # 
-│   ├── Soil/                    # 
-│   └── Topography/              #
+│   ├── Socio-economic/          # Census and agricultural economic data
+│   ├── Soil/                    # Soil properties and slope 
+│   └── Topography/              # Elevation
 │
 ├── processeddatasets/           # Datasets prepared for analysis and modelling
 │   ├── boundaries/              # Jurisdictional and ecological boundaries
-│   ├── climate/                 
-│   ├── cropland/                
-│   ├── landcover/                  
-│   ├── management/
-│   ├── predictions/                  
-│   ├── predictors/                  
-│   ├── response/               
-│   ├── socio-economic/               
-│   ├── soil/               
+│   ├── climate/                 # Climate variables prepared for modelling
+│   ├── cropland/                # Processed cropland extent and properties
+│   ├── landcover/               # Processed land cover layers
+│   ├── management/              # Processed protected area and tenure layers
+│   ├── predictions/             # Model predictions (e.g., conversion risk surfaces)
+│   ├── predictors/              # Predictor layers for modelling
+│   ├── response/                # Response variables for modelling
+│   ├── socio-economic/          # Processed socio-economic variables
+│   ├── soil/                    # Processed soil variables
 │   ├── studyarea/               # Spatial extents of analyses
-│   └── topography/
+│   └── topography/              # Processed terrain variables
 │                                        
 ├── scripts/                     # Code for data processing and modelling
 │   ├── classification/          # Scripts for grassland classification
