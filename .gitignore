@@ -19,8 +19,8 @@ existingdatasets/**
 processeddatasets/**
 
 # results
-output/grassland-classification/*
-!output/grassland-classification/.gitkeep
+output/classification/*
+!output/classification/.gitkeep
 output/landcover*
 !output/landcover/.gitkeep
 
