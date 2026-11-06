@@ -1,6 +1,6 @@
-# Tomorrow’s Prairies: Baselines and projections for grasslands in Canada
+# Tomorrow’s Prairies: Baselines and scenario-based projections for grasslands in Canada
 
-Purpose: To contribute to mitigation of climate change and biodiversity loss by researching historical baselines and projections in the extent and condition of Canadian grasslands.
+Description: Tomorrow's Prairies is a collaborative research project mapping grasslands and projecting changes in associated biodiversity and carbon based on socio-economic grassland conversion scenarios.
 
 Below is the folder structure for this project, showing the organization of data, scripts, and outputs.
 ```text
@@ -10,9 +10,9 @@ tomorrows-prairies/
 │   ├── Cropland/                # Cropland extent and properties
 │   ├── Landcover/               # Land use land cover classification datasets
 │   ├── Management/              # Protected area and tenure data
-│   ├── Socio-economic/          # Protected area and tenure data
-│   ├── Soil/                    # Protected area and tenure data
-│   └── Topography/              # Protected area and other management data
+│   ├── Socio-economic/          # 
+│   ├── Soil/                    # 
+│   └── Topography/              # 
 ├── processeddatasets/           # Datasets prepared for analysis and modelling
 │   ├── boundaries/              # Jurisdictional and ecological boundaries
 │   ├── climate/                 
@@ -28,8 +28,10 @@ tomorrows-prairies/
 │   └── topography/                                        
 ├── scripts/                     # Code for data processing and modelling
 │   ├── classification/          # Scripts for grassland classification
-│   └── landcover/               # Scripts for land cover processing
+│   └── landcover/               # Scripts for land cover modelling
 ├── output/                      # Model outputs and results visualizations
+│   ├── classification/          # Output for grassland classification
+│   └── landcover/               # Output for land cover modelling
 ├── .gitignore                   # Git exclusions for files and folders
 ├── README.md                    # Project overview and instructions
 └── LICENSE                      # Code licensing information
