@@ -66,6 +66,7 @@ vals <- na.omit(vals)
 vals <- vals[sample(nrow(vals), min(sample_n, nrow(vals))), ]
 
 saveRDS(vals, file.path(out_sa, "covariate-sample_training.rds"))
+# vals <- readRDS(file.path(out_sa, "covariate-sample_training.rds"))
 
 # closure sets: two exact linear dependencies in the predictor set.
 #   texture   clay + sand + silt ~ 100
@@ -89,6 +90,21 @@ saveRDS(vals, file.path(out_sa, "covariate-sample_training.rds"))
 drop_cols <- c("x", "y", "silt", "sand", "other", "grass_origin", "ecoregion")
 vals_cov <- vals[, setdiff(names(vals), drop_cols)]
 
+# ---- skewness: monotone transforms for the GLM ----
+# Moment skewness on the raw training-population sample. Predictors above ~2 get
+# log1p (predictor_transforms, 0b) so a few extreme cells don't set the GLM's
+# linear slope; RF and Spearman are invariant to the transform.
+skew <- sapply(vals_cov, \(x) mean((x - mean(x))^3) / sd(x)^3)
+print(round(sort(skew, decreasing = TRUE), 1))
+# pop_density     settl           ldepth             fors            slope              kp0     dist_to_road              tri         psssm_sd 
+# 36.7              7.7              5.1              3.3              3.1              2.7              2.7              2.6              1.4 
+# dist_to_rail     tpi             tame             crop            prtot   dist_to_popctr               oc             clay         drainage 
+# 1.0              0.9              0.9              0.8              0.7              0.7              0.7              0.5              0.5 
+# elev dist_to_elevator           native   dist_to_regctr       net_return              srr          tx_mean          tn_mean       unprot_grs 
+# 0.4              0.4              0.3              0.3              0.2              0.1              0.1              0.0              0.0 
+# psssm_mean  eastness        northness           kp1500             kp33               bd               ph        gddgrow_5            nrcdd 
+# 0.0             -0.2             -0.2             -0.5             -0.6             -0.7             -0.8             -0.9             -1.2 
+vals_cov <- apply_transforms(vals_cov)
 
 # ---- pairwise correlation ----
 cmat <- cor(vals_cov, method = cor_method, use = "pairwise.complete.obs")
@@ -156,42 +172,42 @@ cat("Pairs with |r| >=", cor_th, ":\n"); print(pairs, row.names = FALSE)
 cat("\nVIF (all variables):\n"); print(transform(vif_all, VIF = round(VIF, 2)))
 # VIF (all variables):
 #   Variables   VIF
-# 1             prtot  8.88
-# 2           tn_mean 11.97
-# 3           tx_mean 26.99
-# 4         gddgrow_5 26.56
-# 5             nrcdd  8.14
-# 6                oc  2.29
-# 7                bd  4.63
-# 8              clay  2.06
-# 9                ph  3.41
-# 10         drainage  2.07
-# 11              kp0  2.73
-# 12             kp33 19.66
-# 13           kp1500 17.08
-# 14           ldepth  1.69
-# 15       psssm_mean  2.38
-# 16         psssm_sd  2.40
-# 17             elev 22.43
-# 18              tri  1.75
-# 19              tpi  1.18
+# 1             prtot  8.49
+# 2           tn_mean 12.38
+# 3           tx_mean 26.87
+# 4         gddgrow_5 26.40
+# 5             nrcdd  8.07
+# 6                oc  2.27
+# 7                bd  4.54
+# 8              clay  2.02
+# 9                ph  3.59
+# 10         drainage  2.05
+# 11              kp0  2.46
+# 12             kp33 19.77
+# 13           kp1500 17.86
+# 14           ldepth  1.72
+# 15       psssm_mean  2.46
+# 16         psssm_sd  2.34
+# 17             elev 22.56
+# 18              tri  1.80
+# 19              tpi  1.20
 # 20              srr  1.17
-# 21        northness  1.02
-# 22         eastness  1.02
-# 23            slope  1.73
-# 24       unprot_grs  2.56
-# 25             tame  8.97
-# 26             crop 11.42
-# 27            settl  1.91
-# 28             fors  3.90
-# 29           native 27.03
+# 21        northness  1.03
+# 22         eastness  1.03
+# 23            slope  1.69
+# 24       unprot_grs  2.41
+# 25             tame  8.94
+# 26             crop 11.52
+# 27            settl  2.10
+# 28             fors  3.78
+# 29           native 27.88
 # 30       net_return  2.84
-# 31 dist_to_elevator  3.02
-# 32     dist_to_road  1.27
-# 33     dist_to_rail  2.00
-# 34   dist_to_popctr  2.69
-# 35   dist_to_regctr  2.02
-# 36      pop_density  1.52
+# 31 dist_to_elevator  3.04
+# 32     dist_to_road  1.12
+# 33     dist_to_rail  2.02
+# 34   dist_to_popctr  2.63
+# 35   dist_to_regctr  2.08
+# 36      pop_density  2.18
 
 
 cat("\nvifstep (th =", vif_th, ") -- variables flagged for exclusion:\n")
@@ -199,9 +215,11 @@ print(vif_step@excluded)
 # [1] "native"  "elev"    "kp33"    "tn_mean" "nrcdd"  
 cat("\nRetained set:\n"); print(vif_step@results$Variables)
 # Retained set:
-# [1] "prtot"            "tx_mean"          "gddgrow_5"        "oc"               "bd"               "clay"             "ph"               "drainage"         "kp0"              "kp1500"          
-# [11] "ldepth"           "psssm_mean"       "psssm_sd"         "tri"              "tpi"              "srr"              "northness"        "eastness"         "slope"            "unprot_grs"      
-# [21] "tame"             "crop"             "settl"            "fors"             "net_return"       "dist_to_elevator" "dist_to_road"     "dist_to_rail"     "dist_to_popctr"   "dist_to_regctr"  
+# [1] "prtot"            "tx_mean"          "gddgrow_5"        "oc"               "bd"               "clay"            
+# [7] "ph"               "drainage"         "kp0"              "kp1500"           "ldepth"           "psssm_mean"      
+# [13] "psssm_sd"         "tri"              "tpi"              "srr"              "northness"        "eastness"        
+# [19] "slope"            "unprot_grs"       "tame"             "crop"             "settl"            "fors"            
+# [25] "net_return"       "dist_to_elevator" "dist_to_road"     "dist_to_rail"     "dist_to_popctr"   "dist_to_regctr"  
 # [31] "pop_density"
 
 # vifstep output; manual drops are applied after the diagnostics below, which
@@ -209,37 +227,37 @@ cat("\nRetained set:\n"); print(vif_step@results$Variables)
 vif_set <- vif_step@results$Variables
 vif(vals_cov[, vif_set])
 # Variables      VIF
-# 1             prtot 5.582993
-# 2           tx_mean 5.358291
-# 3         gddgrow_5 4.601819
-# 4                oc 2.136866
-# 5                bd 4.394834
-# 6              clay 1.896324
-# 7                ph 3.146322
-# 8          drainage 1.840846
-# 9               kp0 1.706614
-# 10           kp1500 1.912383
-# 11           ldepth 1.561171
-# 12       psssm_mean 2.138445
-# 13         psssm_sd 2.279272
-# 14              tri 1.719838
-# 15              tpi 1.215276
-# 16              srr 1.161556
-# 17        northness 1.030112
-# 18         eastness 1.020572
-# 19            slope 1.664370
-# 20       unprot_grs 2.298788
-# 21             tame 1.543340
-# 22             crop 2.252188
-# 23            settl 1.563928
-# 24             fors 2.079137
-# 25       net_return 2.392814
-# 26 dist_to_elevator 2.924034
-# 27     dist_to_road 1.262195
-# 28     dist_to_rail 1.980270
-# 29   dist_to_popctr 2.548878
-# 30   dist_to_regctr 1.995321
-# 31      pop_density 1.369435
+# 1             prtot 5.535680
+# 2           tx_mean 5.756289
+# 3         gddgrow_5 4.987141
+# 4                oc 2.292163
+# 5                bd 4.523125
+# 6              clay 1.917426
+# 7                ph 3.171090
+# 8          drainage 1.818346
+# 9               kp0 1.731909
+# 10           kp1500 1.928623
+# 11           ldepth 1.536600
+# 12       psssm_mean 2.190618
+# 13         psssm_sd 2.260105
+# 14              tri 1.729241
+# 15              tpi 1.189423
+# 16              srr 1.155444
+# 17        northness 1.030213
+# 18         eastness 1.024061
+# 19            slope 1.622828
+# 20       unprot_grs 2.290162
+# 21             tame 1.540965
+# 22             crop 2.228201
+# 23            settl 1.959196
+# 24             fors 2.097045
+# 25       net_return 2.652449
+# 26 dist_to_elevator 2.997633
+# 27     dist_to_road 1.128551
+# 28     dist_to_rail 1.959993
+# 29   dist_to_popctr 2.645237
+# 30   dist_to_regctr 2.054861
+# 31      pop_density 2.167304
 length(vif_set)
 # [1] 31
 
@@ -262,13 +280,16 @@ r2_eco <- sapply(setdiff(names(d), c("x", "y", "ecoregion")), function(v) {
   summary(lm(d[[v]] ~ d$ecoregion))$r.squared
 })
 print(round(sort(r2_eco, decreasing = TRUE), 3))
-# prtot          tx_mean               ph dist_to_elevator               bd       psssm_mean        gddgrow_5             fors   dist_to_popctr         psssm_sd               oc         drainage 
-# 0.713            0.580            0.546            0.542            0.525            0.393            0.375            0.323            0.294            0.222            0.205            0.189 
-# net_return       unprot_grs     dist_to_rail             crop              tri             tame              kp0             clay   dist_to_regctr           kp1500            slope     dist_to_road 
-# 0.186            0.151            0.127            0.121            0.119            0.112            0.095            0.091            0.074            0.062            0.055            0.054 
-# settl           ldepth      pop_density              srr         eastness        northness              tpi 
-# 0.033            0.029            0.008            0.006            0.005            0.001            0.001 
-
+    #        prtot          tx_mean               ph dist_to_elevator               bd       psssm_mean        gddgrow_5 
+    #        0.713            0.580            0.546            0.542            0.525            0.393            0.375 
+    #         fors   dist_to_popctr         psssm_sd               oc         drainage       net_return       unprot_grs 
+    #        0.323            0.294            0.222            0.205            0.189            0.186            0.151 
+    # dist_to_rail             crop              tri             tame              kp0             clay   dist_to_regctr 
+    #        0.127            0.121            0.119            0.112            0.095            0.091            0.074 
+    #       kp1500            slope     dist_to_road            settl           ldepth      pop_density              srr 
+    #        0.062            0.055            0.054            0.033            0.029            0.008            0.006 
+    #     eastness        northness              tpi 
+    #        0.005            0.001            0.001
 
 # Caluculate between-ecodistrict share of variance for each predictor
 names(ecodistricts_r) <- "ecodistrict"
@@ -282,12 +303,16 @@ r2_dist <- sapply(setdiff(names(d), c("x", "y", "ecoregion", "ecodistrict")), fu
   summary(lm(d[[v]] ~ d$ecodistrict))$r.squared
 })
 print(round(sort(r2_dist, decreasing = TRUE), 3))
-# prtot          tx_mean        gddgrow_5 dist_to_elevator         psssm_sd       psssm_mean               ph               bd       net_return   dist_to_regctr             clay               oc 
-# 0.935            0.928            0.889            0.875            0.875            0.827            0.787            0.769            0.760            0.717            0.702            0.662 
-# dist_to_popctr    fors     dist_to_rail           kp1500         drainage       unprot_grs             crop              kp0              tri             tame            slope            settl 
-# 0.652            0.507            0.476            0.461            0.436            0.409            0.369            0.366            0.326            0.324            0.205            0.182 
-# dist_to_road    ldepth      pop_density              srr        northness         eastness              tpi 
-# 0.143            0.119            0.044            0.033            0.029            0.020            0.008 
+    #        prtot          tx_mean        gddgrow_5 dist_to_elevator         psssm_sd       psssm_mean               ph 
+    #        0.935            0.928            0.889            0.875            0.875            0.827            0.787 
+    #           bd       net_return   dist_to_regctr             clay               oc   dist_to_popctr             fors 
+    #        0.769            0.760            0.717            0.702            0.662            0.652            0.507 
+    # dist_to_rail           kp1500         drainage       unprot_grs             crop              kp0              tri 
+    #        0.476            0.461            0.436            0.409            0.369            0.366            0.326 
+    #         tame            slope            settl     dist_to_road           ldepth      pop_density              srr 
+    #        0.324            0.205            0.182            0.143            0.119            0.044            0.033 
+    #    northness         eastness              tpi 
+    #        0.029            0.020            0.008 
 
 # ---- variance explained by province ----------------------------------------
 # DSS attributes come from independently-conducted provincial surveys with
@@ -307,12 +332,16 @@ r2_prov <- sapply(setdiff(names(d), c("x", "y", "ecoregion", "ecodistrict", "pro
   summary(lm(d[[v]] ~ d$province))$r.squared
 })
 print(round(sort(r2_prov, decreasing = TRUE), 3))
-# net_return         psssm_sd            prtot         drainage        gddgrow_5             clay       unprot_grs             fors          tx_mean     dist_to_rail              kp0       psssm_mean 
-# 0.540            0.314            0.304            0.254            0.205            0.205            0.188            0.135            0.129            0.122            0.114            0.103 
-# dist_to_elevator ldepth            tame              tri           kp1500             crop     dist_to_road            settl   dist_to_popctr            slope               ph               oc 
-# 0.086            0.063            0.047            0.042            0.041            0.040            0.040            0.034            0.032            0.025            0.024            0.022 
-# dist_to_regctr      bd      pop_density              tpi              srr         eastness        northness 
-# 0.022            0.016            0.003            0.001            0.001            0.000            0.000 
+# net_return    psssm_sd            prtot         drainage        gddgrow_5             clay       unprot_grs 
+# 0.540            0.314            0.304            0.254            0.205            0.205            0.188 
+# fors           tx_mean     dist_to_rail              kp0       psssm_mean dist_to_elevator           ldepth 
+# 0.135            0.129            0.122            0.114            0.103            0.086            0.063 
+# tame               tri           kp1500             crop     dist_to_road            settl   dist_to_popctr 
+# 0.047            0.042            0.041            0.040            0.040            0.034            0.032 
+# slope               ph               oc   dist_to_regctr               bd      pop_density              tpi 
+# 0.025            0.024            0.022            0.022            0.016            0.003            0.001 
+# srr           eastness        northness 
+# 0.001            0.000            0.000 
 
 # This is legacy. Only kept to justify why I eliminated ldepth_max and watertbl
 # # per-province mean and SD for the soil variables: a province with SD near 0
