@@ -315,7 +315,9 @@ st <- readRDS(stats_file)
 st[d_vars, c("min", "max", "mean")] <- st[d_vars, c("min", "max", "mean")] / 1000
 
 q <- t(sapply(final_set, function(v) quantile(smp[[v]], c(.02, .5, .98), na.rm = TRUE)))
-tab <- data.frame(st[final_set, c("min")], q, st[final_set, c("max", "mean")])
+tab <- data.frame(min = st[final_set, "min"], q[, 1:2, drop = FALSE],
+                  mean = st[final_set, "mean"], q[, 3, drop = FALSE],
+                  max = st[final_set, "max"], row.names = final_set)
 tab["drainage", "mean"] <- NA          # mean of ordinal class codes isn't meaningful
 tab <- t(apply(tab, 1, function(x) fmt(x[!is.na(x)])[match(seq_along(x), which(!is.na(x)))]))
 
@@ -323,9 +325,8 @@ tab <- data.frame(Section   = rep(names(groups), lengths(groups))[match(final_se
                   Predictor = predictor_labels[final_set],
                   N         = format(st[final_set, "notNA"], big.mark = ","),
                   tab, check.names = FALSE)
-names(tab)[4:9] <- c("Min", "P2", "Median", "P98", "Max", "Mean")
+names(tab)[4:9] <- c("Min", "P2", "Median", "Mean", "P98", "Max")
 
 ft <- flextable::flextable(tab) |> flextable::merge_v(j = "Section") |> flextable::autofit()
 flextable::save_as_docx(ft, path = file.path(out_dir, sprintf("predictor-summary_%s.docx", population)))
-
 
