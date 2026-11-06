@@ -12,7 +12,8 @@ tomorrows-prairies/
 │   ├── Management/              # Protected area and tenure data
 │   ├── Socio-economic/          # 
 │   ├── Soil/                    # 
-│   └── Topography/              # 
+│   └── Topography/              #
+│
 ├── processeddatasets/           # Datasets prepared for analysis and modelling
 │   ├── boundaries/              # Jurisdictional and ecological boundaries
 │   ├── climate/                 
@@ -25,13 +26,16 @@ tomorrows-prairies/
 │   ├── socio-economic/               
 │   ├── soil/               
 │   ├── studyarea/               # Spatial extents of analyses
-│   └── topography/                                        
+│   └── topography/
+│                                        
 ├── scripts/                     # Code for data processing and modelling
 │   ├── classification/          # Scripts for grassland classification
 │   └── landcover/               # Scripts for land cover modelling
+│
 ├── output/                      # Model outputs and results visualizations
 │   ├── classification/          # Output for grassland classification
 │   └── landcover/               # Output for land cover modelling
+│
 ├── .gitignore                   # Git exclusions for files and folders
 ├── README.md                    # Project overview and instructions
 └── LICENSE                      # Code licensing information
