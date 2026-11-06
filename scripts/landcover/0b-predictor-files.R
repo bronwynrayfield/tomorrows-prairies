@@ -97,7 +97,7 @@ predictor_labels <- c(
   native       = "Native grassland (proportion)",
   tame         = "Tame grassland (proportion)",
   crop         = "Annual cropland (proportion)",
-  settl        = "Settlement (proportion)",
+  settl        = "Settlement, log(1 + % of 3.2 km window)",
   fors         = "Forest (proportion)",
 #  other        = "Other land cover (proportion)",
   
@@ -114,3 +114,21 @@ predictor_labels <- c(
 #  grs_origin   = "Grassland origin",
 #  ecoregion    = "Ecoregion"
 )
+
+# Monotone transforms, applied wherever predictors are read: 7c (sample) and 9/9b
+# (rasters). RF splits are invariant to them; they keep the GLM's linear terms from
+# being driven by a few extreme cells (pop_density max ~52 SD above the mean, which
+# gave it a negative GLM coefficient for both settlement transitions against an
+# RF rank of 3rd-5th).
+# Skewness, 6a training-population sample: pop_density 36.7, settl 7.7, dist_to_road 2.7.
+# Transformed where skew is high AND the predictor carries weight (settl is the largest
+# GLM coefficient for both settlement transitions). ldepth (5.1) has negative values;
+# fors, slope, kp0, tri (2.6-3.3) rank low in both models, so left raw.
+predictor_transforms <- list(pop_density  = log1p,
+                             dist_to_road = log1p,
+                             settl        = \(x) log1p(100 * x))
+apply_transforms <- function(x) {
+  for (v in intersect(names(predictor_transforms), names(x)))
+    x[[v]] <- predictor_transforms[[v]](x[[v]])
+  x
+}
