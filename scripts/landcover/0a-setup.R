@@ -296,10 +296,12 @@ responses <- tibble::tribble(
   "tame_annual",       cls_tame,   cls_annual,
   "native_settlement", cls_native, cls_settlement,
   "tame_settlement",   cls_tame,   cls_settlement,
-  "native_tame",       cls_native, cls_tame
+  "native_tame",       cls_native, cls_tame,
+  "annual_tame",       cls_annual, cls_tame,
+  "annual_settlement", cls_annual, cls_settlement
 )
 
-# Scoring table for all five responses, one block of rows per response:
+# Scoring table for all six responses, one block of rows per response:
 # from, to, score (1 = focal transition, 0 = persistence in the origin class,
 # NA = competing transition from the same origin). Only the origin's rows are listed
 scores <- bind_rows(Map(\(r, f, t) mutate(score_response(f, t), response = r),
