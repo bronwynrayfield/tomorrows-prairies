@@ -1,6 +1,6 @@
 # Tomorrow’s Prairies: Baselines and scenario-based projections for grasslands in Canada
 
-Description: Tomorrow's Prairies is a collaborative research project mapping grasslands and projecting changes in associated biodiversity and carbon based on socio-economic grassland conversion scenarios.
+Tomorrow's Prairies is a collaborative research project mapping grasslands and projecting changes in biodiversity and carbon based on scenarios of grassland conversion.
 
 Below is the folder structure for this project, showing the organization of data, scripts, and outputs.
 ```text
