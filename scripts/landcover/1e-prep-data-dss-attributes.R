@@ -17,7 +17,7 @@
 #   - dss_kp0_modelling-extent.tif        INT2S percent vol, layer 1
 #   - dss_kp33_modelling-extent.tif       INT2S percent vol, layer 1
 #   - dss_kp1500_modelling-extent.tif     INT2S percent vol, layer 1
-#   - dss_ldepth_modelling-extent.tif     INT2S cm, layer 1 (A horizon thickness)
+#   - dss_ldepth_modelling-extent.tif     INT2S cm, layer 1 (lower horizon depth)
 #   - dss_ldepth_max_modelling-extent.tif INT2S cm, all layers (total soil depth)
 #
 # Notes:
@@ -37,7 +37,7 @@
 #       YB = 4  Always present
 #   - SLOPE_P: -9 treated as NA
 #   - KP10 excluded: no valid layer 1 values for SK in source data
-#   - UDEPTH excluded: layer 1 UDEPTH is always 0 by definition;
+#   - UDEPTH excluded: layer 1 UDEPTH is always 0;
 #     redundant with LDEPTH at all other layers
 #   - All variables: percent-weighted mean across CMP components
 #     per polygon, weighted by PERCENT; -9 sentinel values -> NA
@@ -147,10 +147,11 @@ load_province <- function(prov, field) {
     names(slt) <- toupper(names(slt))
     
     src_col <- toupper(sub("_wtmean", "", field))  # e.g. "kp0_wtmean" -> "KP0"
-    
+    # LDEPTH: -9 is a valid depth (organic LFH layer above mineral surface) 
     slt1 <- slt |>
       filter(as.integer(LAYER_NO) == 1) |>
-      mutate(val = ifelse(as.numeric(.data[[src_col]]) == -9, NA_real_,
+      mutate(val = ifelse(as.numeric(.data[[src_col]]) == -9 & src_col != "LDEPTH", 
+                          NA_real_,
                           as.numeric(.data[[src_col]]))) |>
       select(SOIL_ID, val)
     
@@ -196,8 +197,8 @@ load_province <- function(prov, field) {
 # --- Variables --------------------------------------------------------
 
 vars <- list(
-#  list(field = "drain_wtmean",    file = dss_drainage_filename,   dt = "INT1U"),
-#  list(field = "slope_wtmean",    file = dss_slope_filename,      dt = "FLT4S"),
+   list(field = "drain_wtmean",    file = dss_drainage_filename,   dt = "INT1U"),
+   list(field = "slope_wtmean",    file = dss_slope_filename,      dt = "FLT4S"),
    list(field = "watertbl_wtmean", file = dss_watertbl_filename,   dt = "INT1U"),
    list(field = "kp0_wtmean",      file = dss_kp0_filename,        dt = "INT2S"),
    list(field = "kp33_wtmean",     file = dss_kp33_filename,       dt = "INT2S"),
@@ -216,9 +217,6 @@ prov_geom <- lapply(provinces, function(prov)
     crs(me_r))))
 names(prov_geom) <- provinces
 
-# UNVERIFIED - measure with the diagnostic at the foot of this script and
-# replace with the observed value plus 2 (the touches pass fills ~1 cell
-# from each side, so residual = seam_cells - 2).
 seam_cells <- 2L
 seam_buf   <- seam_cells * res(me_r)[1]
 
