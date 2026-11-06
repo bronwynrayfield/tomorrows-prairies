@@ -19,10 +19,10 @@ existingdatasets/**
 processeddatasets/**
 
 # results
-data/sub1/*
-!data/sub1/.gitkeep
-data/sub2/*
-!data/sub2/.gitkeep
+output/grassland-classification/*
+!output/grassland-classification/.gitkeep
+output/landcover*
+!output/landcover/.gitkeep
 
 
 # scratch scripts
