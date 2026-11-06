@@ -19,13 +19,11 @@ existingdatasets/**
 processeddatasets/**
 
 # results
-output/*
+output/landcover/*
+output/grassland-classification/*
 .Rproj.user
 
 # scratch scripts
 scripts/pilot/scratch/*
 
-# presentation scripts
-scripts/presentation-candidate-locations.R
-output/presentation/
 
