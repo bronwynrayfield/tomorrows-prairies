@@ -18,7 +18,7 @@
 #   Reference: 2010 tame = ACI 110+122 >= 2 years (2009-2012) within LUTS Cropland;
 #   2020 tame = LUTS perennial. Variants: aci122 (the previous reference, so the
 #   code-set switch is itself reported), min3 (threshold), aci_both (ACI 110+122
-#   at 2020 too: the 2020 source). Decision and evidence: "Tame grassland
+#   at 2020 too: the 2020 source), min3_both(k = 3 at both dates). Decision and evidence: "Tame grassland
 #   definition: decision record". aci_out, aci_out_drift and aci_out_min3 were
 #   dropped: they mix code sets between dates.
 # =============================================================================
@@ -36,14 +36,15 @@ variants <- tibble::tribble(
   "reference", aci_tame_code, tame_min_years,     NA,            NA,
   "aci122",    "122",         tame_min_years,     NA,            NA,
   "min3",      aci_tame_code, tame_min_years + 1, NA,            NA,
-  "aci_both",  aci_tame_code, tame_min_years,     aci_tame_code, tame_min_years
+  "aci_both",  aci_tame_code, tame_min_years,     aci_tame_code, tame_min_years,
+  "min3_both", aci_tame_code, tame_min_years + 1, aci_tame_code, tame_min_years + 1
 ) |>
   mutate(chg_2010 = codes_2010 != codes_2010[1] | min_2010 != min_2010[1],
          chg_2020 = !is.na(codes_2020))
 
 # ---- Load ----
 sa_r           <- rast(file.path(sa_filepath, sa_raster_filename))
-ecodistricts_r <- rast(tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea"))
+ecodistricts_r <- crop(rast(tagged_path("./processeddatasets", ecodistricts_filepath, paste0(tools::file_path_sans_ext(ecodistricts_filename), ".tif"), "studyarea")), sa_r)
 
 lulc_2010_sa <- rast(tagged_path("./processeddatasets", "landcover", "lulc_2010.tif", "study-area"))
 lulc_2020_sa <- rast(tagged_path("./processeddatasets", "landcover", "lulc_2020.tif", "study-area"))
@@ -147,8 +148,10 @@ write.csv(calib_k, file.path(response_summary_filepath, "sensitivity", "threshol
 
 # ---- Variant loop ----
 tabs <- list()
-for (i in seq_len(nrow(variants))) {
-  v <- variants[i, ]
+prev <- read.csv(file.path(response_summary_filepath, "sensitivity", "transitions_by_variant.csv"))
+todo <- filter(variants, !variant %in% unique(prev$variant))
+for (i in seq_len(nrow(todo))) {
+  v <- todo[i, ]
   
   # 2010: rebuild on the modelling extent, recompute tame focal, mask to study area
   if (v$chg_2010) {
@@ -188,7 +191,7 @@ for (i in seq_len(nrow(variants))) {
   tabs[[v$variant]] <- tabulate_lulc(l10, l20, ecodistricts_r) |> mutate(variant = v$variant)
 }
 
-tab <- bind_rows(tabs)
+tab <- bind_rows(prev, bind_rows(tabs))
 write.csv(tab, file.path(response_summary_filepath, "sensitivity", "transitions_by_variant.csv"), row.names = FALSE)
 
 # ---- Extent ----
