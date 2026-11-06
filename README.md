@@ -6,32 +6,30 @@ Below is the folder structure for this project, showing the organization of data
 ```text
 tomorrows-prairies/
 ├── existingdatasets/            # Source datasets from external providers
-│   ├── biodiversity/            # Species, habitat, connectivity, ecosystem condition data
-│   ├── boundaries/              # Jurisdictional and ecological boundaries
-│   ├── carbon/                  # Parameterization, calibration, and validation carbon data
-│   ├── climate/                 # Historical and projected climate data
-│   ├── cropland/                # Cropland extent and properties
-│   ├── grassland/               # Grassland classification datasets
-│   ├── landcover/               # Land use land cover classification datasets
-│   └── management/              # Protected area and other management data
+│   ├── Climate/                 # Historical and projected climate data
+│   ├── Cropland/                # Cropland extent and properties
+│   ├── Landcover/               # Land use land cover classification datasets
+│   ├── Management/              # Protected area and tenure data
+│   ├── Socio-economic/          # Protected area and tenure data
+│   ├── Soil/                    # Protected area and tenure data
+│   └── Topography/              # Protected area and other management data
 ├── processeddatasets/           # Datasets prepared for analysis and modelling
-│   ├── studyarea/               # Spatial extents of analyses
-│   ├── biodiversity/            
-│   ├── boundaries/              
-│   ├── carbon/                  
+│   ├── boundaries/              # Jurisdictional and ecological boundaries
 │   ├── climate/                 
 │   ├── cropland/                
-│   ├── grassland/               
-│   ├── landcover/               
-│   └── management/                                        
+│   ├── landcover/                  
+│   ├── management/
+│   ├── predictions/                  
+│   ├── predictors/                  
+│   ├── response/               
+│   ├── socio-economic/               
+│   ├── soil/               
+│   ├── studyarea/               # Spatial extents of analyses
+│   └── topography/                                        
 ├── scripts/                     # Code for data processing and modelling
 │   ├── classification/          # Scripts for grassland classification
 │   └── landcover/               # Scripts for land cover processing
-├── models/                      # Model configurations and outputs
-├── results/                     # Final results and visualizations
-│   ├── figures/                 # Plots, charts, and maps
-│   └── tables/                  # Summary tables and statistics
-├── docs/                        # Project documentation and notes
+├── output/                      # Model outputs and results visualizations
 ├── .gitignore                   # Git exclusions for files and folders
 ├── README.md                    # Project overview and instructions
 └── LICENSE                      # Code licensing information
