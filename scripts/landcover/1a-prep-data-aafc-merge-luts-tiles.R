@@ -25,7 +25,7 @@
 #     2-project-data.R which reads from the merged/ subfolder directly
 # =============================================================================
 
-source(file.path("scripts/landcover", "0-setup.R"))
+source(file.path("scripts/landcover", "0a-setup.R"))
 
 
 #--- AAFC LUTS ----
