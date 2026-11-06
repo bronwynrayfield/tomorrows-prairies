@@ -19,7 +19,6 @@ existingdatasets/**
 processeddatasets/**
 
 # results
-results/*
 output/*
 .Rproj.user
 
