@@ -1,6 +1,6 @@
-# Tomorrow’s Prairies: Baselines and scenario-based projections for grasslands in Canada
+# _Tomorrow’s Prairies_: Baselines and scenario-based projections for grasslands in Canada
 
-Tomorrow's Prairies is a collaborative research project mapping grasslands and projecting changes in biodiversity and carbon based on scenarios of grassland conversion across the Canadian Prairies. This three-year effort is being led by Nature United with funding from the Nature Smart Climate Solutions Fund administered by Environment and Climate Change Canada.
+_Tomorrow's Prairies_ is a collaborative research project mapping grasslands and projecting changes in biodiversity and carbon based on scenarios of grassland conversion across the Canadian Prairies. This three-year effort is being led by Nature United with funding from the Nature Smart Climate Solutions Fund administered by Environment and Climate Change Canada.
 
 Below is the folder structure for this project, showing the organization of data, scripts, and outputs.
 ```text
